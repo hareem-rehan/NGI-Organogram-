@@ -36,7 +36,7 @@ on:
   pull_request:
 
 env:
-  NEXT_PUBLIC_APP_NAME: "Dynamic Organogram Manager"
+  NEXT_PUBLIC_APP_NAME: "DotZero Organogram"
 
 jobs:
   quality:
