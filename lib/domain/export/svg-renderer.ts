@@ -75,6 +75,18 @@ export interface SvgRenderResult {
   graphOffsetY: number;
 }
 
+/**
+ * Neither renderer resolves CSS, and neither defaults to a sans-serif:
+ * sharp/librsvg (PNG) and svg-to-pdfkit (PDF) both fall back to a SERIF
+ * face when `font-family` is absent, so exports came out in Times while
+ * the app itself is sans-serif. Declared once on the root `<svg>` and
+ * inherited by every `<text>`. Helvetica leads deliberately — it is one
+ * of PDF's base-14 fonts (so svg-to-pdfkit embeds it with no font file),
+ * and fontconfig resolves it to a sans substitute (Nimbus/Liberation
+ * Sans) wherever real Helvetica is absent.
+ */
+const EXPORT_FONT_FAMILY = "Helvetica, Arial, sans-serif";
+
 const PADDING = 40;
 const HEADER_HEIGHT = 96;
 const FOOTER_HEIGHT = 32;
@@ -82,30 +94,69 @@ const LEGEND_ROW_HEIGHT = 16;
 const LEGEND_COLUMN_WIDTH = 200;
 const MIN_CANVAS_WIDTH = 640;
 
-const STATUS_LEGEND_ENTRIES = [
-  { label: "Occupied", color: EXPORT_COLORS.statusFilled },
-  { label: "Vacant", color: EXPORT_COLORS.statusVacant },
-  { label: "Planned position", color: EXPORT_COLORS.statusPlanned },
-  { label: "Inactive position", color: EXPORT_COLORS.statusInactive },
-  { label: "Match", color: EXPORT_COLORS.primary },
-  { label: "Context", color: EXPORT_COLORS.mutedForeground },
+interface StatusLegendEntry {
+  label: string;
+  color: string;
+}
+
+/**
+ * Every row here must correspond to something a reader can actually SEE
+ * on this export, otherwise the legend is a key to nothing. It previously
+ * listed all seven signals unconditionally while the cards rendered only
+ * two of them as color (the "Vacant" occupant text and the connector
+ * stroke) — an "Occupied" green swatch, in particular, matched no mark
+ * anywhere on the page. Cards now carry a real occupancy dot
+ * (`renderNodeCard`) and status-colored badges, and the transient
+ * search states are listed only when a node actually carries them.
+ */
+function statusLegendEntriesFor(nodes: readonly SvgRenderNode[]): StatusLegendEntry[] {
+  // Both occupancy states stay unconditional: every card carries the dot,
+  // so a reader needs the key for it even on an all-occupied chart.
+  const entries: StatusLegendEntry[] = [
+    { label: "Occupied", color: EXPORT_COLORS.statusFilled },
+    { label: "Vacant", color: EXPORT_COLORS.statusVacant },
+  ];
+  if (nodes.some((node) => node.positionStatus === "PLANNED")) {
+    entries.push({ label: "Planned position", color: EXPORT_COLORS.statusPlanned });
+  }
+  if (nodes.some((node) => node.positionStatus === "INACTIVE")) {
+    entries.push({ label: "Inactive position", color: EXPORT_COLORS.statusInactive });
+  }
+  if (nodes.some((node) => node.matchState === "match")) {
+    entries.push({ label: "Match", color: EXPORT_COLORS.primary });
+  }
+  if (nodes.some((node) => node.matchState === "context")) {
+    entries.push({ label: "Context", color: EXPORT_COLORS.mutedForeground });
+  }
   // The interactive legend (organogram-legend.tsx) swatches this entry
   // with `bg-border` — deliberately NOT reused here. `--color-border`
-  // (#e2e8f0) reads fine as a hairline on the app's own slightly-off-
-  // white surfaces, but is barely visible as a flat legend dot against
-  // this export's pure white background; `mutedForeground` matches what
+  // reads fine as a hairline on the app's own slightly-off-white
+  // surfaces, but is barely visible as a flat legend dot against this
+  // export's pure white background; `mutedForeground` matches what
   // `renderEdgePath` actually strokes connectors with, so the legend
   // swatch and the real line color agree.
-  { label: "Primary reporting line", color: EXPORT_COLORS.mutedForeground },
-] as const;
+  entries.push({ label: "Primary reporting line", color: EXPORT_COLORS.mutedForeground });
+  return entries;
+}
 
-function nodeBadgeLabels(node: SvgRenderNode): string[] {
+/** Colored to match its own legend swatch. Position status wins over search state: status is a property of the data, match state is transient to one search. */
+function nodeBadge(node: SvgRenderNode): { label: string; color: string } | null {
   const labels: string[] = [];
   if (node.matchState === "match") labels.push("MATCH");
   if (node.matchState === "context") labels.push("CONTEXT");
   if (node.positionStatus === "PLANNED") labels.push("PLANNED");
   if (node.positionStatus === "INACTIVE") labels.push("INACTIVE");
-  return labels;
+  if (labels.length === 0) return null;
+
+  const color =
+    node.positionStatus === "PLANNED"
+      ? EXPORT_COLORS.statusPlanned
+      : node.positionStatus === "INACTIVE"
+        ? EXPORT_COLORS.statusInactive
+        : node.matchState === "match"
+          ? EXPORT_COLORS.primary
+          : EXPORT_COLORS.mutedForeground;
+  return { label: labels.join(" · "), color };
 }
 
 function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): string {
@@ -123,7 +174,9 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
     node.occupancyStatus === "vacant" ? EXPORT_COLORS.statusVacant : EXPORT_COLORS.foreground;
   const deptLevelText = `${node.departmentName} · Level ${node.organizationalLevel}${node.jobGradeName ? ` · ${node.jobGradeName}` : ""}`;
   const [deptLevelLine] = wrapText(deptLevelText, 34, 1);
-  const badgeLabels = nodeBadgeLabels(node);
+  const badge = nodeBadge(node);
+  const statusDotColor =
+    node.occupancyStatus === "vacant" ? EXPORT_COLORS.statusVacant : EXPORT_COLORS.statusFilled;
 
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="${opacity}">`);
@@ -132,9 +185,9 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
   );
   parts.push(`<rect x="0" y="0" width="6" height="${NODE_HEIGHT}" fill="${accentColor}" />`);
 
-  if (badgeLabels.length > 0) {
+  if (badge) {
     parts.push(
-      `<text x="${NODE_WIDTH - 14}" y="16" font-size="8" font-weight="600" letter-spacing="0.3" text-anchor="end" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(badgeLabels.join(" · "))}</text>`
+      `<text x="${NODE_WIDTH - 14}" y="16" font-size="8" font-weight="600" letter-spacing="0.3" text-anchor="end" fill="${badge.color}">${escapeXmlText(badge.label)}</text>`
     );
   }
 
@@ -144,8 +197,12 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
     );
   });
 
+  // The occupancy dot the "Occupied"/"Vacant" legend rows are the key to.
+  // Color is never the only signal (docs/PROJECT_SPEC.md §12): the dot
+  // sits beside the occupant's name, or the literal word "Vacant".
+  parts.push(`<circle cx="20" cy="58" r="4" fill="${statusDotColor}" />`);
   parts.push(
-    `<text x="16" y="62" font-size="12" font-weight="500" fill="${occupantColor}">${escapeXmlText(occupantText)}</text>`
+    `<text x="32" y="62" font-size="12" font-weight="500" fill="${occupantColor}">${escapeXmlText(occupantText)}</text>`
   );
   if (deptLevelLine) {
     parts.push(
@@ -209,9 +266,10 @@ function renderFooter(
 
 function renderLegend(
   departments: readonly SvgLegendDepartment[],
+  statusEntries: readonly StatusLegendEntry[],
   y: number
 ): { svg: string; height: number } {
-  const statusRows = STATUS_LEGEND_ENTRIES.length;
+  const statusRows = statusEntries.length;
   const deptRows = departments.length;
   const rows = Math.max(statusRows, deptRows);
   const height = rows * LEGEND_ROW_HEIGHT + 24;
@@ -221,7 +279,7 @@ function renderLegend(
     `<text x="${PADDING}" y="${y + 14}" font-size="11" font-weight="700" fill="${EXPORT_COLORS.foreground}">Legend</text>`
   );
 
-  STATUS_LEGEND_ENTRIES.forEach((entry, index) => {
+  statusEntries.forEach((entry, index) => {
     const rowY = y + 32 + index * LEGEND_ROW_HEIGHT;
     parts.push(`<circle cx="${PADDING + 4}" cy="${rowY - 4}" r="4" fill="${entry.color}" />`);
     parts.push(
@@ -267,7 +325,7 @@ export function renderOrganogramSvg(
     const totalWidth = MIN_CANVAS_WIDTH;
     const totalHeight = headerHeight + 120 + FOOTER_HEIGHT + PADDING * 2;
     const body = [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}">`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}" font-family="${EXPORT_FONT_FAMILY}">`,
       `<rect width="100%" height="100%" fill="${EXPORT_COLORS.background}" />`,
       renderHeader(metadata, totalWidth, options.includeMetadata),
       `<text x="${totalWidth / 2}" y="${headerHeight + 60}" font-size="14" text-anchor="middle" fill="${EXPORT_COLORS.mutedForeground}">No positions to export.</text>`,
@@ -343,7 +401,7 @@ export function renderOrganogramSvg(
   let legendSvg = "";
   let legendHeight = 0;
   if (options.includeLegend) {
-    const legend = renderLegend(options.departments, cursorY);
+    const legend = renderLegend(options.departments, statusLegendEntriesFor(nodes), cursorY);
     legendSvg = legend.svg;
     legendHeight = legend.height;
     cursorY += legendHeight + PADDING;
@@ -352,7 +410,7 @@ export function renderOrganogramSvg(
   const totalHeight = cursorY + FOOTER_HEIGHT + PADDING;
 
   const svg = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}" font-family="${EXPORT_FONT_FAMILY}">`,
     `<rect width="100%" height="100%" fill="${EXPORT_COLORS.background}" />`,
     renderHeader(metadata, totalWidth, options.includeMetadata),
     `<g transform="translate(${graphOffsetX}, ${graphOffsetY})">`,

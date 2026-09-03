@@ -106,6 +106,7 @@ export function Combobox({
             placeholder={placeholder}
             value={open ? query : (selectedOption?.label ?? query)}
             onFocus={() => setOpen(true)}
+            onClick={() => setOpen(true)}
             onChange={(event) => {
               onQueryChange(event.target.value);
               setOpen(true);

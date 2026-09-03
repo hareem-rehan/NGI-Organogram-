@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EXPORT_COLORS } from "./colors";
 import { renderOrganogramSvg, type SvgRenderMetadata, type SvgRenderNode } from "./svg-renderer";
 
 function node(overrides: Partial<SvgRenderNode> & { positionId: string }): SvgRenderNode {
@@ -150,7 +151,10 @@ describe("renderOrganogramSvg", () => {
       METADATA,
       BASE_OPTIONS
     );
-    expect(result.svg).toContain("#e2e8f0");
+    // Asserted against the token, never a hardcoded hex — this test
+    // previously pinned the pre-DotZero `#e2e8f0` and so kept passing
+    // while the export rendered an entirely stale palette.
+    expect(result.svg).toContain(EXPORT_COLORS.border);
   });
 
   it("shows 'Vacant' for an unoccupied position and the occupant name for an occupied one", () => {
@@ -301,5 +305,86 @@ describe("renderOrganogramSvg", () => {
     });
     expect(result.svg).toContain("Sales &amp; Marketing");
     expect(result.svg).toContain("#123456");
+  });
+
+  it("declares an explicit sans-serif font — neither renderer defaults to one", () => {
+    const positions = new Map([["root", { x: 0, y: 0 }]]);
+    const result = renderOrganogramSvg(
+      [node({ positionId: "root" })],
+      [],
+      positions,
+      METADATA,
+      BASE_OPTIONS
+    );
+    // librsvg (PNG) and svg-to-pdfkit (PDF) both fall back to a SERIF face
+    // when font-family is absent, which is how exports shipped in Times
+    // while the app itself is sans-serif.
+    expect(result.svg).toContain('font-family="Helvetica, Arial, sans-serif"');
+  });
+
+  it("draws the occupancy dot the Occupied/Vacant legend rows are a key to", () => {
+    const positions = new Map([
+      ["vacantPos", { x: 0, y: 0 }],
+      ["occupiedPos", { x: 300, y: 0 }],
+    ]);
+    const result = renderOrganogramSvg(
+      [
+        node({ positionId: "vacantPos", occupancyStatus: "vacant" }),
+        node({
+          positionId: "occupiedPos",
+          occupancyStatus: "occupied",
+          occupantDisplayName: "Ada Lovelace",
+        }),
+      ],
+      [],
+      positions,
+      METADATA,
+      BASE_OPTIONS
+    );
+    // The legend previously advertised an "Occupied" green swatch that
+    // matched no mark anywhere on the page.
+    expect(result.svg).toContain(`r="4" fill="${EXPORT_COLORS.statusFilled}"`);
+    expect(result.svg).toContain(`r="4" fill="${EXPORT_COLORS.statusVacant}"`);
+  });
+
+  it("lists a status legend row only when a node actually carries that state", () => {
+    const positions = new Map([["root", { x: 0, y: 0 }]]);
+    const plainChart = renderOrganogramSvg(
+      [node({ positionId: "root", positionStatus: "ACTIVE", matchState: "none" })],
+      [],
+      positions,
+      METADATA,
+      BASE_OPTIONS
+    );
+    // Occupancy applies to every card, so its rows are unconditional...
+    expect(plainChart.svg).toContain("Occupied");
+    expect(plainChart.svg).toContain("Vacant");
+    // ...but these describe marks that appear nowhere on this chart.
+    expect(plainChart.svg).not.toContain("Planned position");
+    expect(plainChart.svg).not.toContain("Inactive position");
+    expect(plainChart.svg).not.toContain(">Match<");
+
+    const plannedChart = renderOrganogramSvg(
+      [node({ positionId: "root", positionStatus: "PLANNED" })],
+      [],
+      positions,
+      METADATA,
+      BASE_OPTIONS
+    );
+    expect(plannedChart.svg).toContain("Planned position");
+  });
+
+  it("colors a status badge to match its own legend swatch", () => {
+    const positions = new Map([["root", { x: 0, y: 0 }]]);
+    const planned = renderOrganogramSvg(
+      [node({ positionId: "root", positionStatus: "PLANNED" })],
+      [],
+      positions,
+      METADATA,
+      BASE_OPTIONS
+    );
+    // The badge and its legend row must agree; the badge used to render
+    // in muted gray regardless of which status it announced.
+    expect(planned.svg).toContain(`fill="${EXPORT_COLORS.statusPlanned}">PLANNED`);
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, FileText, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
@@ -48,6 +48,24 @@ function toExportFilterState(filters: OrganogramFilterState): ExportFilterState 
     occupancy: filters.occupancy,
     statuses: [...filters.statuses],
   };
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The filename is deliberately NOT part of the download button's label — a generated name like `organogram-DEV-LOCAL-Full-Company-2026-09-03.pdf` overflows the dialog on a `whitespace-nowrap` button. It belongs in the file summary above it, where it can truncate. */
+function describeExportFile(job: SafeExportJob): string {
+  return [
+    job.format,
+    job.pageCount ? `${job.pageCount} page${job.pageCount === 1 ? "" : "s"}` : null,
+    typeof job.fileSize === "number" ? formatFileSize(job.fileSize) : null,
+    `${job.nodeCount} position${job.nodeCount === 1 ? "" : "s"}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function triggerBrowserDownload(base64: string, filename: string, contentType: string) {
@@ -197,28 +215,51 @@ export function OrganogramExportDialog({
       >
         {phase === "done" && job ? (
           <div className="flex flex-col gap-4">
-            <p className="text-foreground text-sm">
-              Your {job.format} export is ready
-              {job.pageCount ? ` (${job.pageCount} page${job.pageCount === 1 ? "" : "s"})` : ""}.
-            </p>
-            <Button type="button" onClick={handleDownload} disabled={downloading}>
+            <p className="text-foreground text-sm">Your export is ready.</p>
+
+            <div className="border-border bg-muted flex items-center gap-3 rounded-md border p-3">
+              <span className="border-border bg-background flex size-10 shrink-0 items-center justify-center rounded-md border">
+                <FileText aria-hidden="true" className="text-muted-foreground size-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p
+                  className="text-foreground truncate text-sm font-medium"
+                  title={job.generatedFilename ?? undefined}
+                >
+                  {job.generatedFilename ?? `${job.format} export`}
+                </p>
+                <p className="text-muted-foreground text-xs">{describeExportFile(job)}</p>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              onClick={handleDownload}
+              disabled={downloading}
+              className="w-full"
+            >
               {downloading ? (
                 <Loader2 aria-hidden="true" className="size-4 animate-spin" />
               ) : (
                 <Download aria-hidden="true" className="size-4" />
               )}
-              Download {job.generatedFilename}
+              {downloading ? "Downloading…" : "Download"}
             </Button>
             {errorMessage ? (
               <p role="alert" className="text-destructive text-sm font-medium">
                 {errorMessage}
               </p>
             ) : null}
+            {/* Download is the only filled button in this state — these two
+                are navigation, not the action the user came here for. "Back"
+                returns to the options form without re-running the on-open
+                reset effect, so the scope/focus/depth choices survive. */}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setPhase("form")}>
-                Generate another
+                <ArrowLeft aria-hidden="true" className="size-4" />
+                Back
               </Button>
-              <Button type="button" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Close
               </Button>
             </DialogFooter>

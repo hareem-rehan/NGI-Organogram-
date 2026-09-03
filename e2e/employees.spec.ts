@@ -211,6 +211,17 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     await expect(page.getByRole("option", { name: new RegExp(positionBTitle) })).toHaveCount(0);
     await page.keyboard.press("Escape");
 
+    // Regression: Escape closes the popover but leaves the input focused.
+    // Clicking that same, still-focused combobox again must reopen the
+    // dropdown (components/ui/combobox.tsx's onClick handler) — a plain
+    // browser click on an already-focused input fires no new "focus"
+    // event, so relying on onFocus alone leaves it stuck closed forever.
+    const destinationCombobox = dialog.getByRole("combobox", { name: "Destination position" });
+    await expect(destinationCombobox).toHaveAttribute("aria-expanded", "false");
+    await destinationCombobox.click();
+    await expect(destinationCombobox).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+
     await dialog.getByRole("button", { name: /cancel/i }).click();
     await expect(dialog).toBeHidden();
 

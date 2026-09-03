@@ -137,8 +137,14 @@ describe("OrganogramExportDialog", () => {
     await user.click(screen.getByRole("button", { name: /generate export/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /download organogram\.pdf/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^download$/i })).toBeInTheDocument();
     });
+    // The filename belongs in the file summary, not the button's label —
+    // a generated name overflows a `whitespace-nowrap` button.
+    expect(screen.getByRole("button", { name: /^download$/i })).not.toHaveTextContent(
+      "organogram.pdf"
+    );
+    expect(screen.getByText("organogram.pdf")).toBeInTheDocument();
     expect(requestExportActionMock).toHaveBeenCalledWith(
       expect.objectContaining({ format: "PDF", scope: "FULL_COMPANY" })
     );
@@ -191,9 +197,9 @@ describe("OrganogramExportDialog", () => {
       />
     );
     await user.click(screen.getByRole("button", { name: /generate export/i }));
-    await waitFor(() => screen.getByRole("button", { name: /download organogram\.pdf/i }));
+    await waitFor(() => screen.getByRole("button", { name: /^download$/i }));
 
-    await user.click(screen.getByRole("button", { name: /download organogram\.pdf/i }));
+    await user.click(screen.getByRole("button", { name: /^download$/i }));
 
     await waitFor(() => {
       expect(downloadExportFileActionMock).toHaveBeenCalledWith({ jobId: "job-1" });
@@ -232,6 +238,33 @@ describe("OrganogramExportDialog", () => {
     // Selecting a low enough scale removes the warning at this node count.
     await user.selectOptions(screen.getByRole("combobox", { name: /image scale/i }), "1");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("returns to the options form via Back, keeping the scope chosen before generating", async () => {
+    const user = userEvent.setup();
+    requestExportActionMock.mockResolvedValue({ ok: true, data: COMPLETED_JOB });
+    render(
+      <OrganogramExportDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        nodes={NODES}
+        departmentEntries={DEPARTMENTS}
+        currentContext={FULL_COMPANY_CONTEXT}
+      />
+    );
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /scope/i }), "POSITION_FOCUS");
+    await user.selectOptions(screen.getByRole("combobox", { name: /position/i }), "root");
+    await user.click(screen.getByRole("button", { name: /generate export/i }));
+    await waitFor(() => screen.getByRole("button", { name: /^download$/i }));
+
+    await user.click(screen.getByRole("button", { name: /^back$/i }));
+
+    // Back is a step within the dialog, not a reopen — so it must NOT run
+    // the on-open reset that would snap the scope back to the chart's
+    // current view (FULL_COMPANY here).
+    expect(screen.getByRole("combobox", { name: /scope/i })).toHaveValue("POSITION_FOCUS");
+    expect(screen.getByRole("button", { name: /generate export/i })).toBeInTheDocument();
   });
 
   it("resets to the form when the dialog is reopened", () => {

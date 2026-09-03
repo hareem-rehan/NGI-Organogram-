@@ -3,6 +3,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Department } from "@prisma/client";
 
+import { updateDepartmentSchema } from "@/lib/validation/department";
+
 const { createDepartmentActionMock, updateDepartmentActionMock, moveDepartmentActionMock } =
   vi.hoisted(() => ({
     createDepartmentActionMock: vi.fn(),
@@ -160,6 +162,32 @@ describe("DepartmentFormDialog", () => {
 
     await waitFor(() => expect(updateDepartmentActionMock).toHaveBeenCalled());
     expect(moveDepartmentActionMock).not.toHaveBeenCalled();
+  });
+
+  it("sends updateDepartmentAction a payload that satisfies the real update schema (no parentDepartmentId)", async () => {
+    const department = makeDepartment({
+      id: "11111111-1111-4111-8111-111111111111",
+      parentDepartmentId: null,
+    });
+    updateDepartmentActionMock.mockResolvedValue({ ok: true, data: department });
+    const user = userEvent.setup();
+
+    render(
+      <DepartmentFormDialog
+        open
+        onOpenChange={() => {}}
+        department={department}
+        allDepartments={[department]}
+        onSaved={() => {}}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(updateDepartmentActionMock).toHaveBeenCalled());
+    const payload = updateDepartmentActionMock.mock.calls[0]?.[0];
+    expect(() => updateDepartmentSchema.parse(payload)).not.toThrow();
+    expect(payload).not.toHaveProperty("parentDepartmentId");
   });
 
   it("does not offer the department being edited as its own parent option", () => {

@@ -81,7 +81,13 @@ export function DepartmentFormDialog({
     setFormError(null);
     startTransition(async () => {
       const result = isEdit
-        ? await updateDepartmentAction({ departmentId: department.id, ...values })
+        ? await updateDepartmentAction({
+            departmentId: department.id,
+            name: values.name,
+            code: values.code,
+            description: values.description,
+            color: values.color,
+          })
         : await createDepartmentAction(values);
 
       if (!result.ok) {
