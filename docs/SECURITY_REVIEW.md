@@ -68,13 +68,13 @@ Both rehearsed against disposable databases this phase — see `docs/DATABASE_RE
 
 ## 7. Findings Summary (cross-referenced to `docs/DEFECT_REGISTER.md`)
 
-| ID      | Summary                                                                                                                                | Severity              | Status                                             |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | -------------------------------------------------- |
-| DEF-004 | 5 `npm audit` findings, all dev-tooling-only                                                                                           | High (per audit tool) | Accepted for release                               |
-| DEF-006 | Concurrent hierarchy moves could jointly create a reporting cycle                                                                      | High                  | **Fixed** this phase                               |
-| DEF-009 | CSV import too slow (31.8s/1,000 rows) and fails to complete (5,000 rows) at scale, after a partial fix removed the prior hard failure | High                  | **Fixed** in Phase 13.1                            |
-| DEF-005 | Audit-log pending-row color contrast below WCAG AA                                                                                     | Medium                | Fixed                                              |
-| DEF-007 | Dialog focus not restored to trigger on close                                                                                          | Low                   | Accepted, not fixed                                |
+| ID      | Summary                                                                                                                                | Severity              | Status                  |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ----------------------- |
+| DEF-004 | 5 `npm audit` findings, all dev-tooling-only                                                                                           | High (per audit tool) | Accepted for release    |
+| DEF-006 | Concurrent hierarchy moves could jointly create a reporting cycle                                                                      | High                  | **Fixed** this phase    |
+| DEF-009 | CSV import too slow (31.8s/1,000 rows) and fails to complete (5,000 rows) at scale, after a partial fix removed the prior hard failure | High                  | **Fixed** in Phase 13.1 |
+| DEF-005 | Audit-log pending-row color contrast below WCAG AA                                                                                     | Medium                | Fixed                   |
+| DEF-007 | Dialog focus not restored to trigger on close                                                                                          | Low                   | Accepted, not fixed     |
 
 No Critical-severity finding exists. Of the three High-severity findings, two are closed (DEF-006 fixed in this phase; DEF-009 fixed in Phase 13.1) and one — DEF-004 — is explicitly accepted as dev-tooling-only, with no production exposure.
 

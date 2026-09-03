@@ -41,3 +41,6 @@ npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Vercel CLI project link (contains org/project ids; not secret, but machine-specific)
+.vercel
