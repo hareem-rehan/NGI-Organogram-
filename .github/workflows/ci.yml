@@ -1,0 +1,243 @@
+# Release-candidate gate (Phase 13 — release hardening).
+#
+# `quality` covers: format, lint, typecheck, unit/component tests
+# (coverage), a from-scratch migration deploy (itself a migration
+# rehearsal on every single run — see docs/DATABASE_RELEASE_RUNBOOK.md),
+# a domain-integrity-check smoke run, a dependency vulnerability audit
+# and outdated-dependency report (both informational — see
+# docs/DEFECT_REGISTER.md DEF-004 for the two currently-accepted dev-
+# tooling-only advisories), a secret scan, integration tests (coverage),
+# and a production build. `e2e` covers: the full Playwright suite,
+# which already includes accessibility (axe-core, e2e/accessibility.spec.ts),
+# visual regression (e2e/organogram-visual.spec.ts snapshots), and the
+# RBAC/company-isolation matrix (tests/integration/rbac-company-isolation.integration.test.ts
+# runs as part of `quality`'s integration-test step; e2e/rbac-matrix.spec.ts
+# runs as part of this job) — none of these need a separate CI step,
+# they are ordinary spec files already included in the existing
+# `npm run test:coverage`/integration/`test:e2e` invocations.
+#
+# What this CI pipeline does NOT and CANNOT cover (see
+# docs/RELEASE_CHECKLIST.md for how each is otherwise verified):
+# - Cross-browser testing beyond Chromium — this environment only
+#   installs `playwright install --with-deps chromium`; Firefox/WebKit
+#   and real mobile Safari/Chrome are not exercised here.
+# - Backup/restore and a from-scratch migration rehearsal beyond what
+#   "apply migrations to a clean CI database" already is — both were
+#   manually rehearsed once against disposable databases during Phase 13
+#   (docs/DATABASE_RELEASE_RUNBOOK.md); CI does not repeat the
+#   backup/restore half of that on every run.
+# - A meaningful (non-empty-database) domain-integrity-check run — see
+#   this file's own comment on that step for why.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  NEXT_PUBLIC_APP_NAME: "Dynamic Organogram Manager"
+
+jobs:
+  quality:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    # Ephemeral, CI-only PostgreSQL — never a shared/production database.
+    # Credentials here are throwaway container-local values, not secrets.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: organogram
+          POSTGRES_PASSWORD: organogram_ci_password
+          POSTGRES_DB: organogram_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U organogram -d organogram_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
+      NODE_ENV: "test"
+      # Throwaway, non-functional OIDC configuration — exists only so
+      # lib/env.server.ts validation and the production build succeed in
+      # CI. No live provider is ever contacted (see docs/DECISIONS.md P8 —
+      # the SSO provider is still pending; nothing here is provider-
+      # specific). Never a real secret.
+      AUTH_SECRET: "ci-only-placeholder-secret-value-not-a-real-secret-32chars"
+      AUTH_OIDC_ISSUER: "https://ci-placeholder.invalid/tenant/v2.0"
+      AUTH_OIDC_CLIENT_ID: "ci-placeholder-client-id"
+      AUTH_OIDC_CLIENT_SECRET: "ci-placeholder-client-secret"
+      AUTH_ALLOWED_EMAIL_DOMAINS: "ci-placeholder.invalid"
+      AUTH_PROVIDER_NAME: "CI Placeholder Account"
+      AUTH_AUTO_PROVISION_VIEWERS: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma — generate client
+        run: npx prisma generate
+
+      - name: Prisma — validate schema
+        run: npx prisma validate
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit and component tests (with coverage)
+        run: npm run test:coverage
+
+      - name: Prisma — apply migrations to the clean CI database
+        run: npx prisma migrate deploy
+
+      # Phase 13 (release hardening): confirms the domain-integrity tool
+      # itself runs and connects correctly. Run here (immediately after
+      # migrations, before any test writes any fixture data) rather than
+      # after the integration suite or the E2E job, because both of
+      # those leave behind intentionally-partial fixture companies (e.g.
+      # e2e/support/seed-session.ts provisions a company with exactly
+      # one VIEWER-only user for a single test's purposes) that would
+      # trip the checker's COMPANY_WITHOUT_ACTIVE_ADMIN category as a
+      # false positive — not a real defect, just this project's E2E
+      # fixture-seeding pattern. This CI invocation is a smoke test of
+      # the tool, not a substitute for running it against a real
+      # populated database (staging/production, once one exists —
+      # docs/DATABASE_RELEASE_RUNBOOK.md).
+      - name: Domain-integrity check (smoke — clean, empty database)
+        run: npm run check:integrity
+
+      - name: Dependency vulnerability audit (informational — see docs/SECURITY_REVIEW.md)
+        # Non-blocking: the two current advisory chains (deepmerge-ts via
+        # @prisma/config/prisma; esbuild via vite) are both dev-tooling-
+        # only — neither prisma's CLI nor vite's dev server ships in this
+        # app's production runtime — and fixing either requires an
+        # unreviewed breaking major-version bump, out of scope for a
+        # stabilization phase. Tracked in docs/DEFECT_REGISTER.md DEF-004
+        # rather than silently ignored; this step still surfaces the
+        # report on every run so a NEW advisory is never missed.
+        run: npm audit || true
+
+      - name: Outdated dependency report (informational)
+        run: npm outdated || true
+
+      - name: Secret scan (git-tracked files only)
+        # Lightweight, self-contained pattern scan — no third-party
+        # Action/network dependency. Excludes this repo's own documented,
+        # non-functional placeholder credentials (organogram_dev_password /
+        # organogram_ci_password, used only by disposable local/CI-only
+        # Postgres containers — see .env.example and this file's own env
+        # blocks) so the scan stays meaningful rather than permanently
+        # red on a known-safe pattern.
+        run: |
+          set -e
+          MATCHES=$(git grep -IlnE \
+            "(AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|OPENSSH|PGP) PRIVATE KEY-----|sk-[a-zA-Z0-9]{20,}|xox[baprs]-[0-9A-Za-z-]{10,}|AIza[0-9A-Za-z_-]{35})" \
+            -- . || true)
+          if [ -n "$MATCHES" ]; then
+            echo "Potential secret pattern(s) found in:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "No secret patterns found."
+
+      - name: Database integration tests
+        run: npx vitest run --config vitest.integration.config.mts --coverage
+
+      - name: Production build
+        run: npm run build
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage/
+            coverage-integration/
+          retention-days: 14
+
+  e2e:
+    name: Playwright smoke tests
+    runs-on: ubuntu-latest
+    needs: quality
+    # Ephemeral, CI-only PostgreSQL — same throwaway-credentials posture
+    # as the quality job above. e2e/support/seed-session.ts (mocked-auth
+    # E2E strategy, see docs/adr/0012-session-and-route-protection.md)
+    # writes a real session row here; no live IdP is ever contacted.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: organogram
+          POSTGRES_PASSWORD: organogram_ci_password
+          POSTGRES_DB: organogram_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U organogram -d organogram_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
+      NODE_ENV: "test"
+      # Non-standard host:port (127.0.0.1:PORT) under NODE_ENV=test needs
+      # this explicitly — see .env.test's comment on the same variable.
+      AUTH_TRUST_HOST: "true"
+      AUTH_SECRET: "ci-e2e-placeholder-secret-value-not-a-real-secret-32ch"
+      AUTH_OIDC_ISSUER: "https://ci-e2e-placeholder.invalid/tenant/v2.0"
+      AUTH_OIDC_CLIENT_ID: "ci-e2e-placeholder-client-id"
+      AUTH_OIDC_CLIENT_SECRET: "ci-e2e-placeholder-client-secret"
+      AUTH_ALLOWED_EMAIL_DOMAINS: "ci-e2e-placeholder.invalid"
+      AUTH_AUTO_PROVISION_VIEWERS: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma — generate client
+        run: npx prisma generate
+
+      - name: Prisma — apply migrations to the clean CI database
+        run: npx prisma migrate deploy
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests
+        run: npm run test:e2e
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Build artifacts
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.test
+.env.*.local
+
+# Prisma
+prisma/generated/
+
+# Testing
+coverage/
+coverage-integration/
+playwright-report/
+test-results/
+blob-report/
+e2e/.auth/
+
+# Logs
+npm-debug.log*
+*.log
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# TypeScript
+*.tsbuildinfo

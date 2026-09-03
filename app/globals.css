@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (docs/IMPLEMENTATION_PLAN.md Phase 1, Step 4.12).
+ * Tailwind v4's CSS-first theme: each --color-* variable below
+ * automatically becomes utility classes (bg-*, text-*, border-*, ring-*).
+ *
+ * Status and department colors are semantic tokens for LATER phases
+ * (Position status, Department grouping) — nothing consumes them yet in
+ * Phase 1, but per docs/PROJECT_SPEC.md §12, color must never be the
+ * only signal once they are used: always pair with a text label or icon
+ * (see components/patterns/placeholder-module.tsx's Badge for the
+ * pattern: colored background AND a text label, never color alone).
+ */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Base surface / text */
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+
+  /* Muted (secondary text, subtle backgrounds). muted-foreground was
+     #64748b (Tailwind slate-500) — measured at only a 4.34:1 contrast
+     ratio against --color-muted (#f1f5f9), just under WCAG 2 AA's 4.5:1
+     minimum for normal-size text (caught by axe-core on a table <thead>
+     using bg-muted/text-muted-foreground together, docs/phase-reports/
+     PHASE_07_DASHBOARD_AND_COMPANY_OVERVIEW.md). Darkened to slate-600,
+     which comfortably passes AA against both --color-muted and
+     --color-background (white) — every existing use of this token
+     becomes more accessible, not just the table-header case that
+     surfaced it. */
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #475569;
+
+  /* Structural */
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
+  --color-ring: #2563eb;
+
+  /* Primary action */
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+
+  /* Secondary action */
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #0f172a;
+
+  /* Accent (hover/active surfaces, e.g. nav items) */
+  --color-accent: #eff6ff;
+  --color-accent-foreground: #0f172a;
+
+  /* Destructive / error */
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+
+  /* Position status (reserved for Phase 5/8) */
+  /* #166534 (not the lighter #16a34a) — the lighter shade measured
+     2.78:1 as text against the Badge "success" variant's own
+     bg-status-filled/15 background (and 3.30:1 against plain white),
+     below the 4.5:1 WCAG AA minimum for normal-sized text; caught by
+     e2e/accessibility.spec.ts's departments-list scan (a pre-existing
+     Phase 4/5 token, only actually rendered as badge text and scanned
+     with real data present under Phase 8's larger, more concurrent E2E
+     suite — same discovery mechanism as A20's --color-muted-foreground
+     fix in Phase 7). */
+  --color-status-filled: #166534;
+  --color-status-filled-foreground: #ffffff;
+  /* #b45309 (not the lighter #d97706) — the lighter shade measured
+     3.18:1 against white as plain text (Vacant label, Phase 8's
+     organogram), below the 4.5:1 WCAG AA minimum for normal-sized text;
+     caught by e2e/accessibility.spec.ts's organogram Outline View scan. */
+  --color-status-vacant: #b45309;
+  --color-status-vacant-foreground: #ffffff;
+  --color-status-planned: #2563eb;
+  --color-status-planned-foreground: #1e3a8a;
+  --color-status-inactive: #64748b;
+  --color-status-inactive-foreground: #ffffff;
+
+  /* Department categorical palette (reserved for Phase 8) — a generic,
+     swappable placeholder set; not tied to any real department yet. */
+  --color-dept-1: #2563eb;
+  --color-dept-2: #16a34a;
+  --color-dept-3: #d97706;
+  --color-dept-4: #dc2626;
+  --color-dept-5: #7c3aed;
+  --color-dept-6: #0891b2;
+  --color-dept-7: #db2777;
+  --color-dept-8: #65a30d;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+}

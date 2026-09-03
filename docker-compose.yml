@@ -1,0 +1,29 @@
+# Local PostgreSQL for development and integration testing ONLY.
+# Never point this at anything resembling a production database — see
+# docs/phase-reports/PHASE_02_DATABASE_AND_DOMAIN.md "Database Configuration"
+# for the full local setup story and the destructive-operation safeguards.
+#
+# Host port 5433 is deliberately non-default (5432) to avoid colliding with
+# any other PostgreSQL instance already running on this machine.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: organogram_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: organogram
+      POSTGRES_PASSWORD: organogram_dev_password
+      POSTGRES_DB: organogram_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - organogram_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U organogram -d organogram_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  organogram_postgres_data:
