@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import Image from "next/image";
+import Link from "next/link";
+
 import { publicEnv } from "@/lib/env.public";
 import { serverEnv } from "@/lib/env.server";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { signInWithCompanySso } from "@/lib/auth/actions";
 import { safeSignInErrorMessage } from "@/lib/auth/error-messages";
+import { isDevSignInEnabled } from "@/lib/auth/dev-sign-in";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -25,9 +29,14 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
 
   return (
     <div className="w-full max-w-sm text-center">
-      <h1 className="text-foreground text-2xl font-semibold tracking-tight">
-        {publicEnv.NEXT_PUBLIC_APP_NAME}
-      </h1>
+      <Image
+        src="/brand/dotzero-wordmark-red.svg"
+        alt={publicEnv.NEXT_PUBLIC_APP_NAME}
+        height={40}
+        width={185}
+        priority
+        className="mx-auto"
+      />
       <p className="text-muted-foreground mt-2 text-sm">Sign in to continue.</p>
 
       {errorMessage ? (
@@ -44,6 +53,16 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
           Sign in with {serverEnv.AUTH_PROVIDER_NAME}
         </Button>
       </form>
+
+      {isDevSignInEnabled() ? (
+        <p className="text-muted-foreground mt-6 text-xs">
+          Local development —{" "}
+          <Link href="/dev-sign-in" className="underline underline-offset-2">
+            skip SSO and sign in as a test role
+          </Link>
+          .
+        </p>
+      ) : null}
     </div>
   );
 }
