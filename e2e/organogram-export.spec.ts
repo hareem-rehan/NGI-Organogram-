@@ -19,7 +19,10 @@ test.describe("Organogram export (Phase 11)", () => {
     await expect(dialog.getByLabel("Scope")).toHaveValue("FULL_COMPANY");
 
     await dialog.getByRole("button", { name: /generate export/i }).click();
-    await expect(dialog.getByText(/your pdf export is ready/i)).toBeVisible();
+    await expect(dialog.getByText(/your export is ready/i)).toBeVisible();
+    // The format moved out of the ready message and into the file summary,
+    // where it now sits alongside page count and size.
+    await expect(dialog.getByText(/^PDF · \d+ page/i)).toBeVisible();
 
     const downloadPromise = page.waitForEvent("download");
     await dialog.getByRole("button", { name: /^download/i }).click();
@@ -40,7 +43,9 @@ test.describe("Organogram export (Phase 11)", () => {
     await expect(dialog.getByLabel("Page size")).not.toBeVisible();
 
     await dialog.getByRole("button", { name: /generate export/i }).click();
-    await expect(dialog.getByText(/your png export is ready/i)).toBeVisible();
+    await expect(dialog.getByText(/your export is ready/i)).toBeVisible();
+    // A PNG has no page count, so its summary starts straight into size.
+    await expect(dialog.getByText(/^PNG · /i)).toBeVisible();
   });
 
   test("Position Focus scope requires choosing a position before Generate export is enabled", async ({
