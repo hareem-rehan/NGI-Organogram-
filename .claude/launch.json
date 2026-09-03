@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "organogram-prod-local",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--", "-p", "3200"],
+      "port": 3200
     }
   ]
 }

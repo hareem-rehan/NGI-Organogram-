@@ -1,0 +1,93 @@
+# Deployment pipeline (Phase 14 — planning artifact).
+#
+# THIS WORKFLOW IS NOT CONNECTED TO REAL INFRASTRUCTURE AND HAS NEVER
+# RUN. It documents the staging -> manual-approval -> production shape
+# Phase 14 requires, for when a real Vercel project, a real Google
+# Workspace OAuth application, and a real staging/production domain
+# exist (see docs/DEPLOYMENT_DECISIONS.md — none does yet). Every
+# `env:`/`secrets:` reference below names a value that must be added to
+# this repository's GitHub Environments (`staging`, `production`) before
+# this workflow can do anything real; none is set today.
+#
+# Vercel's own GitHub integration, once the user connects a real Vercel
+# project to this repository, natively handles the build/deploy step
+# (preview deployments per PR, production on merge to `main`, gated by
+# Vercel's own project protection settings). This workflow's real,
+# lasting value is the release-candidate gate before that (reusing
+# ci.yml's own quality checks) and the explicit manual-approval +
+# post-deployment verification gates around it — not replacing Vercel's
+# build pipeline with a hand-rolled one.
+#
+# Manual approval (Step 13's "production deployment requires manual
+# approval") is enforced by GitHub's own Environment protection rules on
+# the `production` environment (Settings -> Environments -> production ->
+# Required reviewers) — configure that in the repository settings, not
+# in this YAML, once a deployment approver (docs/DEPLOYMENT_DECISIONS.md
+# #19, currently unassigned) is named.
+
+name: Deploy
+
+on:
+  # Never runs automatically today — workflow_dispatch only, so this
+  # never accidentally fires from a push while it's still a planning
+  # artifact with no real target.
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment target"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  release-candidate-gate:
+    name: Release-candidate gate (reuses ci.yml's own quality checks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Not yet wired
+        run: |
+          echo "This job is a placeholder. Real implementation: run the same steps"
+          echo "as .github/workflows/ci.yml's 'quality' and 'e2e' jobs (or invoke"
+          echo "that workflow via workflow_call) as a precondition for any deploy."
+          exit 1
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: release-candidate-gate
+    if: inputs.target == 'staging'
+    runs-on: ubuntu-latest
+    environment: staging # GitHub Environment — create this, with staging secrets, before use
+    steps:
+      - name: Not yet wired
+        run: |
+          echo "Placeholder. Real implementation deploys the release-candidate-gate's"
+          echo "build to the staging Vercel project/environment, runs staging"
+          echo "migrations (prisma migrate deploy against the STAGING DATABASE_URL"
+          echo "only), then the Step-14 staging smoke suite."
+          exit 1
+
+  await-production-approval:
+    name: Await manual production approval
+    needs: deploy-staging
+    if: inputs.target == 'production'
+    runs-on: ubuntu-latest
+    environment: production # Environment protection rule (required reviewers) is the real approval gate
+    steps:
+      - name: Approval recorded by GitHub Environment protection
+        run: echo "Reaching this step already required an approved reviewer on the 'production' GitHub Environment."
+
+  deploy-production:
+    name: Deploy to production
+    needs: await-production-approval
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Not yet wired
+        run: |
+          echo "Placeholder. Real implementation: verify a fresh backup exists,"
+          echo "run production migrations, deploy the EXACT artifact staging"
+          echo "already verified (never a fresh build), run production smoke"
+          echo "tests, and report rollback readiness."
+          exit 1
