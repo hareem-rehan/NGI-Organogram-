@@ -26,7 +26,7 @@ describe("GET /api/health", () => {
   it("returns 200 with the health payload and a JSON content type", async () => {
     buildHealthPayloadMock.mockReturnValue({
       status: "ok",
-      application: "Dynamic Organogram Manager",
+      application: "DotZero Organogram",
       environment: "test",
       timestamp: "2026-09-01T00:00:00.000Z",
       version: "0.1.0",
@@ -39,7 +39,7 @@ describe("GET /api/health", () => {
     const body = await response.json();
     expect(body).toEqual({
       status: "ok",
-      application: "Dynamic Organogram Manager",
+      application: "DotZero Organogram",
       environment: "test",
       timestamp: "2026-09-01T00:00:00.000Z",
       version: "0.1.0",
@@ -49,7 +49,7 @@ describe("GET /api/health", () => {
   it("contains no sensitive configuration in the success response", async () => {
     buildHealthPayloadMock.mockReturnValue({
       status: "ok",
-      application: "Dynamic Organogram Manager",
+      application: "DotZero Organogram",
       environment: "test",
       timestamp: "2026-09-01T00:00:00.000Z",
       version: null,

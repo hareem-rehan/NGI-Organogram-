@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import type { NavItem } from "@/config/navigation";
@@ -18,10 +19,16 @@ export function SiteHeader({ navItems, user }: SiteHeaderProps) {
       <MobileNav items={navItems} />
       <Link
         href="/dashboard"
-        className="focus-visible:ring-ring min-w-0 truncate rounded-md text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+        className="focus-visible:ring-ring flex min-w-0 shrink-0 items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
         title={publicEnv.NEXT_PUBLIC_APP_NAME}
       >
-        {publicEnv.NEXT_PUBLIC_APP_NAME}
+        <Image
+          src="/brand/dotzero-wordmark.svg"
+          alt={publicEnv.NEXT_PUBLIC_APP_NAME}
+          height={24}
+          width={110}
+          priority
+        />
       </Link>
       <div className="ml-auto flex shrink-0 items-center gap-3">
         <EnvironmentBadge />

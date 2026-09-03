@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/env.public", () => ({
-  publicEnv: { NEXT_PUBLIC_APP_NAME: "Dynamic Organogram Manager" },
+  publicEnv: { NEXT_PUBLIC_APP_NAME: "DotZero Organogram" },
 }));
 vi.mock("@/lib/version", () => ({
   getAppVersion: vi.fn(() => "0.1.0"),
@@ -19,7 +19,7 @@ describe("buildHealthPayload", () => {
     const payload = buildHealthPayload();
     expect(payload).toEqual({
       status: "ok",
-      application: "Dynamic Organogram Manager",
+      application: "DotZero Organogram",
       environment: expect.any(String),
       timestamp: expect.any(String),
       version: "0.1.0",

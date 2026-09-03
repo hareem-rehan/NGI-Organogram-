@@ -69,7 +69,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
-      NEXT_PUBLIC_APP_NAME: "Dynamic Organogram Manager",
+      NEXT_PUBLIC_APP_NAME: "DotZero Organogram",
       DATABASE_URL:
         process.env.DATABASE_URL ??
         "postgresql://organogram:organogram_dev_password@localhost:5433/organogram_test?schema=public",

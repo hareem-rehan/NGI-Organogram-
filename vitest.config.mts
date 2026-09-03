@@ -10,7 +10,7 @@ export default defineConfig({
     env: {
       // Isolated, safe test-only configuration (step 5.8): no real
       // secrets, no dependency on a developer's local .env file.
-      NEXT_PUBLIC_APP_NAME: "Dynamic Organogram Manager",
+      NEXT_PUBLIC_APP_NAME: "DotZero Organogram",
     },
     setupFiles: ["./tests/setup.ts"],
     include: ["**/*.test.{ts,tsx}"],

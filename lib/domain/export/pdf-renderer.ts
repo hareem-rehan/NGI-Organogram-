@@ -156,7 +156,7 @@ export async function renderOrganogramPdf(
       Title: `${metadata.companyName} Organogram — ${metadata.scopeLabel}`,
       Author: metadata.companyName,
       Subject: `Organogram export, effective ${metadata.effectiveDate}`,
-      Creator: "Dynamic Organogram Manager",
+      Creator: "DotZero Organogram",
       CreationDate: new Date(),
     },
   });

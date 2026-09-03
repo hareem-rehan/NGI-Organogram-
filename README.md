@@ -1,4 +1,4 @@
-# Dynamic Organogram Manager
+# DotZero Organogram
 
 Internal web application that lets HR independently manage departments, positions, employees, vacancies, and primary reporting relationships — and automatically generates the company organogram from that data. HR never manually places chart nodes.
 

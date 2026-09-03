@@ -1,4 +1,4 @@
-# CLAUDE.md — Dynamic Organogram Manager
+# CLAUDE.md — DotZero Organogram
 
 Permanent operating instructions for every Claude Code session working in this repository. These rules apply to all future phases and cannot be superseded by convenience, time pressure, or an ambiguous user request. If an instruction here conflicts with something in a single prompt, follow this file and ask.
 

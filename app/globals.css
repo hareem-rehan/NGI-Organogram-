@@ -16,42 +16,58 @@
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
+  /*
+   * DotZero brand palette (docs/BRANDING.md documents the source and the
+   * exact contrast math below) — Velocity Red #EF323F is the brand's own
+   * "Primary" color, Dark Slate #2D2D2D/#212121/#161616 is "Primary Dark",
+   * Ash Gray #5D5B5B/Soft Silver #D3D3D3 are the brand's neutrals, and
+   * White/Soft White/Almond are the brand's light surfaces.
+   */
+
   /* Base surface / text */
   --color-background: #ffffff;
-  --color-foreground: #0f172a;
+  --color-foreground: #2d2d2d; /* Dark Slate — 13.77:1 on white, comfortably passes AAA */
 
-  /* Muted (secondary text, subtle backgrounds). muted-foreground was
-     #64748b (Tailwind slate-500) — measured at only a 4.34:1 contrast
-     ratio against --color-muted (#f1f5f9), just under WCAG 2 AA's 4.5:1
-     minimum for normal-size text (caught by axe-core on a table <thead>
-     using bg-muted/text-muted-foreground together, docs/phase-reports/
-     PHASE_07_DASHBOARD_AND_COMPANY_OVERVIEW.md). Darkened to slate-600,
-     which comfortably passes AA against both --color-muted and
-     --color-background (white) — every existing use of this token
-     becomes more accessible, not just the table-header case that
-     surfaced it. */
-  --color-muted: #f1f5f9;
-  --color-muted-foreground: #475569;
+  /* Muted (secondary text, subtle backgrounds). */
+  --color-muted: #f7f7f7; /* Soft White */
+  --color-muted-foreground: #5d5b5b; /* Ash Gray — 6.75:1 on white, 6.30:1 on Soft White, both comfortably pass AA */
 
   /* Structural */
-  --color-border: #e2e8f0;
-  --color-input: #e2e8f0;
-  --color-ring: #2563eb;
+  --color-border: #d3d3d3; /* Soft Silver */
+  --color-input: #d3d3d3;
+  --color-ring: #ef323f; /* Velocity Red — a focus ring is a non-text UI indicator (WCAG 1.4.11's 3:1 threshold, not the 4.5:1 text threshold), so the exact brand red is safe to use here unmodified. */
 
-  /* Primary action */
-  --color-primary: #2563eb;
+  /* Primary action. Velocity Red (#EF323F) itself is the brand's own
+     "Primary" color, but white text directly on it measures only 4.04:1
+     — under WCAG AA's 4.5:1 minimum for normal-size text (this app's
+     buttons use text-sm/font-medium, which does not qualify as WCAG
+     "large text"). #D72D39 is a ~10%-darkened shade of the exact same
+     hue/brand red that measures 4.86:1 with white text — visually
+     unmistakably "the brand red," but text-safe. See docs/BRANDING.md
+     for the full contrast calculation and the exact same reasoning
+     already established in this file for --color-status-filled/
+     --color-status-vacant below. */
+  --color-primary: #d72d39;
   --color-primary-foreground: #ffffff;
 
   /* Secondary action */
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
+  --color-secondary: #f7f7f7; /* Soft White */
+  --color-secondary-foreground: #2d2d2d; /* Dark Slate */
 
   /* Accent (hover/active surfaces, e.g. nav items) */
-  --color-accent: #eff6ff;
-  --color-accent-foreground: #0f172a;
+  --color-accent: #f3f0e8; /* Almond */
+  --color-accent-foreground: #2d2d2d; /* Dark Slate */
 
-  /* Destructive / error */
-  --color-destructive: #dc2626;
+  /* Destructive / error. A further-darkened brand red (#BA2731, 6.14:1
+     with white text) — deliberately darker than --color-primary so a
+     "Delete"/"Archive" action remains visually distinguishable from a
+     primary "Save"/"Create" action at a glance, even though both are
+     brand-red-family (this app's destructive actions already require an
+     explicit confirmation dialog — components/patterns/confirm-dialog.tsx
+     — as the real safety mechanism, per docs/PROJECT_SPEC.md §12's "color
+     is never the only signal" rule; this is a legibility/distinction
+     choice on top of that, not the primary safety net). */
+  --color-destructive: #ba2731;
   --color-destructive-foreground: #ffffff;
 
   /* Position status (reserved for Phase 5/8) */
