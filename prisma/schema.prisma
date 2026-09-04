@@ -1,0 +1,746 @@
+// Dynamic Organogram Manager — Phase 2 core domain schema.
+//
+// Read docs/DOMAIN_MODEL.md before changing this file — it explains WHY
+// each relationship and constraint exists, not just what it is. In
+// particular: Position.status is a LIFECYCLE state only (PLANNED / ACTIVE
+// / INACTIVE); occupancy ("filled" vs "vacant") is always DERIVED from
+// PositionAssignment, never stored redundantly on Position (see
+// docs/DECISIONS.md, amendment to C12).
+//
+// Several invariants this schema cannot express declaratively (self-report
+// CHECK constraint, partial unique indexes for concurrency-safe active
+// assignments) are added by hand in the initial migration's SQL — see
+// prisma/migrations/*/migration.sql and docs/DOMAIN_MODEL.md §7.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum DepartmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum JobGradeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Position LIFECYCLE only. Occupancy (vacant/filled) is derived from
+/// PositionAssignment — never stored here. See docs/DOMAIN_MODEL.md §4.
+enum PositionStatus {
+  PLANNED
+  ACTIVE
+  INACTIVE
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  TRANSFERRED
+  TERMINATED
+}
+
+/// docs/AUTHORIZATION_MATRIX.md defines the full permission mapping for
+/// each role. ADMIN/HR_EDITOR are never auto-assigned — see
+/// docs/DECISIONS.md and docs/adr/0011-rbac-and-provisioning.md.
+enum UserRole {
+  ADMIN
+  HR_EDITOR
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+// ---------------------------------------------------------------------
+// Audit (Phase 12) — see docs/adr/0008-audit-strategy.md and
+// docs/adr/0015-audit-event-model-and-immutability.md.
+// ---------------------------------------------------------------------
+
+enum AuditActorType {
+  USER
+  SYSTEM
+}
+
+enum AuditCategory {
+  AUTHENTICATION
+  USER_ADMINISTRATION
+  COMPANY_SETTINGS
+  DEPARTMENT
+  POSITION
+  HIERARCHY
+  EMPLOYEE
+  ASSIGNMENT
+  IMPORT
+  EXPORT
+  SECURITY
+  SYSTEM
+}
+
+enum AuditAction {
+  CREATED
+  UPDATED
+  ARCHIVED
+  REACTIVATED
+  ASSIGNED
+  TRANSFERRED
+  ASSIGNMENT_ENDED
+  TERMINATED
+  ROLE_CHANGED
+  USER_DISABLED
+  USER_REACTIVATED
+  USER_PROVISIONED
+  USER_LINKED_TO_EMPLOYEE
+  USER_UNLINKED_FROM_EMPLOYEE
+  SETTINGS_CHANGED
+  IMPORT_VALIDATED
+  IMPORT_EXECUTED
+  IMPORT_FAILED
+  EXPORT_REQUESTED
+  EXPORT_COMPLETED
+  EXPORT_FAILED
+  LOGIN_SUCCEEDED
+  LOGIN_REJECTED
+  UNAUTHORIZED_ACCESS_ATTEMPT
+}
+
+/// Phase 10 — one CSV file's worth of a single entity type. See
+/// docs/adr/0007-import-strategy.md and docs/CSV_IMPORT_GUIDE.md.
+enum ImportType {
+  DEPARTMENT
+  POSITION
+  EMPLOYEE
+  ASSIGNMENT
+}
+
+enum ImportMode {
+  CREATE_ONLY
+  UPSERT
+}
+
+/// Lifecycle of one import request. VALIDATING/EXECUTING are transient
+/// in-request states (this app has no background job queue — see
+/// docs/DECISIONS.md's Phase 10 architecture decision); a request that
+/// fails mid-validation or mid-execution never leaves a job stuck in
+/// one of these two states, only in VALIDATION_FAILED/FAILED.
+enum ImportJobStatus {
+  UPLOADED
+  VALIDATING
+  VALIDATED
+  VALIDATION_FAILED
+  READY_TO_EXECUTE
+  EXECUTING
+  COMPLETED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum ImportIssueSeverity {
+  WARNING
+  ERROR
+}
+
+// ---------------------------------------------------------------------
+// Company
+// ---------------------------------------------------------------------
+
+model Company {
+  id        String        @id @default(uuid()) @db.Uuid
+  name      String
+  legalName String?
+  code      String
+  timezone  String        @default("UTC")
+  status    CompanyStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  departments         Department[]
+  jobGrades           JobGrade[]
+  positions           Position[]
+  employees           Employee[]
+  positionAssignments PositionAssignment[]
+  users               User[]
+  importJobs          ImportJob[]
+  exportJobs          ExportJob[]
+  auditEvents         AuditEvent[]
+  settings            CompanySettings?
+
+  @@unique([code])
+  @@map("companies")
+}
+
+// ---------------------------------------------------------------------
+// Department
+// ---------------------------------------------------------------------
+
+model Department {
+  id                 String           @id @default(uuid()) @db.Uuid
+  companyId          String           @db.Uuid
+  name               String
+  code               String
+  description        String?
+  color              String?
+  parentDepartmentId String?          @db.Uuid
+  status             DepartmentStatus @default(ACTIVE)
+  displayOrder       Int?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  /// Self-relation scoped by company: a department's parent must belong to
+  /// the SAME company. This composite FK enforces that at the database
+  /// level, not just in application code.
+  parentDepartment Department?  @relation("DepartmentParent", fields: [parentDepartmentId, companyId], references: [id, companyId], onDelete: Restrict)
+  childDepartments Department[] @relation("DepartmentParent")
+
+  positions Position[]
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@index([companyId])
+  @@index([parentDepartmentId])
+  @@map("departments")
+}
+
+// ---------------------------------------------------------------------
+// Job Grade
+// ---------------------------------------------------------------------
+
+model JobGrade {
+  id           String         @id @default(uuid()) @db.Uuid
+  companyId    String         @db.Uuid
+  name         String
+  code         String
+  description  String?
+  displayOrder Int?
+  status       JobGradeStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  positions Position[]
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@index([companyId])
+  @@map("job_grades")
+}
+
+// ---------------------------------------------------------------------
+// Position
+// ---------------------------------------------------------------------
+
+model Position {
+  id                         String         @id @default(uuid()) @db.Uuid
+  companyId                  String         @db.Uuid
+  departmentId               String         @db.Uuid
+  jobGradeId                 String?        @db.Uuid
+  title                      String
+  positionCode               String
+  description                String?
+  location                   String?
+  status                     PositionStatus @default(ACTIVE)
+  primaryReportsToPositionId String?        @db.Uuid
+  /// System-computed reporting depth (root = 1). Never client-settable —
+  /// see lib/domain/hierarchy.ts. Recalculated for a position and its
+  /// entire descendant subtree inside one transaction on every hierarchy
+  /// mutation (docs/adr/0005-transaction-strategy.md).
+  organizationalLevel        Int
+  displayOrder               Int?
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  department Department @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Restrict)
+  jobGrade   JobGrade?  @relation(fields: [jobGradeId, companyId], references: [id, companyId], onDelete: Restrict)
+
+  /// Self-relation scoped by company: a position can only report to a
+  /// position in the SAME company (docs/DOMAIN_MODEL.md §1, principle 14).
+  /// Self-reporting (id = primaryReportsToPositionId) is additionally
+  /// blocked by a CHECK constraint added in the initial migration, since
+  /// Prisma's schema language cannot express "not equal to my own id."
+  primaryReportsTo Position?  @relation("PositionHierarchy", fields: [primaryReportsToPositionId, companyId], references: [id, companyId], onDelete: Restrict)
+  directReports    Position[] @relation("PositionHierarchy")
+
+  assignments PositionAssignment[]
+
+  @@unique([companyId, positionCode])
+  @@unique([id, companyId])
+  @@index([companyId])
+  @@index([departmentId])
+  @@index([jobGradeId])
+  @@index([primaryReportsToPositionId])
+  @@index([companyId, organizationalLevel])
+  @@map("positions")
+}
+
+// ---------------------------------------------------------------------
+// Employee
+// ---------------------------------------------------------------------
+
+model Employee {
+  id               String           @id @default(uuid()) @db.Uuid
+  companyId        String           @db.Uuid
+  employeeCode     String
+  firstName        String
+  lastName         String
+  preferredName    String?
+  /// Always stored lowercased/trimmed — see lib/domain/employee.ts
+  /// normalizeWorkEmail(). Postgres treats distinct NULLs as non-duplicate,
+  /// so multiple employees may have no work email on file.
+  workEmail        String?
+  employmentStatus EmploymentStatus @default(ACTIVE)
+  joiningDate      DateTime?        @db.Date
+  leavingDate      DateTime?        @db.Date
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  assignments PositionAssignment[]
+  /// At most one linked User (Phase 12) — see User.linkedEmployee's
+  /// comment for the enforcement details. Optional and never implies
+  /// the Employee has application access.
+  linkedUser  User?
+
+  @@unique([companyId, employeeCode])
+  @@unique([companyId, workEmail])
+  @@unique([id, companyId])
+  @@index([companyId])
+  @@map("employees")
+}
+
+// ---------------------------------------------------------------------
+// Position Assignment
+// ---------------------------------------------------------------------
+
+model PositionAssignment {
+  id         String    @id @default(uuid()) @db.Uuid
+  companyId  String    @db.Uuid
+  employeeId String    @db.Uuid
+  positionId String    @db.Uuid
+  /// Reserved for future secondary/dotted-line assignments (out of MVP
+  /// scope — docs/DECISIONS.md §5). Only isPrimary=true rows participate
+  /// in vacancy/occupancy derivation and the uniqueness rules below.
+  isPrimary  Boolean   @default(true)
+  startDate  DateTime  @db.Date
+  endDate    DateTime? @db.Date
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee Employee @relation(fields: [employeeId, companyId], references: [id, companyId], onDelete: Restrict)
+  position Position @relation(fields: [positionId, companyId], references: [id, companyId], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([positionId])
+  @@index([positionId, isPrimary, endDate])
+  @@index([employeeId, isPrimary, endDate])
+  @@map("position_assignments")
+}
+
+// ---------------------------------------------------------------------
+// CSV Import (Phase 10)
+//
+// Two-phase validate-then-commit (docs/adr/0007-import-strategy.md).
+// `rawFile` holds the uploaded bytes only until the job reaches a
+// terminal state (COMPLETED/FAILED/VALIDATION_FAILED/CANCELLED/EXPIRED),
+// not immediately after parsing — execution re-parses and re-validates
+// the file fresh, inside its own transaction, against newly-fetched
+// database state (Step 10's stale-validation requirement), so the raw
+// bytes must still be available at that point. There is no object-
+// storage service in this app (Phase 10 is the first file-handling
+// feature), so the bytes live in Postgres for that bounded window rather
+// than on disk or in a third-party bucket — see docs/DECISIONS.md's
+// Phase 10 storage decision. `fileChecksum` (a SHA-256 hex digest, never
+// the file itself) is kept permanently for duplicate-upload detection
+// even after `rawFile` is cleared.
+// ---------------------------------------------------------------------
+
+model ImportJob {
+  id                   String          @id @default(uuid()) @db.Uuid
+  companyId            String          @db.Uuid
+  requestedByUserId    String          @db.Uuid
+  importType           ImportType
+  importMode           ImportMode
+  /// Sanitized for display only — never used as a filesystem path.
+  originalFilename     String
+  fileChecksum         String
+  fileSize             Int
+  /// Nulled out once the job reaches a terminal state.
+  rawFile              Bytes?
+  /// The validated, normalized per-row proposed change set from the most
+  /// recent validation — an array of objects (rowNumber, matchingCode,
+  /// action, normalizedFields, diffs). Drives the preview UI and the
+  /// downloadable error report; execution re-validates fresh from
+  /// `rawFile` rather than trusting this as final authorization (Step 10).
+  rowPlan              Json?
+  totalRows            Int             @default(0)
+  validRows            Int             @default(0)
+  warningRows          Int             @default(0)
+  errorRows            Int             @default(0)
+  createCount          Int             @default(0)
+  updateCount          Int             @default(0)
+  unchangedCount       Int             @default(0)
+  status               ImportJobStatus @default(UPLOADED)
+  warningsAcknowledged Boolean         @default(false)
+  /// Safe, user-facing summary only — never a raw stack trace or DB error.
+  errorMessage         String?
+  validatedAt          DateTime?
+  executedAt           DateTime?
+  expiresAt            DateTime
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requestedByUser User             @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  issues          ImportRowIssue[]
+  auditEvents     AuditEvent[]
+
+  @@index([companyId, createdAt])
+  @@index([companyId, status])
+  @@index([companyId, fileChecksum])
+  @@map("import_jobs")
+}
+
+model ImportRowIssue {
+  id          String              @id @default(uuid()) @db.Uuid
+  importJobId String              @db.Uuid
+  rowNumber   Int
+  field       String?
+  severity    ImportIssueSeverity
+  code        String
+  /// Pre-formatted for direct display — never a raw DB/ORM error message.
+  safeMessage String
+
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@index([importJobId, rowNumber])
+  @@map("import_row_issues")
+}
+
+// ---------------------------------------------------------------------
+// Organogram Export to PDF/Image (Phase 11)
+//
+// Server-side rendering, private storage, server-checked download
+// authorization (docs/adr/0013-organogram-export-rendering.md — an
+// explicit amendment of the Phase-0 A4 assumption, see docs/DECISIONS.md
+// A40). This app has no background job queue or object-storage service
+// (same constraint Phase 10's ImportJob already documents), so QUEUED/
+// PROCESSING are transient in-request states that a synchronous request
+// passes through immediately, and the generated file's bytes live in
+// Postgres — `generatedFile` — only until the job reaches a terminal
+// state or its retention window (`expiresAt`) lapses, exactly mirroring
+// `ImportJob.rawFile`'s lifecycle and lazy (on-next-read) expiry.
+// ---------------------------------------------------------------------
+
+enum ExportFormat {
+  PDF
+  PNG
+}
+
+enum ExportScope {
+  FULL_COMPANY
+  CURRENT_VIEW
+  POSITION_FOCUS
+  DEPARTMENT_FOCUS
+}
+
+enum ExportJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+model ExportJob {
+  id                String           @id @default(uuid()) @db.Uuid
+  companyId         String           @db.Uuid
+  requestedByUserId String           @db.Uuid
+  format            ExportFormat
+  scope             ExportScope
+  /// The fully-resolved ResolvedExportOptions this job was rendered
+  /// with (scope target ids, filters, page size, PNG scale, etc.) —
+  /// kept for the job-history list and for reproducing a prior export.
+  optionsSnapshot   Json
+  /// Human-readable scope/focus summary shown in the download filename
+  /// and job list — e.g. "Full Company", "Engineering — Department Focus".
+  scopeLabel        String
+  nodeCount         Int              @default(0)
+  status            ExportJobStatus  @default(QUEUED)
+  /// Nulled out once the job leaves the retention window or is cancelled.
+  generatedFile     Bytes?
+  generatedFilename String?
+  fileSize          Int?
+  pageCount         Int?
+  /// Safe, user-facing summary only — never a raw stack trace or DB error.
+  errorMessage      String?
+  completedAt       DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  company         Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requestedByUser User    @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  auditEvents     AuditEvent[]
+
+  @@index([companyId, createdAt])
+  @@index([companyId, status])
+  @@map("export_jobs")
+}
+
+// ---------------------------------------------------------------------
+// Authentication (Phase 3) — Company SSO / Auth.js
+//
+// SSO users and Employees are deliberately SEPARATE concepts (see
+// docs/DECISIONS.md and docs/AUTHORIZATION_MATRIX.md): a User is an
+// application-access identity; an Employee is organogram subject matter.
+// linkedEmployeeId is optional and never auto-populated.
+//
+// Account/Session/VerificationToken follow the exact schema
+// @auth/prisma-adapter@2.11.3 (next-auth@5.0.0-beta.32) requires — do
+// not "clean up" field names/types without checking the installed
+// adapter's documented schema first; a mismatch breaks sign-in silently.
+// ---------------------------------------------------------------------
+
+model User {
+  // --- Fields @auth/prisma-adapter@2.11.3 reads/writes by its documented
+  // default field mapping — names and types must match exactly, or the
+  // adapter's internal Prisma calls fail at runtime. `email` is always
+  // stored already normalized (lowercased/trimmed) by our own profile()
+  // mapping (lib/auth/config.ts) before the adapter ever sees it — see
+  // docs/adr/0010-authjs-provider-neutral-oidc.md.
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+
+  // --- Application fields (Phase 3) ---
+  companyId String     @db.Uuid
+  /// Optional link to the Employee record — never auto-populated by
+  /// sign-in/provisioning, and never mutated by any Employee/Assignment
+  /// operation (Phase 12's `user-admin.service.ts` is the only writer).
+  /// An Employee never automatically receives application access by
+  /// virtue of this link existing. `@@unique` below enforces "one
+  /// Employee linked to at most one User" at the database level, not
+  /// only in application code (Postgres treats multiple NULLs as
+  /// non-duplicate, so most Users — who have no link — never collide).
+  linkedEmployeeId String?    @db.Uuid
+  status           UserStatus @default(ACTIVE)
+  role             UserRole
+  lastLoginAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  /// Company-scoped composite FK (same T13 pattern as
+  /// Position.departmentId+companyId) — a User can only link to an
+  /// Employee in its OWN company, enforced by the database, not only by
+  /// an application-layer check (docs/NEGATIVE_SCENARIOS.md AUD36).
+  linkedEmployee Employee? @relation(fields: [linkedEmployeeId, companyId], references: [id, companyId], onDelete: Restrict)
+
+  accounts    Account[]
+  sessions    Session[]
+  importJobs  ImportJob[]
+  exportJobs  ExportJob[]
+  auditEvents AuditEvent[]
+
+  /// `[linkedEmployeeId, companyId]` satisfies Prisma's 1:1-relation
+  /// requirement (must match the composite FK's fields exactly); the
+  /// single-column `[linkedEmployeeId]` is the actual business
+  /// constraint ("one Employee links to at most one User") — Postgres
+  /// allows both indexes to coexist.
+  @@unique([linkedEmployeeId, companyId])
+  @@unique([linkedEmployeeId])
+  @@index([companyId])
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique
+  userId       String   @db.Uuid
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ---------------------------------------------------------------------
+// Audit Event (Phase 12)
+//
+// Append-only. No `updatedAt` field — by construction, there is no
+// "last modified" concept for a row that is never modified. Database-
+// level immutability (a BEFORE UPDATE OR DELETE trigger rejecting both
+// operations) is added by hand to the generated migration — see
+// docs/adr/0015-audit-event-model-and-immutability.md and T14's
+// precedent for hand-editing generated SQL.
+// ---------------------------------------------------------------------
+
+model AuditEvent {
+  id       String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  /// Null only for a SYSTEM-actor event (e.g. a scheduled/automated
+  /// action, none of which exist yet in this app, but the shape
+  /// supports one without a schema change later).
+  actorUserId              String?        @db.Uuid
+  actorType                AuditActorType
+  /// Denormalized at write time so a later-renamed/disabled/removed
+  /// actor never makes a historical event unreadable — never re-derived
+  /// from a live join to `User` (docs/adr/0015 Rationale).
+  actorDisplayNameSnapshot String?
+  actorEmailSnapshot       String?
+
+  action                 AuditAction
+  category               AuditCategory
+  entityType             String
+  entityId               String?
+  /// A safe, human-readable reference (e.g. a position code, not a raw
+  /// UUID) — never a field that could itself be confidential.
+  entityDisplayReference String?
+
+  /// Redacted via `lib/domain/audit/redact.ts` before ever reaching this
+  /// column — see docs/adr/0015. Depth- and size-capped.
+  beforeData    Json?
+  afterData     Json?
+  changedFields Json?
+
+  /// Groups every event produced by one logical operation — e.g. a
+  /// single CSV import execution's job-level summary event and its
+  /// per-row events all share one correlationId.
+  correlationId String?
+  importJobId   String? @db.Uuid
+  exportJobId   String? @db.Uuid
+
+  /// Redacted, depth/size-capped free-form context that doesn't fit the
+  /// structured fields above (e.g. an import's row count). Never raw
+  /// request headers, file bytes, or a stack trace.
+  safeMetadata Json?
+
+  /// Server/database-controlled — never accepted from client input, and
+  /// distinct from `createdAt` only in case a future backfill/replay
+  /// path needs to record a real historical moment separately from
+  /// insertion time (not used yet; both are always equal today).
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  /// `onDelete: SetNull` (not `Restrict`, unlike most FKs in this
+  /// schema) — an audit event must never be the thing blocking a future
+  /// user-removal feature; `actorDisplayNameSnapshot`/
+  /// `actorEmailSnapshot` keep the event readable regardless.
+  actor     User?      @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  importJob ImportJob? @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+  exportJob ExportJob? @relation(fields: [exportJobId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, occurredAt])
+  @@index([companyId, category, occurredAt])
+  @@index([companyId, entityType, entityId])
+  @@index([correlationId])
+  @@map("audit_events")
+}
+
+// ---------------------------------------------------------------------
+// Company Settings (Phase 12)
+//
+// One row per company, lazily created with safe defaults on first read/
+// write (see settings.service.ts) rather than provisioned at Company
+// creation — every Company created before this phase existed without
+// one. Explicit typed columns, not a generic JSON blob (Step 17) — the
+// PDF/PNG string fields below are validated against the exact same
+// constants `lib/domain/export/types.ts` already exports (one source of
+// truth), not a duplicated Prisma enum. `updatedAt` is the optimistic-
+// concurrency token `settings.service.ts` compares against on update.
+// ---------------------------------------------------------------------
+
+model CompanySettings {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @unique @db.Uuid
+
+  /// Optional short plain-text shown in export headers/branding — never
+  /// HTML, never a file (no logo-upload mechanism exists this phase).
+  brandingText String?
+
+  /// Organogram defaults — stored, validated, and audited this phase;
+  /// NOT YET read by app/(app)/organogram's own default-view logic
+  /// (docs/DECISIONS.md A50, phase-report Known Limitations) — a
+  /// documented, deliberate scope boundary, not an oversight.
+  defaultExpansionDepth Int     @default(2)
+  defaultViewMode       String  @default("visual")
+  showPlannedByDefault  Boolean @default(true)
+
+  /// Export defaults — stored, validated, and audited this phase; NOT
+  /// YET read by export.service.ts's own resolution logic (same A50
+  /// scope boundary as the organogram defaults above).
+  defaultPdfPageSize                  String  @default("A3")
+  defaultPdfLayoutMode                String  @default("AUTO")
+  defaultPngScale                     Int     @default(2)
+  includeLegendByDefault              Boolean @default(true)
+  includeConfidentialityLabelByDefault Boolean @default(true)
+  /// Bounded 1–30 at the service layer — never an unbounded value that
+  /// could keep generated files around indefinitely.
+  exportRetentionDays                 Int     @default(7)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@map("company_settings")
+}

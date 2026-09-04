@@ -1,0 +1,3 @@
+positionCode,positionTitle,description,departmentCode,jobGradeCode,primaryManagerPositionCode,status,location
+UAT-INNOV-ENGINEER,Innovation Engineer,,UAT-PRODUCT,UAT-G2,UAT-INNOV-LEAD,ACTIVE,Remote
+UAT-INNOV-LEAD,Innovation Lead,Leads the Innovation Lab pilot.,UAT-PRODUCT,UAT-G4,UAT-VP-PRODUCT,ACTIVE,Remote

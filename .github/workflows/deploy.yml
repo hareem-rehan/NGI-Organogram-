@@ -1,0 +1,262 @@
+# Deployment pipeline: quality gate -> staging -> manual approval -> production.
+#
+# PREREQUISITES — this workflow is functional, but it cannot succeed until
+# the four account-level setup steps in docs/DEPLOYMENT_RUNBOOK.md are
+# done and the GitHub Environments below hold real values. Until then it
+# fails at the first step that needs a real credential, which is the
+# intended behaviour: it never silently "succeeds" against nothing.
+#
+# Required GitHub Environments (Settings -> Environments):
+#
+#   staging     secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID,
+#                        DATABASE_URL  (the STAGING database, never production)
+#
+#   production  secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID,
+#                        DATABASE_URL  (the PRODUCTION database)
+#               protection rule: Required reviewers -> the named deployment
+#                        approver (docs/DEPLOYMENT_DECISIONS.md #19).
+#
+# The approval gate is GitHub's own Environment protection rule, not YAML
+# in this file. A job that declares `environment: production` pauses until
+# a required reviewer approves it. That is why the approval cannot be
+# bypassed by editing this workflow: it is enforced by repository settings.
+#
+# Deliberately NOT done here: rebuilding "the exact artifact staging
+# verified" for production. Vercel bakes environment variables in at build
+# time, so a production build is necessarily a different artifact than the
+# staging one. Pretending otherwise would be a lie in a runbook people
+# rely on during an incident. What IS guaranteed is that both builds come
+# from the same commit, and that commit passed the same quality gate.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment target"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      backup_verified:
+        description: "PRODUCTION ONLY — type 'yes' to confirm a fresh, restorable backup exists (see runbook §5)"
+        required: false
+        default: "no"
+        type: string
+
+concurrency:
+  # One deployment at a time per target. Never cancel a run in progress —
+  # interrupting a `prisma migrate deploy` is exactly how a database ends
+  # up in a half-migrated state.
+  group: deploy-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  quality-gate:
+    name: Quality gate
+    # Reuses ci.yml wholesale (lint, typecheck, unit, integration, secret
+    # scan, integrity check, build, Playwright) so a deploy can never ship
+    # something CI would have rejected.
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: quality-gate
+    if: inputs.target == 'staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations to the STAGING database
+        # Runs before the deploy so the new code never meets an old schema.
+        # `migrate deploy` only applies already-committed migrations and
+        # never generates or resets anything.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate deploy
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull staging environment configuration
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=preview --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Build
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel build --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Deploy
+        id: deploy
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          url=$(vercel deploy --prebuilt --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url"
+
+      - name: Smoke check — health endpoint responds
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url/api/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "Health check passed ($url/api/health -> 200)"
+              exit 0
+            fi
+            echo "Attempt $i: got HTTP $code, retrying in 5s..."
+            sleep 5
+          done
+          echo "Health endpoint never returned 200 — deployment is NOT healthy."
+          exit 1
+
+      - name: Smoke check — the dev sign-in backdoor is absent
+        # lib/auth/dev-sign-in.ts gates on NODE_ENV !== "production" at three
+        # layers. This proves the gate actually held on the deployed build,
+        # rather than trusting that it did.
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$url/dev-sign-in" || true)
+          if [ "$code" = "404" ]; then
+            echo "dev-sign-in correctly returns 404"
+          else
+            echo "SECURITY: /dev-sign-in returned HTTP $code, expected 404."
+            exit 1
+          fi
+
+      - name: Deployment summary
+        run: |
+          {
+            echo "### Staging deployment"
+            echo ""
+            echo "- URL: ${{ steps.deploy.outputs.url }}"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo ""
+            echo "Next: run the manual smoke suite in docs/GO_LIVE_CHECKLIST.md,"
+            echo "then verify a real Google Workspace SSO sign-in against this URL."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-production:
+    name: Deploy to production
+    needs: quality-gate
+    if: inputs.target == 'production'
+    runs-on: ubuntu-latest
+    # Pauses here until a required reviewer approves. Configure the
+    # reviewer in Settings -> Environments -> production.
+    environment: production
+    steps:
+      - name: Require explicit backup confirmation
+        # A deliberate human checkpoint. There is no automated way to prove
+        # a backup is RESTORABLE (restoring it is the only proof), so this
+        # asserts a person verified it, and records who dispatched the run.
+        run: |
+          if [ "${{ inputs.backup_verified }}" != "yes" ]; then
+            echo "Refusing to deploy: backup_verified was '${{ inputs.backup_verified }}', expected 'yes'."
+            echo "Verify a fresh, restorable backup exists (docs/DEPLOYMENT_RUNBOOK.md section 5),"
+            echo "then re-dispatch with backup_verified=yes."
+            exit 1
+          fi
+          echo "Backup confirmed by ${{ github.actor }}."
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations to the PRODUCTION database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate deploy
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull production environment configuration
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Build
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Deploy
+        id: deploy
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url"
+
+      - name: Smoke check — health endpoint responds
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url/api/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i: got HTTP $code, retrying in 5s..."
+            sleep 5
+          done
+          echo "Health endpoint never returned 200 — CONSIDER ROLLBACK (runbook section 7)."
+          exit 1
+
+      - name: Smoke check — the dev sign-in backdoor is absent
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$url/dev-sign-in" || true)
+          if [ "$code" = "404" ]; then
+            echo "dev-sign-in correctly returns 404"
+          else
+            echo "SECURITY: /dev-sign-in returned HTTP $code, expected 404. ROLLBACK IMMEDIATELY."
+            exit 1
+          fi
+
+      - name: Deployment summary and rollback pointer
+        if: always()
+        run: |
+          {
+            echo "### Production deployment"
+            echo ""
+            echo "- URL: ${{ steps.deploy.outputs.url }}"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Approved via the \`production\` environment protection rule"
+            echo "- Backup confirmed by: ${{ github.actor }}"
+            echo ""
+            echo "Rollback: \`vercel rollback <previous-deployment-url>\`, or promote the"
+            echo "previous deployment in the Vercel dashboard. Note that a rollback reverts"
+            echo "CODE only — an applied database migration is not undone by it."
+          } >> "$GITHUB_STEP_SUMMARY"

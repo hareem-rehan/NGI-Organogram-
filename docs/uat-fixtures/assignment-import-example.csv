@@ -1,0 +1,3 @@
+operation,employeeCode,positionCode,effectiveDate,endDate
+ASSIGN,UAT-EMP-9001,UAT-INNOV-LEAD,2026-01-12,
+ASSIGN,UAT-EMP-9002,UAT-INNOV-ENGINEER,2026-01-12,

@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Build artifacts
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.test
+.env.*.local
+
+# Prisma
+prisma/generated/
+
+# Testing
+coverage/
+coverage-integration/
+playwright-report/
+test-results/
+blob-report/
+e2e/.auth/
+
+# Logs
+npm-debug.log*
+*.log
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# Vercel CLI project link (contains org/project ids; not secret, but machine-specific)
+.vercel
+
+# `vercel link` appends a blanket `.env*` here. Not kept: the explicit
+# rules above already cover every real env file, and a blanket pattern
+# reads as though it also covers `.env.example`, which is tracked on
+# purpose as the documented template.
+!.env.example
