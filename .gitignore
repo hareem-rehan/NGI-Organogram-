@@ -44,3 +44,9 @@ npm-debug.log*
 
 # Vercel CLI project link (contains org/project ids; not secret, but machine-specific)
 .vercel
+
+# `vercel link` appends a blanket `.env*` here. Not kept: the explicit
+# rules above already cover every real env file, and a blanket pattern
+# reads as though it also covers `.env.example`, which is tracked on
+# purpose as the documented template.
+!.env.example
