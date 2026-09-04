@@ -242,7 +242,10 @@ jobs:
       AUTH_OIDC_ISSUER: "https://ci-e2e-placeholder.invalid/tenant/v2.0"
       AUTH_OIDC_CLIENT_ID: "ci-e2e-placeholder-client-id"
       AUTH_OIDC_CLIENT_SECRET: "ci-e2e-placeholder-client-secret"
-      AUTH_ALLOWED_EMAIL_DOMAINS: "ci-e2e-placeholder.invalid"
+      # Same reason as the quality job above: e2e/users.spec.ts provisions
+      # users at `@northwind-example.test`, and provisioning rejects any
+      # address outside this allowlist. Both entries stay fictional.
+      AUTH_ALLOWED_EMAIL_DOMAINS: "ci-e2e-placeholder.invalid,northwind-example.test"
       AUTH_AUTO_PROVISION_VIEWERS: "false"
     steps:
       - name: Checkout
@@ -266,8 +269,26 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright smoke tests
-        run: npm run test:e2e
+      - name: Run Playwright smoke tests (excluding visual regression)
+        # Playwright snapshots are per-platform: the committed baselines
+        # are all `-chromium-darwin`, generated and eyeballed on macOS,
+        # and this runner is `chromium-linux`. With no Linux baseline,
+        # `toHaveScreenshot` writes the actual image and FAILS that run,
+        # so these can never pass here until Linux baselines exist.
+        #
+        # Not silently neutered: `--ignore-snapshots` would leave the
+        # tests green while asserting nothing, which is worse than not
+        # running them. They are skipped outright, keep every assertion,
+        # and still run at full strictness locally via `npm run test:e2e`.
+        #
+        # ONE-TIME FIX to restore this coverage in CI — run once, then
+        # delete this flag: re-run this job with
+        # `npm run test:e2e -- --update-snapshots`, download the
+        # `playwright-report` artifact, and commit the generated
+        # `*-chromium-linux.png` files next to the darwin ones. They must
+        # be generated on a Linux runner; images produced on macOS will
+        # not match because font rasterisation differs.
+        run: npm run test:e2e -- --grep-invert "Organogram visual regression"
         env:
           CI: "true"
 
