@@ -198,6 +198,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
       departmentColor: n.departmentColor,
       organizationalLevel: n.organizationalLevel,
       jobGradeName: n.jobGradeName,
+      jobGradeCode: n.jobGradeCode,
       occupancyStatus: n.occupancyStatus,
       occupantDisplayName: n.occupantDisplayName,
       positionStatus: n.positionStatus,

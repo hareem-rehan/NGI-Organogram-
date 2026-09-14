@@ -32,6 +32,7 @@ function node(overrides: Partial<SvgRenderNode> & { positionId: string }): SvgRe
     departmentColor: "#16a34a",
     organizationalLevel: 1,
     jobGradeName: null,
+    jobGradeCode: null,
     occupancyStatus: "vacant",
     occupantDisplayName: null,
     positionStatus: "ACTIVE",

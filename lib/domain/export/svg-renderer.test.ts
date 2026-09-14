@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { NODE_HEIGHT } from "@/app/(app)/organogram/_lib/elk-layout";
+
 import { EXPORT_COLORS } from "./colors";
 import { renderOrganogramSvg, type SvgRenderMetadata, type SvgRenderNode } from "./svg-renderer";
 
@@ -11,6 +13,7 @@ function node(overrides: Partial<SvgRenderNode> & { positionId: string }): SvgRe
     departmentColor: "#16a34a",
     organizationalLevel: 1,
     jobGradeName: null,
+    jobGradeCode: null,
     occupancyStatus: "vacant",
     occupantDisplayName: null,
     positionStatus: "ACTIVE",
@@ -372,6 +375,90 @@ describe("renderOrganogramSvg", () => {
       BASE_OPTIONS
     );
     expect(plannedChart.svg).toContain("Planned position");
+  });
+
+  // This renderer draws its OWN copy of the interactive card, so the two
+  // diverge silently unless changed together. These pin the compact
+  // layout agreed in the Demo 1 feedback.
+  it("renders the compact card: occupant, role title and grade level", () => {
+    const positions = new Map([["root", { x: 0, y: 0 }]]);
+    const result = renderOrganogramSvg(
+      [
+        node({
+          positionId: "root",
+          title: "Tech Lead",
+          occupancyStatus: "occupied",
+          occupantDisplayName: "John Doe",
+          jobGradeCode: "L7",
+        }),
+      ],
+      [],
+      positions,
+      METADATA,
+      BASE_OPTIONS
+    );
+    expect(result.svg).toContain("John Doe");
+    expect(result.svg).toContain("Tech Lead");
+    expect(result.svg).toContain(">L7<");
+  });
+
+  it("no longer prints the position code or the department/level line on a card", () => {
+    const positions = new Map([["root", { x: 0, y: 0 }]]);
+    const result = renderOrganogramSvg(
+      [
+        node({
+          positionId: "root",
+          positionCode: "POS-SECRET",
+          departmentName: "Engineering",
+          organizationalLevel: 4,
+          occupancyStatus: "occupied",
+          occupantDisplayName: "John Doe",
+        }),
+      ],
+      [],
+      positions,
+      METADATA,
+      // Legend off, so a department name in the legend cannot mask the
+      // assertion that the CARD no longer repeats it.
+      { ...BASE_OPTIONS, includeLegend: false }
+    );
+    expect(result.svg).not.toContain("POS-SECRET");
+    expect(result.svg).not.toContain("Engineering · Level 4");
+  });
+
+  it("keeps every card's text inside the card box, even with a two-line title", () => {
+    const positions = new Map([["root", { x: 0, y: 0 }]]);
+    const result = renderOrganogramSvg(
+      [
+        node({
+          positionId: "root",
+          title: "Associate Director of Engineering and Platform Operations",
+          occupancyStatus: "occupied",
+          occupantDisplayName: "John Doe",
+          jobGradeCode: "L11",
+        }),
+      ],
+      [],
+      positions,
+      METADATA,
+      { ...BASE_OPTIONS, includeLegend: false, includeMetadata: false }
+    );
+    // Every y coordinate drawn inside a CARD GROUP must fit within
+    // NODE_HEIGHT, or text silently renders outside its own box — the
+    // failure mode hard-coded coordinates invite. Scoped to the card's own
+    // `<g transform="translate(...)">`, because coordinates elsewhere in
+    // the document (the footer, for one) are page-absolute and would
+    // otherwise be compared against a card-relative bound.
+    // Matched on `opacity`, which only a CARD group carries — the outer
+    // graph wrapper is also a translated <g> and would otherwise match
+    // first, capturing the (empty) edges group instead.
+    const cardGroup = /<g transform="translate\([^)]*\)" opacity="[^"]*">(.*?)<\/g>/s.exec(
+      result.svg
+    )?.[1];
+    expect(cardGroup).toBeDefined();
+    const ys = [...(cardGroup ?? "").matchAll(/\sy="(\d+(?:\.\d+)?)"/g)].map((m) => Number(m[1]));
+    expect(ys.length).toBeGreaterThan(0);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(NODE_HEIGHT);
   });
 
   it("colors a status badge to match its own legend swatch", () => {

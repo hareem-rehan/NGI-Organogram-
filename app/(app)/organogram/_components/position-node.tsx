@@ -90,13 +90,27 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
       <button
         type="button"
         aria-pressed={isSelected}
-        aria-label={`${node.title}. ${occupantLabel}. ${node.departmentName}, level ${node.organizationalLevel}.${node.positionStatus !== "ACTIVE" ? ` ${node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}.` : ""}${matchStateLabel}`}
+        // Leads with what the card now shows visually, but deliberately
+        // keeps the department and organizational level: they are useful
+        // orientation for a screen-reader user, who cannot see that the
+        // card sits underneath its department heading. Removing visual
+        // clutter was the request; removing context from assistive tech
+        // was not.
+        aria-label={`${occupantLabel}. ${node.title}.${node.jobGradeCode ? ` Level ${node.jobGradeCode}.` : ""} ${node.departmentName}, organizational level ${node.organizationalLevel}.${node.positionStatus !== "ACTIVE" ? ` ${node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}.` : ""}${matchStateLabel}`}
         onClick={() => onSelect(node.positionId)}
         className="focus-visible:ring-ring flex flex-1 flex-col rounded-t-[calc(0.5rem-2px)] p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
+        {/* Compact leadership card (Demo 1 feedback): person first, then
+            role, then level. Deliberately NOT shown any more — the
+            position code (an internal identifier of no use to a chart
+            reader), the department name (the card already sits under its
+            department, so repeating it was pure duplication), and the
+            job-grade NAME (the grade CODE below says the same thing in
+            three characters). All of it is still on the details panel,
+            one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
           <p className="text-foreground truncate text-sm leading-tight font-semibold">
-            {node.title}
+            {occupantLabel}
           </p>
           <div className="flex shrink-0 items-center gap-1">
             {matchState === "match" ? <Badge variant="default">Match</Badge> : null}
@@ -108,21 +122,12 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             ) : null}
           </div>
         </div>
-        <p
-          className={cn(
-            "mt-1 truncate text-sm",
-            node.occupancyStatus === "occupied"
-              ? "text-foreground"
-              : "text-status-vacant font-medium"
-          )}
-        >
-          {occupantLabel}
-        </p>
-        <p className="text-muted-foreground mt-1 truncate text-xs">
-          {node.departmentName} · Level {node.organizationalLevel}
-          {node.jobGradeName ? ` · ${node.jobGradeName}` : ""}
-        </p>
-        <p className="text-muted-foreground mt-0.5 truncate text-xs">{node.positionCode}</p>
+        <p className="text-muted-foreground mt-1 truncate text-xs">{node.title}</p>
+        {node.jobGradeCode ? (
+          <p className="text-muted-foreground mt-0.5 truncate text-xs font-medium">
+            {node.jobGradeCode}
+          </p>
+        ) : null}
       </button>
       <div className="px-3 pb-3">
         {node.hasChildren ? (

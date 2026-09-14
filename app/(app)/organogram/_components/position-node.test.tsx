@@ -67,11 +67,53 @@ function renderNode(data: Partial<PositionNodeData> = {}) {
 }
 
 describe("PositionNode", () => {
-  it("shows the title, department, level, and position code", () => {
-    renderNode();
-    expect(screen.getByText("VP Engineering")).toBeInTheDocument();
-    expect(screen.getByText(/Engineering · Level 2/)).toBeInTheDocument();
-    expect(screen.getByText("POS-1")).toBeInTheDocument();
+  // Rewritten for the Demo 1 compact card. The previous version asserted
+  // the department name, organizational level and position code were all
+  // ON the card — exactly what the stakeholder asked to remove — so it is
+  // replaced by its opposite rather than deleted, and the removals are
+  // asserted so they cannot creep back.
+  it("shows the occupant, role title and grade level", () => {
+    renderNode({
+      node: makeNode({
+        occupancyStatus: "occupied",
+        occupantDisplayName: "John Doe",
+        title: "Tech Lead",
+        jobGradeCode: "L7",
+        jobGradeLevel: 7,
+      }),
+    });
+    expect(screen.getByText("John Doe")).toBeInTheDocument();
+    expect(screen.getByText("Tech Lead")).toBeInTheDocument();
+    expect(screen.getByText("L7")).toBeInTheDocument();
+  });
+
+  it("no longer shows the position code, department name, or organizational level", () => {
+    renderNode({
+      node: makeNode({
+        occupancyStatus: "occupied",
+        occupantDisplayName: "John Doe",
+        jobGradeCode: "L7",
+        jobGradeLevel: 7,
+      }),
+    });
+    // Internal identifier — of no use to a chart reader.
+    expect(screen.queryByText("POS-1")).not.toBeInTheDocument();
+    // The card sits under its own department heading, so repeating the
+    // name on every card was duplication.
+    expect(screen.queryByText(/Engineering · Level/)).not.toBeInTheDocument();
+  });
+
+  it("omits the grade row entirely when the position has no grade", () => {
+    renderNode({
+      node: makeNode({
+        occupancyStatus: "occupied",
+        occupantDisplayName: "John Doe",
+        jobGradeCode: null,
+        jobGradeLevel: null,
+      }),
+    });
+    expect(screen.getByText("John Doe")).toBeInTheDocument();
+    expect(screen.queryByText(/^L\d+$/)).not.toBeInTheDocument();
   });
 
   it("shows Vacant for an unoccupied position", () => {

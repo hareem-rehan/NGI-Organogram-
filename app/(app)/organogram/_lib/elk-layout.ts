@@ -8,16 +8,22 @@ import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
  */
 export const NODE_WIDTH = 260;
 /**
- * Must be tall enough to fit PositionNode's fixed 5-row layout (title,
- * occupant, department/level, position code, expand-toggle) — the node
- * component sets this exact height + overflow-hidden on its own root
- * element (single source of truth), so ELK's spacing assumption and the
- * actual rendered box never drift apart. A prior height/content mismatch
- * here caused adjacent rows to visually overlap, which made
- * e2e/organogram.spec.ts's expand-toggle clicks land on the wrong
- * element (a neighboring node's pane area intercepted the click).
+ * Must be tall enough to fit PositionNode's fixed layout — now 3 content
+ * rows (occupant name, role title, grade level) plus the expand-toggle
+ * row, down from 5 after the Demo 1 feedback removed the position code
+ * and the repeated department name. The node component sets this exact
+ * height + overflow-hidden on its own root element (single source of
+ * truth), so ELK's spacing assumption and the actual rendered box never
+ * drift apart.
+ *
+ * Do not shrink this without re-checking the rendered card: a prior
+ * height/content mismatch caused adjacent rows to visually overlap, which
+ * made e2e/organogram.spec.ts's expand-toggle clicks land on the wrong
+ * element (a neighbouring node's pane area intercepted the click). The
+ * value below leaves deliberate headroom over the measured content height
+ * (~99px) for exactly that reason.
  */
-export const NODE_HEIGHT = 152;
+export const NODE_HEIGHT = 108;
 
 export interface LayoutPosition {
   x: number;

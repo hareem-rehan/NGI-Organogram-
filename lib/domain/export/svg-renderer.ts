@@ -25,6 +25,8 @@ export interface SvgRenderNode {
   departmentColor: string | null;
   organizationalLevel: number;
   jobGradeName: string | null;
+  /** e.g. "L7" — what the compact card shows in place of the old department/level/grade line. */
+  jobGradeCode: string | null;
   occupancyStatus: "occupied" | "vacant";
   occupantDisplayName: string | null;
   positionStatus: "PLANNED" | "ACTIVE" | "INACTIVE";
@@ -167,13 +169,16 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
   const strokeWidth = isMatch ? 2 : 1;
   const opacity = isContext ? 0.6 : 1;
 
-  const titleLines = wrapText(node.title, 28, 2);
+  // Mirrors position-node.tsx's compact card exactly: occupant name,
+  // role title, grade level. The position code and the repeated
+  // department name were removed there (Demo 1 feedback) and must be
+  // removed here too — this renderer draws its own copy of the card, so
+  // the two silently diverge unless changed together.
+  const titleLines = wrapText(node.title, 30, 2);
   const occupantText =
     node.occupancyStatus === "vacant" ? "Vacant" : (node.occupantDisplayName ?? "—");
   const occupantColor =
     node.occupancyStatus === "vacant" ? EXPORT_COLORS.statusVacant : EXPORT_COLORS.foreground;
-  const deptLevelText = `${node.departmentName} · Level ${node.organizationalLevel}${node.jobGradeName ? ` · ${node.jobGradeName}` : ""}`;
-  const [deptLevelLine] = wrapText(deptLevelText, 34, 1);
   const badge = nodeBadge(node);
   const statusDotColor =
     node.occupancyStatus === "vacant" ? EXPORT_COLORS.statusVacant : EXPORT_COLORS.statusFilled;
@@ -191,27 +196,29 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
     );
   }
 
+  // Row 1 — the person. The occupancy dot the "Occupied"/"Vacant" legend
+  // rows are the key to; colour is never the only signal
+  // (docs/PROJECT_SPEC.md §12), so it sits beside the name or the literal
+  // word "Vacant".
+  parts.push(`<circle cx="22" cy="22" r="4" fill="${statusDotColor}" />`);
+  parts.push(
+    `<text x="34" y="26" font-size="13" font-weight="700" fill="${occupantColor}">${escapeXmlText(occupantText)}</text>`
+  );
+
+  // Row 2 — the role, wrapped to at most two lines.
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="16" y="${22 + index * 16}" font-size="13" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
+      `<text x="16" y="${46 + index * 14}" font-size="11" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(line)}</text>`
     );
   });
 
-  // The occupancy dot the "Occupied"/"Vacant" legend rows are the key to.
-  // Color is never the only signal (docs/PROJECT_SPEC.md §12): the dot
-  // sits beside the occupant's name, or the literal word "Vacant".
-  parts.push(`<circle cx="20" cy="58" r="4" fill="${statusDotColor}" />`);
-  parts.push(
-    `<text x="32" y="62" font-size="12" font-weight="500" fill="${occupantColor}">${escapeXmlText(occupantText)}</text>`
-  );
-  if (deptLevelLine) {
+  // Row 3 — the grade level, positioned BELOW however many title lines
+  // were actually drawn, so a two-line title can never be overprinted.
+  if (node.jobGradeCode) {
     parts.push(
-      `<text x="16" y="80" font-size="11" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(deptLevelLine)}</text>`
+      `<text x="16" y="${46 + titleLines.length * 14}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(node.jobGradeCode)}</text>`
     );
   }
-  parts.push(
-    `<text x="16" y="98" font-size="10" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(node.positionCode)}</text>`
-  );
 
   parts.push("</g>");
   return parts.join("");
