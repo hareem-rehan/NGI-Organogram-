@@ -248,15 +248,20 @@ describe("checkInvalidAssignmentDateRanges", () => {
     expect(checkInvalidAssignmentDateRanges([a])).toEqual([]);
   });
 
-  it("flags an endDate equal to startDate", () => {
+  // Reversed on 2026-09-14 after the stakeholder confirmed a same-day
+  // assign-and-end is legal (docs/DECISIONS.md). This test previously
+  // asserted the opposite and was itself the defect: the application
+  // deliberately accepts a same-day range on every write, and overlap
+  // detection depends on it for same-day handoffs, so flagging it here
+  // declared legitimate, app-created data corrupt and produced a false
+  // release-blocking FAIL from `npm run check:integrity`.
+  it("does NOT flag an endDate equal to startDate — same-day assignments are legal", () => {
     const a = assignment({
       id: "a1",
       startDate: new Date("2024-01-01"),
       endDate: new Date("2024-01-01"),
     });
-    expect(checkInvalidAssignmentDateRanges([a]).map((v) => v.category)).toEqual([
-      "INVALID_ASSIGNMENT_DATE_RANGE",
-    ]);
+    expect(checkInvalidAssignmentDateRanges([a])).toEqual([]);
   });
 
   it("flags an endDate before startDate", () => {

@@ -339,18 +339,38 @@ export function checkOverlappingAssignments(
   return violations;
 }
 
-/** Category 12: an assignment whose end date is not strictly after its start date. */
+/**
+ * Category 12: an assignment whose end date is EARLIER than its start date.
+ *
+ * A same-day start/end (`endDate === startDate`) is legal and is NOT a
+ * violation — confirmed by the stakeholder on 2026-09-14 and recorded in
+ * docs/DECISIONS.md. Someone assigned by mistake and corrected the same
+ * hour, or covering a role for a single day, is a real occurrence, and
+ * the record is kept as history rather than refused.
+ *
+ * This check previously used `<=` and so reported a release-blocking
+ * violation for data the application itself deliberately creates:
+ * `lib/domain/assignment.ts`'s `validateAssignmentDateRange` allows a
+ * same-day range, and overlap detection treats ranges as half-open
+ * `[startDate, endDate)` precisely so a same-day handoff works. A
+ * zero-length range occupies no days and can overlap nothing, so it is
+ * harmless as well as intentional.
+ *
+ * It survived because CI runs this check against a clean, EMPTY database,
+ * where no assignment rows exist to exercise it; it surfaced the first
+ * time the check met a database containing real assignments.
+ */
 export function checkInvalidAssignmentDateRanges(
   assignments: IntegrityAssignmentRow[]
 ): IntegrityViolation[] {
   const violations: IntegrityViolation[] = [];
   for (const a of assignments) {
-    if (a.endDate && a.endDate.getTime() <= a.startDate.getTime()) {
+    if (a.endDate && a.endDate.getTime() < a.startDate.getTime()) {
       violations.push({
         category: "INVALID_ASSIGNMENT_DATE_RANGE",
         companyId: a.companyId,
         recordIds: [a.id],
-        message: `Assignment ${a.id} has endDate (${a.endDate.toISOString()}) not after startDate (${a.startDate.toISOString()}).`,
+        message: `Assignment ${a.id} has endDate (${a.endDate.toISOString()}) earlier than startDate (${a.startDate.toISOString()}).`,
       });
     }
   }

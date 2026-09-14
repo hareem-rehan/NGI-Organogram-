@@ -154,13 +154,19 @@ describe("Domain integrity check (Phase 13, Step 9)", () => {
     expect(report.violations.map((v) => v.category)).toContain("OVERLAPPING_POSITION_ASSIGNMENT");
   });
 
-  it("flags an assignment whose endDate equals startDate — a zero-duration assignment the DB's >= CHECK permits but the business rule (exclusive end date) rejects", async () => {
+  // Reversed on 2026-09-14. This test's previous name asserted the
+  // business rule "rejects" a zero-duration assignment, which contradicted
+  // what the application actually does on every write. The stakeholder
+  // confirmed same-day is legal (docs/DECISIONS.md), so the check now
+  // flags only a genuinely inverted range — endDate BEFORE startDate.
+  it("does not flag a same-day assignment — the schema permits it and the app creates them", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
     const employee = await makeEmployee(company.id);
 
-    await testPrisma.positionAssignment.create({
+    // Same-day: legal, and the app creates these itself.
+    const sameDay = await testPrisma.positionAssignment.create({
       data: {
         companyId: company.id,
         employeeId: employee.id,
@@ -171,8 +177,21 @@ describe("Domain integrity check (Phase 13, Step 9)", () => {
       },
     });
 
+    expect(sameDay.endDate).toEqual(sameDay.startDate);
+
     const report = await runDomainIntegrityCheck(testPrisma);
-    expect(report.violations.map((v) => v.category)).toContain("INVALID_ASSIGNMENT_DATE_RANGE");
+    expect(report.violations.map((v) => v.category)).not.toContain("INVALID_ASSIGNMENT_DATE_RANGE");
+
+    // The genuinely-inverted case (endDate BEFORE startDate) is NOT
+    // exercised here, because it cannot be created: the schema's own
+    // `position_assignments_end_after_start` CHECK is `endDate >=
+    // startDate`, so Postgres rejects the row outright. That constraint is
+    // also the clearest evidence the same-day case above is intended
+    // rather than tolerated — the database, the write-path validator, and
+    // overlap detection all permit it, and only this integrity check ever
+    // disagreed. The inverted case stays covered by the pure unit test in
+    // lib/domain/integrity-check.test.ts, which needs no database and so
+    // can construct a row the database would refuse.
   });
 
   it("flags a company with users but no ACTIVE ADMIN", async () => {
