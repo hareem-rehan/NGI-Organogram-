@@ -19,6 +19,8 @@ function node(overrides: Partial<OrganogramNode> & { positionId: string }): Orga
     departmentColor: "#16a34a",
     jobGradeId: null,
     jobGradeName: null,
+    jobGradeCode: null,
+    jobGradeLevel: null,
     organizationalLevel: 1,
     positionStatus: "ACTIVE",
     occupancyStatus: "vacant",

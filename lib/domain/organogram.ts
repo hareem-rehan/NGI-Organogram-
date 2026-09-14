@@ -93,6 +93,16 @@ export interface OrganogramNode {
   /** Stable id for Phase 9's job-grade filter (matching how departmentId, not departmentName, drives department filtering) — the grade's own name/existence was already visible via jobGradeName, so this exposes no new information. */
   jobGradeId: string | null;
   jobGradeName: string | null;
+  /**
+   * The grade's own code, e.g. "L7" — what the business calls a "level".
+   * Distinct from `organizationalLevel` below and deliberately NOT derived
+   * from it: the two run in opposite directions (a higher grade code is
+   * more senior; a higher organizationalLevel is deeper and more junior),
+   * and CLAUDE.md §2 requires them to stay independent.
+   */
+  jobGradeCode: string | null;
+  /** Numeric seniority rank behind `jobGradeCode` (the grade's displayOrder), for threshold comparisons. Null when the position has no grade. */
+  jobGradeLevel: number | null;
   organizationalLevel: number;
   positionStatus: PositionStatus;
   occupancyStatus: OccupancyStatus;
@@ -125,6 +135,12 @@ export function buildOrganogramGraph(args: {
   safePositionIds: ReadonlySet<string>;
   departmentsById: ReadonlyMap<string, OrganogramDepartmentInput>;
   jobGradeNamesById: ReadonlyMap<string, string>;
+  /**
+   * Code + numeric rank per grade, for the leadership view's threshold.
+   * Optional so every existing caller (and its fixtures) keeps working
+   * unchanged — a position simply has no grade level when it is absent.
+   */
+  jobGradesById?: ReadonlyMap<string, { code: string; level: number | null }>;
   occupantNamesByPositionId: ReadonlyMap<string, string>;
   occupantEmployeeIdsByPositionId: ReadonlyMap<string, string>;
 }): { nodes: OrganogramNode[]; edges: OrganogramEdge[] } {
@@ -133,6 +149,7 @@ export function buildOrganogramGraph(args: {
     safePositionIds,
     departmentsById,
     jobGradeNamesById,
+    jobGradesById,
     occupantNamesByPositionId,
     occupantEmployeeIdsByPositionId,
   } = args;
@@ -171,6 +188,8 @@ export function buildOrganogramGraph(args: {
         departmentColor: department?.color ?? null,
         jobGradeId: p.jobGradeId,
         jobGradeName: p.jobGradeId ? (jobGradeNamesById.get(p.jobGradeId) ?? null) : null,
+        jobGradeCode: p.jobGradeId ? (jobGradesById?.get(p.jobGradeId)?.code ?? null) : null,
+        jobGradeLevel: p.jobGradeId ? (jobGradesById?.get(p.jobGradeId)?.level ?? null) : null,
         organizationalLevel: p.organizationalLevel,
         positionStatus: p.status,
         occupancyStatus: occupantDisplayName ? "occupied" : "vacant",

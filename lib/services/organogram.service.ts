@@ -81,6 +81,7 @@ export async function getOrganogramData(input: GetOrganogramDataInput): Promise<
     safePositionIds: safety.safePositionIds,
     departmentsById,
     jobGradeNamesById: raw.jobGradeNamesById,
+    jobGradesById: raw.jobGradesById,
     occupantNamesByPositionId: raw.occupantNamesByPositionId,
     occupantEmployeeIdsByPositionId: raw.occupantEmployeeIdsByPositionId,
   });

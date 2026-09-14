@@ -15,6 +15,8 @@ export interface OrganogramRawData {
   positions: OrganogramPositionInput[];
   departments: OrganogramDepartmentInput[];
   jobGradeNamesById: Map<string, string>;
+  /** Grade code + numeric rank, for the leadership view's L7+ threshold. */
+  jobGradesById: Map<string, { code: string; level: number | null }>;
   occupantNamesByPositionId: Map<string, string>;
   occupantEmployeeIdsByPositionId: Map<string, string>;
 }
@@ -57,7 +59,7 @@ export async function getOrganogramRawData(
     }),
     db.jobGrade.findMany({
       where: { companyId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, code: true, displayOrder: true },
     }),
     db.positionAssignment.findMany({
       where: { companyId, ...CURRENT_ASSIGNMENT_DATE_FILTER(onDate) },
@@ -74,6 +76,7 @@ export async function getOrganogramRawData(
     positions,
     departments,
     jobGradeNamesById: new Map(jobGrades.map((g) => [g.id, g.name])),
+    jobGradesById: new Map(jobGrades.map((g) => [g.id, { code: g.code, level: g.displayOrder }])),
     occupantNamesByPositionId: new Map(
       occupantRows.map((row) => [row.positionId, formatEmployeeDisplayName(row.employee)])
     ),

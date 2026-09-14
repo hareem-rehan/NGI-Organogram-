@@ -16,6 +16,8 @@ function makeNode(overrides: Partial<OrganogramNode> = {}): OrganogramNode {
     departmentColor: "#16a34a",
     jobGradeId: "grade-1",
     jobGradeName: "Director",
+    jobGradeCode: null,
+    jobGradeLevel: null,
     organizationalLevel: 2,
     positionStatus: "ACTIVE",
     occupancyStatus: "vacant",
