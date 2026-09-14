@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 import { seedAuthenticatedSession } from "./support/seed-session";
+import { gradePositions, occupyPosition, seedJobGradeScale } from "./support/chart-fixtures";
 
 // Baseline screenshots must be deterministic — same reasoning as
 // organogram.spec.ts's own isolated-company setup (an always-new company
@@ -20,11 +21,17 @@ test.describe("Organogram visual regression", () => {
   const childCode = "VR-VPE-FIXED";
   const salesTitle = "VR VP Sales";
   const salesCode = "VR-VPS-FIXED";
+  // Fixed, like every other value here — a baseline PNG must not change
+  // just because the wall clock moved.
+  const rootOccupant = { firstName: "Vera", lastName: "Root" };
+  const childOccupant = { firstName: "Vince", lastName: "Eng" };
+  const salesOccupant = { firstName: "Vivian", lastName: "Sales" };
 
   let adminCookieValue: string;
+  let companyId: string;
 
   test.beforeAll(async () => {
-    ({ cookieValue: adminCookieValue } = await seedAuthenticatedSession("ADMIN"));
+    ({ cookieValue: adminCookieValue, companyId } = await seedAuthenticatedSession("ADMIN"));
   });
 
   test.beforeEach(async ({ page, baseURL }) => {
@@ -96,11 +103,22 @@ test.describe("Organogram visual regression", () => {
       .click();
     await dialog.getByRole("button", { name: /create position/i }).click();
     await expect(dialog).toBeHidden();
+
+    // The chart draws only graded, occupied positions, so the baseline
+    // fixture has to be one (docs/DECISIONS.md §2b).
+    await seedJobGradeScale(companyId);
+    await gradePositions(companyId, "L18", [rootCode]);
+    await gradePositions(companyId, "L15", [childCode, salesCode]);
+    await occupyPosition(companyId, rootCode, rootOccupant);
+    await occupyPosition(companyId, childCode, childOccupant);
+    await occupyPosition(companyId, salesCode, salesOccupant);
   });
 
   test("Visual View matches its baseline", async ({ page }) => {
     await page.goto("/organogram");
-    await expect(page.getByRole("button", { name: new RegExp(`^${childTitle}`) })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${childOccupant.firstName}`) })
+    ).toBeVisible();
     // Layout settles asynchronously (ELK + fitView animation); wait past
     // the 200ms fitView transition before capturing.
     await page.waitForTimeout(400);
@@ -112,7 +130,9 @@ test.describe("Organogram visual regression", () => {
   test("Outline View matches its baseline", async ({ page }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: "Outline View" }).click();
-    await expect(page.getByRole("button", { name: new RegExp(`^${childTitle}`) })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${childOccupant.firstName}`) })
+    ).toBeVisible();
     await expect(page.locator("main")).toHaveScreenshot("organogram-outline-view.png", {
       maxDiffPixelRatio: 0.02,
     });
@@ -120,11 +140,15 @@ test.describe("Organogram visual regression", () => {
 
   test("a department filter (match + ancestor context) matches its baseline", async ({ page }) => {
     await page.goto("/organogram");
-    await expect(page.getByRole("button", { name: new RegExp(`^${childTitle}`) })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${childOccupant.firstName}`) })
+    ).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
     await page.getByRole("checkbox", { name: "VR Dept Sales" }).check();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("button", { name: new RegExp(`^${salesTitle}`) })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${salesOccupant.firstName}`) })
+    ).toBeVisible();
     await page.waitForTimeout(400);
     await expect(
       page.getByRole("application", { name: "Interactive organization chart" })
@@ -133,7 +157,7 @@ test.describe("Organogram visual regression", () => {
 
   test("Position Focus matches its baseline", async ({ page }) => {
     await page.goto("/organogram");
-    await page.getByRole("button", { name: new RegExp(`^${childTitle}`) }).click();
+    await page.getByRole("button", { name: new RegExp(`^${childOccupant.firstName}`) }).click();
     await page.getByRole("button", { name: /focus on this position/i }).click();
     await expect(page.getByText("Position Focus")).toBeVisible();
     await page.getByRole("button", { name: /close position details/i }).click();
@@ -145,7 +169,7 @@ test.describe("Organogram visual regression", () => {
 
   test("Department Focus matches its baseline", async ({ page }) => {
     await page.goto("/organogram");
-    await page.getByRole("button", { name: new RegExp(`^${salesTitle}`) }).click();
+    await page.getByRole("button", { name: new RegExp(`^${salesOccupant.firstName}`) }).click();
     await page.getByRole("button", { name: /focus on this department/i }).click();
     await expect(page.getByText("Department Focus")).toBeVisible();
     await page.getByRole("button", { name: /close position details/i }).click();
@@ -157,9 +181,13 @@ test.describe("Organogram visual regression", () => {
 
   test("no-filter-matches empty state matches its baseline", async ({ page }) => {
     await page.goto("/organogram");
-    await expect(page.getByRole("button", { name: new RegExp(`^${childTitle}`) })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${childOccupant.firstName}`) })
+    ).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
-    await page.getByRole("radio", { name: "Occupied" }).check();
+    // Every card on the chart is occupied now (vacancies are filtered out
+    // upstream), so "Vacant" is the filter that reliably matches nothing.
+    await page.getByRole("radio", { name: "Vacant" }).check();
     await page.keyboard.press("Escape");
     await expect(page.getByText("No matching positions")).toBeVisible();
     await expect(page.locator("main")).toHaveScreenshot("organogram-no-matches.png", {
@@ -170,7 +198,9 @@ test.describe("Organogram visual regression", () => {
   test("mobile filter drawer matches its baseline", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/organogram");
-    await expect(page.getByRole("button", { name: new RegExp(`^${childTitle}`) })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${childOccupant.firstName}`) })
+    ).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
     await expect(page.getByRole("dialog", { name: "Filters" })).toBeVisible();
     await expect(page.getByRole("dialog", { name: "Filters" })).toHaveScreenshot(
@@ -182,11 +212,15 @@ test.describe("Organogram visual regression", () => {
   test("Outline View match/context states match their baseline", async ({ page }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: "Outline View" }).click();
-    await expect(page.getByRole("button", { name: new RegExp(`^${childTitle}`) })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${childOccupant.firstName}`) })
+    ).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
     await page.getByRole("checkbox", { name: "VR Dept Sales" }).check();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("button", { name: new RegExp(`^${salesTitle}`) })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`^${salesOccupant.firstName}`) })
+    ).toBeVisible();
     await expect(page.locator("main")).toHaveScreenshot("organogram-outline-match-context.png", {
       maxDiffPixelRatio: 0.02,
     });

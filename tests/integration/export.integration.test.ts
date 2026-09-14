@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { testPrisma } from "./setup";
 import {
-  makeChildPosition,
   makeCompany,
   makeDepartment,
+  makeLeadershipJobGrade,
+  makeOccupiedLeadershipPositions,
   makeRootPosition,
   makeUser,
 } from "./fixtures";
@@ -22,6 +23,7 @@ describe("export.service", () => {
   let userId: string;
   let departmentId: string;
   let rootId: string;
+  let leadershipGradeId: string;
 
   beforeEach(async () => {
     const company = await makeCompany();
@@ -34,7 +36,20 @@ describe("export.service", () => {
       title: "Chief Executive Officer",
     });
     rootId = root.id;
-    await makeChildPosition(companyId, departmentId, rootId, 1, { title: "VP Engineering" });
+    // The export renders the CHART, which since the Demo 1 feedback shows
+    // only graded, occupied positions and inserts a department tier. A
+    // bare ungraded/vacant child would be correctly filtered out, leaving
+    // nothing to export — so the base fixture creates one the chart keeps.
+    leadershipGradeId = (await makeLeadershipJobGrade(companyId)).id;
+    await makeOccupiedLeadershipPositions({
+      companyId,
+      departmentId,
+      parentPositionId: rootId,
+      parentLevel: 1,
+      count: 1,
+      jobGradeId: leadershipGradeId,
+      titlePrefix: "VP Engineering",
+    });
   });
 
   it("generates a COMPLETED PDF export for the full company", async () => {
@@ -46,7 +61,9 @@ describe("export.service", () => {
     expect(job.status).toBe("COMPLETED");
     expect(job.generatedFile).not.toBeNull();
     expect(job.generatedFilename).toMatch(/\.pdf$/);
-    expect(job.nodeCount).toBe(2);
+    // Root + the synthetic "department" heading + the VP: the chart
+    // gained a department tier, and the export draws what the chart draws.
+    expect(job.nodeCount).toBe(3);
     expect(job.pageCount).toBeGreaterThanOrEqual(1);
   });
 
@@ -212,15 +229,14 @@ describe("export.service", () => {
     // laying out in a few seconds — see
     // tests/integration/export-rendering.integration.test.ts's dedicated
     // renderer-level test for the same guard in isolation.
-    await testPrisma.position.createMany({
-      data: Array.from({ length: 300 }, (_, i) => ({
-        companyId: wideCompany.id,
-        departmentId: wideDept.id,
-        title: `Direct Report ${i}`,
-        positionCode: `WIDE-${i}`,
-        primaryReportsToPositionId: wideRoot.id,
-        organizationalLevel: 2,
-      })),
+    const wideGrade = await makeLeadershipJobGrade(wideCompany.id);
+    await makeOccupiedLeadershipPositions({
+      companyId: wideCompany.id,
+      departmentId: wideDept.id,
+      parentPositionId: wideRoot.id,
+      parentLevel: 1,
+      count: 300,
+      jobGradeId: wideGrade.id,
     });
 
     await expect(
@@ -248,15 +264,15 @@ describe("export.service", () => {
     // (lib/domain/export/png-renderer.ts's MAX_PNG_SAFE_TOTAL_PIXELS) at
     // 1x scale, but nowhere near the separate PDF tile-page limit this
     // file's other wide-hierarchy test exercises.
-    await testPrisma.position.createMany({
-      data: Array.from({ length: 400 }, (_, i) => ({
-        companyId: bigCompany.id,
-        departmentId: bigDept.id,
-        title: `Report ${i}`,
-        positionCode: `BIG-${i}`,
-        primaryReportsToPositionId: bigRoot.id,
-        organizationalLevel: 2,
-      })),
+    const bigGrade = await makeLeadershipJobGrade(bigCompany.id);
+    await makeOccupiedLeadershipPositions({
+      companyId: bigCompany.id,
+      departmentId: bigDept.id,
+      parentPositionId: bigRoot.id,
+      parentLevel: 1,
+      count: 400,
+      jobGradeId: bigGrade.id,
+      titlePrefix: "Report",
     });
 
     await expect(
@@ -296,15 +312,15 @@ describe("export.service", () => {
     // company/scope reaches the pre-existing PDF code path completely
     // unmodified — it fails for the SAME pre-existing reason it always
     // would have, not a new one introduced by this remediation.
-    await testPrisma.position.createMany({
-      data: Array.from({ length: 400 }, (_, i) => ({
-        companyId: bigCompany.id,
-        departmentId: bigDept.id,
-        title: `Report ${i}`,
-        positionCode: `BIG-${i}`,
-        primaryReportsToPositionId: bigRoot.id,
-        organizationalLevel: 2,
-      })),
+    const bigGrade = await makeLeadershipJobGrade(bigCompany.id);
+    await makeOccupiedLeadershipPositions({
+      companyId: bigCompany.id,
+      departmentId: bigDept.id,
+      parentPositionId: bigRoot.id,
+      parentLevel: 1,
+      count: 400,
+      jobGradeId: bigGrade.id,
+      titlePrefix: "Report",
     });
 
     await expect(
@@ -338,15 +354,14 @@ describe("export.service", () => {
     const wideUser = await makeUser(wideCompany.id);
     const wideDept = await makeDepartment(wideCompany.id);
     const wideRoot = await makeRootPosition(wideCompany.id, wideDept.id);
-    await testPrisma.position.createMany({
-      data: Array.from({ length: 300 }, (_, i) => ({
-        companyId: wideCompany.id,
-        departmentId: wideDept.id,
-        title: `Direct Report ${i}`,
-        positionCode: `AUDIT-WIDE-${i}`,
-        primaryReportsToPositionId: wideRoot.id,
-        organizationalLevel: 2,
-      })),
+    const auditGrade = await makeLeadershipJobGrade(wideCompany.id);
+    await makeOccupiedLeadershipPositions({
+      companyId: wideCompany.id,
+      departmentId: wideDept.id,
+      parentPositionId: wideRoot.id,
+      parentLevel: 1,
+      count: 300,
+      jobGradeId: auditGrade.id,
     });
 
     await expect(

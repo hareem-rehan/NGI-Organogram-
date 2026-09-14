@@ -103,6 +103,32 @@ export interface OrganogramNode {
   jobGradeCode: string | null;
   /** Numeric seniority rank behind `jobGradeCode` (the grade's displayOrder), for threshold comparisons. Null when the position has no grade. */
   jobGradeLevel: number | null;
+  /**
+   * Distinguishes a real Position card from the SYNTHETIC department
+   * grouping card the leadership view inserts below the root
+   * (lib/domain/organogram-leadership-graph.ts). Nothing
+   * `buildOrganogramGraph` produces ever carries it — the raw graph is
+   * positions and nothing else — so `undefined` means "position".
+   */
+  kind?: "position" | "department";
+  /**
+   * Tier in the DISPLAYED tree, root = 1. Deliberately a separate field
+   * from `organizationalLevel`, not a replacement for it: the department
+   * tier is visual grouping, and "department headings / visual grouping
+   * do not count as organizational levels" (CLAUDE.md §2). Set only by
+   * the leadership projection; absent on the raw graph, where the
+   * displayed tree and the real reporting tree are the same tree.
+   */
+  displayDepth?: number;
+  /**
+   * How many children this node has IN THE DISPLAYED tree, which can be
+   * fewer than `directReportCount` once the leadership filter hides some
+   * of a manager's reports. The chart shows this one (so "3 direct
+   * reports" always matches what expanding actually reveals) while
+   * `directReportCount` keeps reporting the real, unfiltered number for
+   * the details panel. Absent on the raw graph, where they are equal.
+   */
+  displayChildCount?: number;
   organizationalLevel: number;
   positionStatus: PositionStatus;
   occupancyStatus: OccupancyStatus;

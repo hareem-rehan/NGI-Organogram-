@@ -155,15 +155,67 @@ describe("OrganogramOutlineView", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  // The row now leads with the occupant (every fixture node here is
+  // vacant, so that reads "Vacant VP Eng") rather than with the title —
+  // the Demo 1 card order, applied to the outline so the two views
+  // describe a person the same way round.
   it("clicking a node's row calls onSelect with its position id", async () => {
     const user = userEvent.setup();
     const { onSelect } = renderOutline();
-    await user.click(screen.getByRole("button", { name: /^VP Eng/ }));
+    await user.click(screen.getByRole("button", { name: /Vacant VP Eng/ }));
     expect(onSelect).toHaveBeenCalledWith("child");
   });
 
   it("highlights the selected node", () => {
     renderOutline({ selectedId: "child" });
-    expect(screen.getByRole("button", { name: /^VP Eng/ }).parentElement).toHaveClass("bg-accent");
+    expect(screen.getByRole("button", { name: /Vacant VP Eng/ }).parentElement).toHaveClass(
+      "bg-accent"
+    );
+  });
+
+  it("shows the job grade instead of repeating the department on every row", () => {
+    renderOutline({
+      nodes: [
+        makeNode({ positionId: "root", title: "CEO", jobGradeCode: "L18", hasChildren: false }),
+      ],
+    });
+
+    expect(screen.getByText("L18")).toBeInTheDocument();
+    // The department is the heading a row sits under in the leadership
+    // view, so repeating it on the row itself was pure duplication.
+    expect(screen.queryByText(/Engineering · Level/)).not.toBeInTheDocument();
+  });
+
+  it("renders a department heading as a heading, not as a selectable position", async () => {
+    const user = userEvent.setup();
+    const { onSelect, onToggleCollapse } = renderOutline({
+      nodes: [
+        makeNode({
+          positionId: "dept:dept-1",
+          kind: "department",
+          title: "Engineering",
+          hasChildren: true,
+          directReportCount: 1,
+        }),
+        makeNode({
+          positionId: "child",
+          title: "VP Eng",
+          primaryReportsToPositionId: "dept:dept-1",
+        }),
+      ],
+    });
+
+    expect(screen.getByText("Engineering")).toBeInTheDocument();
+    expect(screen.getByText("1 role")).toBeInTheDocument();
+
+    // A department heading has no Position behind it, so its only
+    // interactive control is expand/collapse — clicking it must never
+    // open an empty details panel.
+    await user.click(screen.getByRole("button", { name: /Collapse Engineering/ }));
+    expect(onToggleCollapse).toHaveBeenCalledWith("dept:dept-1");
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /Vacant VP Eng/ }));
+    expect(onSelect).toHaveBeenCalledWith("child");
   });
 });

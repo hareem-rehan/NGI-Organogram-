@@ -231,3 +231,65 @@ describe("PositionNode", () => {
     expect(data.onSelect).toHaveBeenCalledWith("pos-99");
   });
 });
+
+describe("PositionNode — department tier (Demo 1 feedback)", () => {
+  function renderDepartment(nodeOverrides: Partial<OrganogramNode> = {}, data = {}) {
+    return renderNode({
+      node: makeNode({
+        kind: "department",
+        positionId: "dept:dept-1",
+        title: "Engineering",
+        departmentName: "Engineering",
+        hasChildren: true,
+        displayChildCount: 3,
+        ...nodeOverrides,
+      }),
+      ...data,
+    });
+  }
+
+  it("renders the department name and how many roles sit under it", () => {
+    renderDepartment();
+    expect(screen.getByText("Engineering")).toBeInTheDocument();
+    expect(screen.getByText("3 roles")).toBeInTheDocument();
+  });
+
+  it("never shows occupancy or a position code — a department is a heading, not a seat", () => {
+    renderDepartment();
+    expect(screen.queryByText("Vacant")).not.toBeInTheDocument();
+    expect(screen.queryByText("POS-1")).not.toBeInTheDocument();
+  });
+
+  it("toggles collapse and never selects — there is no Position behind it", async () => {
+    const user = userEvent.setup();
+    const onToggleCollapse = vi.fn();
+    const onSelect = vi.fn();
+    renderDepartment({}, { onToggleCollapse, onSelect });
+
+    await user.click(screen.getByRole("button", { name: /Engineering department/ }));
+    expect(onToggleCollapse).toHaveBeenCalledWith("dept:dept-1");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("singularizes a one-role department", () => {
+    renderDepartment({ displayChildCount: 1 });
+    expect(screen.getByText("1 role")).toBeInTheDocument();
+  });
+});
+
+describe("PositionNode — displayed vs. real report counts", () => {
+  it("promises only the reports expanding will actually reveal", () => {
+    // The real position has four reports; the leadership filter leaves
+    // one of them on the chart. Showing "4" would be a promise the
+    // expand toggle cannot keep.
+    renderNode({
+      node: makeNode({ hasChildren: true, directReportCount: 4, displayChildCount: 1 }),
+    });
+    expect(screen.getByText(/1 direct report$/)).toBeInTheDocument();
+  });
+
+  it("falls back to the real count on an unprojected graph", () => {
+    renderNode({ node: makeNode({ hasChildren: true, directReportCount: 2 }) });
+    expect(screen.getByText(/2 direct reports/)).toBeInTheDocument();
+  });
+});

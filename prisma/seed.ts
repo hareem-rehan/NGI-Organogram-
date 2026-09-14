@@ -21,6 +21,8 @@
  */
 import type { PrismaClient } from "@prisma/client";
 
+import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
+
 export function assertSeedAllowed(env: string | undefined = process.env.NODE_ENV): void {
   if (env !== "development" && env !== "test") {
     throw new Error(
@@ -183,11 +185,27 @@ export async function runSeed(db: PrismaClient) {
     displayOrder: 1,
   });
 
-  const [l4, l5, l6] = await Promise.all([
-    upsertJobGrade(company.id, "L4", { name: "Individual Contributor", displayOrder: 4 }),
-    upsertJobGrade(company.id, "L5", { name: "Manager", displayOrder: 5 }),
-    upsertJobGrade(company.id, "L6", { name: "Executive", displayOrder: 6 }),
-  ]);
+  // The company's real career scale, L2..L18 (lib/domain/job-grade-mapping.ts).
+  // The seed used to invent a three-rung L4/L5/L6 ladder, which no longer
+  // works now that the organogram shows L7 and above: on that ladder
+  // nothing but the CEO cleared the bar, so the seeded chart rendered
+  // essentially empty. The scale itself is generic level nomenclature,
+  // not employee data — CLAUDE.md §1.11 is unaffected.
+  const gradesByCode = new Map<string, { id: string }>();
+  for (const grade of JOB_GRADE_SCALE) {
+    gradesByCode.set(
+      grade.code,
+      await upsertJobGrade(company.id, grade.code, {
+        name: grade.name,
+        displayOrder: grade.level,
+      })
+    );
+  }
+  const grade = (code: string) => {
+    const found = gradesByCode.get(code);
+    if (!found) throw new Error(`Seed refers to job grade ${code}, which is not on the scale.`);
+    return found;
+  };
 
   // --- Positions -----------------------------------------------------
   const ceo = await upsertPosition({
@@ -195,7 +213,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-CEO",
     title: "Chief Executive Officer",
     departmentId: execDept.id,
-    jobGradeId: l6.id,
+    jobGradeId: grade("L18").id,
     primaryReportsToPositionId: null,
     organizationalLevel: 1,
   });
@@ -205,7 +223,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-VP-ENG",
     title: "VP of Engineering",
     departmentId: engDept.id,
-    jobGradeId: l6.id,
+    jobGradeId: grade("L15").id,
     primaryReportsToPositionId: ceo.id,
     organizationalLevel: 2,
   });
@@ -215,7 +233,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-VP-DELIVERY",
     title: "VP of Client Delivery",
     departmentId: deliveryDept.id,
-    jobGradeId: l6.id,
+    jobGradeId: grade("L15").id,
     primaryReportsToPositionId: ceo.id,
     organizationalLevel: 2,
   });
@@ -226,7 +244,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-HEAD-PEOPLE",
     title: "Head of People & Culture",
     departmentId: peopleDept.id,
-    jobGradeId: l5.id,
+    jobGradeId: grade("L13").id,
     primaryReportsToPositionId: ceo.id,
     organizationalLevel: 2,
   });
@@ -236,7 +254,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-ENGMGR-PLATFORM",
     title: "Engineering Manager, Platform",
     departmentId: platformDept.id,
-    jobGradeId: l5.id,
+    jobGradeId: grade("L10").id,
     primaryReportsToPositionId: vpEngineering.id,
     organizationalLevel: 3,
   });
@@ -246,7 +264,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-SR-ENGINEER",
     title: "Senior Software Engineer",
     departmentId: platformDept.id,
-    jobGradeId: l4.id,
+    jobGradeId: grade("L6").id,
     primaryReportsToPositionId: engManagerPlatform.id,
     organizationalLevel: 4,
   });
@@ -257,7 +275,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-ENGINEER-DEEP",
     title: "Software Engineer",
     departmentId: platformDept.id,
-    jobGradeId: l4.id,
+    jobGradeId: grade("L4").id,
     primaryReportsToPositionId: seniorEngineer.id,
     organizationalLevel: 5,
   });
@@ -268,7 +286,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-ENGINEER-2",
     title: "Software Engineer",
     departmentId: platformDept.id,
-    jobGradeId: l4.id,
+    jobGradeId: grade("L4").id,
     primaryReportsToPositionId: engManagerPlatform.id,
     organizationalLevel: 4,
   });
@@ -279,7 +297,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-DATA-ANALYST",
     title: "Data Analyst",
     departmentId: platformDept.id,
-    jobGradeId: l4.id,
+    jobGradeId: grade("L7").id,
     primaryReportsToPositionId: engManagerPlatform.id,
     organizationalLevel: 4,
     status: "PLANNED",
@@ -291,7 +309,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-DELMGR-A",
     title: "Delivery Manager",
     departmentId: deliveryDept.id,
-    jobGradeId: l5.id,
+    jobGradeId: grade("L10").id,
     primaryReportsToPositionId: vpDelivery.id,
     organizationalLevel: 3,
   });
@@ -301,7 +319,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-DELMGR-B",
     title: "Delivery Manager",
     departmentId: deliveryDept.id,
-    jobGradeId: l5.id,
+    jobGradeId: grade("L10").id,
     primaryReportsToPositionId: vpDelivery.id,
     organizationalLevel: 3,
   });
@@ -311,7 +329,7 @@ export async function runSeed(db: PrismaClient) {
     positionCode: "POS-PROJ-COORD",
     title: "Project Coordinator",
     departmentId: deliveryDept.id,
-    jobGradeId: l4.id,
+    jobGradeId: grade("L5").id,
     primaryReportsToPositionId: deliveryManagerB.id,
     organizationalLevel: 4,
   });
@@ -465,7 +483,8 @@ export async function runSeed(db: PrismaClient) {
   return {
     company,
     departments: { execDept, engDept, deliveryDept, peopleDept, platformDept },
-    jobGrades: { l4, l5, l6 },
+    /** The whole L2..L18 scale, keyed by code — the seed no longer has a three-rung ladder to name individually. */
+    jobGradesByCode: gradesByCode,
     positions: {
       ceo,
       vpEngineering,

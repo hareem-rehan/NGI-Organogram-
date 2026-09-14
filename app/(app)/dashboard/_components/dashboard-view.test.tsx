@@ -88,7 +88,6 @@ describe("DashboardView", () => {
       "10"
     );
     expect(screen.getByText("Occupied Positions")).toBeInTheDocument();
-    expect(screen.getByText("Vacant Positions")).toBeInTheDocument();
     expect(screen.getByText("Planned Positions")).toBeInTheDocument();
   });
 
@@ -155,7 +154,7 @@ describe("DashboardView", () => {
     expect(screen.queryByRole("link", { name: /add position/i })).not.toBeInTheDocument();
   });
 
-  it("zero is rendered as valid data, not an error, for a genuinely empty vacancy/occupied count", async () => {
+  it("zero is rendered as valid data, not an error, for a genuinely empty planned count", async () => {
     getDashboardActionMock.mockResolvedValue({
       ok: true,
       data: makeSummary({
@@ -177,19 +176,7 @@ describe("DashboardView", () => {
     render(<DashboardView canManage={false} />);
 
     await screen.findByText("Occupied Positions");
-    expect(screen.getByText("0%")).toBeInTheDocument();
-  });
-
-  it("shows '—' (not 0% or an error) for the vacancy rate when there are zero eligible positions", async () => {
-    getDashboardActionMock.mockResolvedValue({
-      ok: true,
-      data: makeSummary({ vacancyRate: { vacantCount: 0, eligibleCount: 0, percent: null } }),
-    });
-
-    render(<DashboardView canManage={false} />);
-
-    await screen.findByText(/vacancy overview/i);
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("Planned Positions").parentElement).toHaveTextContent("0");
   });
 
   it("hides the data-quality section entirely for a VIEWER (canManage=false)", async () => {
@@ -285,14 +272,27 @@ describe("DashboardView", () => {
     expect(screen.queryByRole("link", { name: /add department/i })).not.toBeInTheDocument();
   });
 
-  it("links the vacant-positions card to the filtered Positions page", async () => {
-    getDashboardActionMock.mockResolvedValue({ ok: true, data: makeSummary() });
+  // Reversed on 2026-09-14 (Demo 1 stakeholder feedback). This used to
+  // assert the "Vacant Positions" card linked to the filtered Positions
+  // page. The stakeholder asked for vacancy surfaces to be taken off the
+  // dashboard, so the card and the "Vacancy overview" section are gone —
+  // and this asserts they STAY gone, rather than being silently deleted
+  // along with the feature it covered. The vacancy DATA is untouched:
+  // `vacancyRate` is still computed by the dashboard service, and the
+  // per-department Vacant column below is still rendered.
+  it("no longer surfaces vacancy as a summary card or an overview section", async () => {
+    getDashboardActionMock.mockResolvedValue({
+      ok: true,
+      data: makeSummary({ vacancyRate: { vacantCount: 4, eligibleCount: 10, percent: 40 } }),
+    });
 
     render(<DashboardView canManage={false} />);
 
     await screen.findByText(/northwind example co\./i);
-    const link = screen.getByRole("link", { name: /^vacant positions/i });
-    expect(link).toHaveAttribute("href", expect.stringContaining("occupancy=vacant"));
+    expect(screen.queryByText("Vacant Positions")).not.toBeInTheDocument();
+    expect(screen.queryByText(/vacancy overview/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("40%")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /view vacant positions/i })).not.toBeInTheDocument();
   });
 
   it("links the unassigned-employees text to the filtered Employees page", async () => {

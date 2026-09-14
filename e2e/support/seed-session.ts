@@ -24,6 +24,8 @@ const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 export interface SeededSession {
   cookieValue: string;
   userEmail: string;
+  /** The brand-new company this session belongs to — needed by e2e/support/chart-fixtures.ts. */
+  companyId: string;
 }
 
 export async function seedAuthenticatedSession(role: UserRole): Promise<SeededSession> {
@@ -65,7 +67,7 @@ export async function seedAuthenticatedSession(role: UserRole): Promise<SeededSe
       },
     });
 
-    return { cookieValue: sessionToken, userEmail };
+    return { cookieValue: sessionToken, userEmail, companyId: company.id };
   } finally {
     await prisma.$disconnect();
   }

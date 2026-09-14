@@ -39,6 +39,10 @@ function OutlineNodeRow({
   const isSelected = selectedId === node.positionId;
   const occupantLabel = node.occupancyStatus === "occupied" ? node.occupantDisplayName : "Vacant";
   const matchState = matchStateById?.get(node.positionId) ?? "none";
+  // The synthetic department tier (lib/domain/organogram-leadership-graph.ts).
+  // Same reasoning as the canvas card: it is a heading, not a seat, so it
+  // shows no occupant and opens no details panel.
+  const isDepartment = node.kind === "department";
 
   return (
     <li>
@@ -66,28 +70,43 @@ function OutlineNodeRow({
         ) : (
           <span aria-hidden="true" className="inline-block size-4 shrink-0" />
         )}
-        <button
-          type="button"
-          onClick={() => onSelect(node.positionId)}
-          className="focus-visible:ring-ring flex flex-1 flex-wrap items-center gap-x-2 rounded px-1 text-left text-sm outline-none focus-visible:ring-2"
-        >
-          <span className="text-foreground font-medium">{node.title}</span>
-          <span
-            className={cn(node.occupancyStatus === "vacant" && "text-status-vacant font-medium")}
+        {isDepartment ? (
+          <p className="text-foreground flex-1 px-1 text-sm font-bold tracking-wide uppercase">
+            {node.departmentName}
+            <span className="text-muted-foreground ml-2 text-xs font-normal normal-case">
+              {children.length} role{children.length === 1 ? "" : "s"}
+            </span>
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelect(node.positionId)}
+            className="focus-visible:ring-ring flex flex-1 flex-wrap items-center gap-x-2 rounded px-1 text-left text-sm outline-none focus-visible:ring-2"
           >
-            {occupantLabel}
-          </span>
-          <span className="text-muted-foreground text-xs">
-            {node.departmentName} · Level {node.organizationalLevel}
-          </span>
-          {matchState === "match" ? <Badge variant="default">Match</Badge> : null}
-          {matchState === "context" ? <Badge variant="outline">Context</Badge> : null}
-          {node.positionStatus !== "ACTIVE" ? (
-            <Badge variant={node.positionStatus === "PLANNED" ? "outline" : "muted"}>
-              {node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}
-            </Badge>
-          ) : null}
-        </button>
+            <span
+              className={cn(
+                "text-foreground font-medium",
+                node.occupancyStatus === "vacant" && "text-status-vacant"
+              )}
+            >
+              {occupantLabel}
+            </span>
+            <span className="text-muted-foreground">{node.title}</span>
+            {/* The department name used to repeat on every row; it is now
+                the heading this row already sits under, so the row shows
+                the grade instead — the same three fields as the card. */}
+            {node.jobGradeCode ? (
+              <span className="text-muted-foreground text-xs font-medium">{node.jobGradeCode}</span>
+            ) : null}
+            {matchState === "match" ? <Badge variant="default">Match</Badge> : null}
+            {matchState === "context" ? <Badge variant="outline">Context</Badge> : null}
+            {node.positionStatus !== "ACTIVE" ? (
+              <Badge variant={node.positionStatus === "PLANNED" ? "outline" : "muted"}>
+                {node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}
+              </Badge>
+            ) : null}
+          </button>
+        )}
       </div>
       {children.length > 0 && !isCollapsed ? (
         <ul className="border-border ml-4 flex flex-col gap-0.5 border-l pl-2">

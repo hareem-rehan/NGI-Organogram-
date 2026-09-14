@@ -2,7 +2,10 @@
 
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
-import { getOrganogramData, type OrganogramData } from "@/lib/services/organogram.service";
+import {
+  getOrganogramChartData,
+  type OrganogramChartData,
+} from "@/lib/services/organogram.service";
 
 /**
  * The organogram's only read operation. No parameters accepted — display
@@ -11,9 +14,9 @@ import { getOrganogramData, type OrganogramData } from "@/lib/services/organogra
  * server round-trip. `companyId` is derived exclusively from the
  * authenticated session, never from client input.
  */
-export async function getOrganogramAction(): Promise<ActionResult<OrganogramData>> {
+export async function getOrganogramAction(): Promise<ActionResult<OrganogramChartData>> {
   return runAction(async () => {
     const user = await requirePermission("organogram:view");
-    return getOrganogramData({ companyId: user.companyId });
+    return getOrganogramChartData({ companyId: user.companyId });
   });
 }

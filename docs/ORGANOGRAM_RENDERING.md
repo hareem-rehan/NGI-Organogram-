@@ -44,22 +44,27 @@ interface OrganogramData {
 
 ### `OrganogramNode` — approved fields
 
-| Field                                | Source                                                   | Notes                                                                                                                                                           |
-| ------------------------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `positionId`                         | `Position.id`                                            | —                                                                                                                                                               |
-| `positionCode`                       | `Position.positionCode`                                  | —                                                                                                                                                               |
-| `title`                              | `Position.title`                                         | —                                                                                                                                                               |
-| `departmentId`/`Name`/`Code`/`Color` | `Department`                                             | Color is the department-based node accent — never the only status signal                                                                                        |
-| `jobGradeName`                       | `JobGrade.name`                                          | `null` if the position has no job grade. Never conflated with `organizationalLevel`                                                                             |
-| `organizationalLevel`                | `Position.organizationalLevel`                           | System-calculated, read-only here — this feature never writes it                                                                                                |
-| `positionStatus`                     | `Position.status`                                        | `PLANNED` \| `ACTIVE` \| `INACTIVE`                                                                                                                             |
-| `occupancyStatus`                    | Derived — currently-effective primary assignment exists? | `"occupied"` \| `"vacant"`, same exclusive-end convention as Phase 6/7 (`docs/DECISIONS.md` A18)                                                                |
-| `occupantDisplayName`                | `Employee.preferredName ?? "First Last"`                 | `null` when vacant. **Never** the raw `Employee` record                                                                                                         |
-| `occupantEmployeeId`                 | `Employee.id`                                            | `null` when vacant. Lets the Details Panel link to `/employees/[id]` for a caller who holds `employees:view` — that route re-checks authorization independently |
-| `directReportCount`                  | Count of this position's safe direct children            | —                                                                                                                                                               |
-| `primaryReportsToPositionId`         | `Position.primaryReportsToPositionId`                    | `null` for the root, and for any position whose real parent was excluded as unsafe (§8) — never a fabricated relationship                                       |
-| `hasChildren`                        | `directReportCount > 0`                                  | —                                                                                                                                                               |
-| `isPlanned` / `isActive`             | Derived from `positionStatus`                            | Convenience booleans for the UI layer                                                                                                                           |
+| Field                                | Source                                                   | Notes                                                                                                                                                                    |
+| ------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `positionId`                         | `Position.id`                                            | —                                                                                                                                                                        |
+| `positionCode`                       | `Position.positionCode`                                  | —                                                                                                                                                                        |
+| `title`                              | `Position.title`                                         | —                                                                                                                                                                        |
+| `departmentId`/`Name`/`Code`/`Color` | `Department`                                             | Color is the department-based node accent — never the only status signal                                                                                                 |
+| `jobGradeName`                       | `JobGrade.name`                                          | `null` if the position has no job grade. Never conflated with `organizationalLevel`                                                                                      |
+| `organizationalLevel`                | `Position.organizationalLevel`                           | System-calculated, read-only here — this feature never writes it                                                                                                         |
+| `positionStatus`                     | `Position.status`                                        | `PLANNED` \| `ACTIVE` \| `INACTIVE`                                                                                                                                      |
+| `occupancyStatus`                    | Derived — currently-effective primary assignment exists? | `"occupied"` \| `"vacant"`, same exclusive-end convention as Phase 6/7 (`docs/DECISIONS.md` A18)                                                                         |
+| `occupantDisplayName`                | `Employee.preferredName ?? "First Last"`                 | `null` when vacant. **Never** the raw `Employee` record                                                                                                                  |
+| `occupantEmployeeId`                 | `Employee.id`                                            | `null` when vacant. Lets the Details Panel link to `/employees/[id]` for a caller who holds `employees:view` — that route re-checks authorization independently          |
+| `directReportCount`                  | Count of this position's safe direct children            | —                                                                                                                                                                        |
+| `primaryReportsToPositionId`         | `Position.primaryReportsToPositionId`                    | `null` for the root, and for any position whose real parent was excluded as unsafe (§8) — never a fabricated relationship                                                |
+| `hasChildren`                        | Has at least one DISPLAYED child                         | On the raw graph this is `directReportCount > 0`; on the projected chart it follows the display tree                                                                     |
+| `isPlanned` / `isActive`             | Derived from `positionStatus`                            | Convenience booleans for the UI layer                                                                                                                                    |
+| `jobGradeId` / `jobGradeCode`        | `JobGrade.id` / `JobGrade.code`                          | The code (e.g. "L7") is what the card shows. `null` when the position has no grade                                                                                       |
+| `jobGradeLevel`                      | `JobGrade.displayOrder`                                  | Numeric seniority rank behind the code, for the leadership threshold. Higher is more senior — the OPPOSITE direction to `organizationalLevel`, and never derived from it |
+| `kind`                               | Set by the leadership projection only                    | `"department"` marks a synthetic heading; absent (or `"position"`) is a real Position. See §3b                                                                           |
+| `displayDepth`                       | Set by the leadership projection only                    | Tier in the DISPLAYED tree, root = 1. Absent on the raw graph, where the displayed and real trees are the same tree                                                      |
+| `displayChildCount`                  | Set by the leadership projection only                    | Children in the displayed tree, which can be fewer than `directReportCount`. Absent on the raw graph, where they are equal                                               |
 
 ### Explicit blacklist — never present on this contract
 
@@ -87,11 +92,29 @@ Primary-reporting-only. There is no field for a secondary/dotted-line relationsh
 
 Layout runs **only on the currently-visible subgraph** (never the full up-to-2000-position graph), recomputed whenever the visible node/edge _set_ changes (expand/collapse, the planned toggle) — not on every render, and not on selection changes (`organogram-canvas.tsx` separates "positions changed" from "selection/collapse-state changed" into two independent update paths so toggling a node never re-runs ELK).
 
-`NODE_WIDTH`/`NODE_HEIGHT` (260×152) are a single source of truth shared between the ELK spacing input and the `PositionNode` component's own fixed box size (`width`/`height` + `overflow-hidden`, with `truncate` on every text line). **Do not let these drift apart** — a height/content mismatch here previously caused adjacent rows to visually overlap, which broke click targeting (see `e2e/organogram.spec.ts`'s expand-toggle test, and the fix history in `docs/phase-reports/PHASE_08_INTERACTIVE_ORGANOGRAM.md`).
+`NODE_WIDTH`/`NODE_HEIGHT` (260×108) are a single source of truth shared between the ELK spacing input and the `PositionNode` component's own fixed box size (`width`/`height` + `overflow-hidden`, with `truncate` on every text line). **Do not let these drift apart** — a height/content mismatch here previously caused adjacent rows to visually overlap, which broke click targeting (see `e2e/organogram.spec.ts`'s expand-toggle test, and the fix history in `docs/phase-reports/PHASE_08_INTERACTIVE_ORGANOGRAM.md`).
+
+## 3b. Leadership view (Demo 1 stakeholder feedback, 2026-09-14)
+
+What the chart draws is a **projection** of the hierarchy, not the hierarchy itself. `lib/domain/organogram-leadership.ts` decides who is visible and who is whose display parent; `lib/domain/organogram-leadership-graph.ts` turns that into an ordinary `OrganogramNode[]`/`OrganogramEdge[]` pair, which every consumer — canvas, Outline View, collapse/expand, search, focus modes, filters, SVG export — reads unchanged. Only the two places that DRAW a card know a department tier exists.
+
+Three things it does:
+
+1. **Department-first.** A synthetic `kind: "department"` node sits below the root for every department with a visible member. A position keeps its real manager as display parent when that manager is also visible AND in the same department; otherwise it attaches to its department's heading. A department heading carries `organizationalLevel: 0` — outside the real 1-based scale by construction, because a heading is not an organizational level (`CLAUDE.md` §2). Its tier is `displayDepth`, a display-only field that never touches `organizationalLevel`.
+2. **L7 and above.** Filtering reads the stored **job grade**, never the title — `docs/DECISIONS.md` D1/D2. A position whose title looks senior but whose stored grade is junior stays hidden, and vice versa.
+3. **No vacancies, no ungraded.** Both are excluded and **counted**, and the counts are shown above the chart, so a short chart reads as a filter rather than as missing data.
+
+None of it writes anything. A hidden position is still on `/positions`, still in the dashboard counts, still in the audit log. `getOrganogramData` still returns the full company; `getOrganogramChartData` is the projected read, and both the chart and the export go through it so they cannot disagree.
+
+Turning any of it off is a change to `DEFAULT_LEADERSHIP_VIEW_OPTIONS`, in one place.
 
 ## 4. Node content (priority order)
 
-Title → occupant name or **Vacant** → department name → organizational level → job grade (if any) → position code → status badge (Planned/Inactive only; Active is the unmarked default) → direct-report count / expand-collapse control. Department color renders as a left-border accent — paired with the text label, never the sole signal (WCAG 1.4.1).
+Occupant name or **Vacant** → role title → job grade code (e.g. "L7", if any) → status badge (Planned/Inactive only; Active is the unmarked default) → direct-report count / expand-collapse control. Department color renders as a left-border accent — paired with the department heading the card sits under, never the sole signal (WCAG 1.4.1).
+
+The position code, the repeated department name and the job-grade NAME were removed on the Demo 1 feedback (`docs/DECISIONS.md` D6); all three remain on the details panel. The card's **accessible name deliberately keeps the department and organizational level** — a screen-reader user cannot see that the card sits underneath its department heading, and removing visual clutter was the request, not removing context from assistive technology.
+
+A department heading renders differently on purpose: filled rather than outlined, uppercase, with a role count, no occupancy dot and no status badge — a reader should never have to work out whether a box is a human being. It is not selectable (there is no Position behind it to open), so its whole surface is the expand/collapse control.
 
 ## 5. Connectors
 
@@ -101,10 +124,10 @@ Solid, primary-reporting-only edges (manager → direct report), rendered via `s
 
 Client-side UI state only (`Set<positionId>` of collapsed ids in `organogram-view.tsx`) — **never** written back to the server or the database, and never mistaken for organizational data. Toggling recomputes the visible subgraph via `computeVisiblePositionIds` and re-runs layout on it.
 
-- **Default on load:** root (level 1) and its direct children (level 2) visible — every level-2 node with children starts collapsed.
+- **Default on load:** the top three display tiers — Founder → departments → each department's leadership — with anything below that collapsed. (On an unprojected graph, which has no department tier, this is the original "root plus its direct children" behaviour.)
 - **Expand All / Collapse All:** toolbar controls. Collapse All collapses every position with children, including the root, so only the root row(s) remain visible.
 - **Fit to View / Reset View:** Fit to View re-runs `fitView()` on the current visible graph. Reset View additionally restores the default collapse depth, turns "Show planned positions" back on, and clears the selection.
-- A collapsed node shows its direct-report count plus a "(+N hidden)" total-descendant count (`countHiddenDescendants`).
+- A collapsed node shows its **displayed** child count (`displayChildCount`) plus a "(+N hidden)" total-descendant count (`countHiddenDescendants`). The displayed count, not `directReportCount`: once the leadership filter hides some of a manager's reports, promising four boxes and then revealing one would be a promise the expand toggle cannot keep. `directReportCount` stays truthful on the node for the details panel.
 
 ## 7. Planned/Inactive visibility
 

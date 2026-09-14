@@ -8,6 +8,11 @@ import {
   type OrganogramEdge,
   type OrganogramNode,
 } from "@/lib/domain/organogram";
+import {
+  projectLeadershipGraph,
+  type LeadershipSummary,
+} from "@/lib/domain/organogram-leadership-graph";
+import { DEFAULT_LEADERSHIP_VIEW_OPTIONS } from "@/lib/domain/organogram-leadership";
 import { NotFoundError } from "@/lib/domain/errors";
 
 export interface OrganogramCompanySummary {
@@ -31,18 +36,41 @@ export interface OrganogramSafetySummary {
 /**
  * The full, whitelisted organogram data contract
  * (docs/ORGANOGRAM_RENDERING.md "Hierarchy Data Contract"). `nodes`/`edges`
- * cover the ENTIRE company hierarchy — expand/collapse is a pure
- * client-side filter over this one payload, never a second request per
- * node. No salary, contact, address, SSO/auth, or other confidential HR
- * field is present on `OrganogramNode` by construction (no such field
- * exists on the type) — only an occupant's display name, never the raw
- * Employee record.
+ * cover the ENTIRE company hierarchy — every safe position, in its real
+ * reporting shape. What the CHART draws is narrower; that is
+ * `OrganogramChartData` below, built from this.
+ *
+ * No salary, contact, address, SSO/auth, or other confidential HR field
+ * is present on `OrganogramNode` by construction (no such field exists on
+ * the type) — only an occupant's display name, never the raw Employee
+ * record.
  */
 export interface OrganogramData {
   company: OrganogramCompanySummary;
   nodes: OrganogramNode[];
   edges: OrganogramEdge[];
   safety: OrganogramSafetySummary;
+}
+
+/**
+ * What the organogram actually draws, since the Demo 1 stakeholder
+ * feedback: the department tier is present as synthetic
+ * `kind: "department"` nodes, and positions that are below the grade
+ * threshold, vacant, or ungraded are absent.
+ *
+ * They are absent from THIS READ only. Every one of them still exists,
+ * is still managed on the Positions page, still counted on the dashboard,
+ * and still in the audit log — `getOrganogramData` above still returns
+ * all of them, and is what every non-chart caller should use.
+ */
+export interface OrganogramChartData extends OrganogramData {
+  /**
+   * What the projection reshaped and left out. Surfaced rather than
+   * swallowed so the UI can say plainly that the chart is a leadership
+   * view — a chart that quietly shows a third of the company is worse
+   * than one that shows a third and says so.
+   */
+  leadership: LeadershipSummary;
 }
 
 export interface GetOrganogramDataInput {
@@ -101,4 +129,25 @@ export async function getOrganogramData(input: GetOrganogramDataInput): Promise<
       disconnectedPositionCount: safety.disconnectedPositionIds.length,
     },
   };
+}
+
+/**
+ * The chart's own read: `getOrganogramData` plus the leadership
+ * projection (docs/DECISIONS.md §2b).
+ *
+ * One function, one options object, two callers — the interactive chart
+ * and the export both go through here, so an exported PNG can never show
+ * a different organogram from the screen it was exported from. Switching
+ * any part of the Demo 1 reshape back off is a change to
+ * DEFAULT_LEADERSHIP_VIEW_OPTIONS, not a hunt through the UI.
+ */
+export async function getOrganogramChartData(
+  input: GetOrganogramDataInput
+): Promise<OrganogramChartData> {
+  const full = await getOrganogramData(input);
+  const { nodes, edges, summary } = projectLeadershipGraph(
+    full.nodes,
+    DEFAULT_LEADERSHIP_VIEW_OPTIONS
+  );
+  return { ...full, nodes, edges, leadership: summary };
 }

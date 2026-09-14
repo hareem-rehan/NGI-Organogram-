@@ -37,6 +37,61 @@ export interface PositionNodeData extends Record<string, unknown> {
  * positive. Same sibling-button pattern already used in
  * organogram-outline-view.tsx.
  */
+/**
+ * The synthetic department tier the Demo 1 feedback asked for ("the
+ * department should act as the first grouping level below the
+ * Founder/CEO"). Deliberately NOT styled like a person card: it is filled
+ * rather than outlined, it carries no occupancy dot and no status badge,
+ * and its whole surface is the expand/collapse control. A reader should
+ * never have to work out whether a box is a human being.
+ *
+ * It is also not selectable — there is no Position behind it to open in
+ * the details panel, so offering a click that does nothing would be a
+ * placeholder control (CLAUDE.md §1.10). Drilling into the department
+ * itself is still one click away from any member card's details panel.
+ */
+function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
+  const { node, isCollapsed, hiddenDescendantCount, onToggleCollapse } = data;
+  const childCount = node.displayChildCount ?? node.directReportCount;
+  const accent = node.departmentColor ?? "var(--color-primary)";
+
+  return (
+    <div
+      className="bg-muted pointer-events-auto flex flex-col overflow-hidden rounded-lg border-2 border-l-[6px] shadow-sm"
+      style={{ width: NODE_WIDTH, height: NODE_HEIGHT, borderColor: accent }}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-border !border-none" />
+      <button
+        type="button"
+        onClick={() => onToggleCollapse(node.positionId)}
+        aria-expanded={!isCollapsed}
+        aria-label={`${node.departmentName} department, ${childCount} role${childCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
+        className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          {node.hasChildren ? (
+            isCollapsed ? (
+              <ChevronRight aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+            ) : (
+              <ChevronDown aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+            )
+          ) : null}
+          <p className="text-foreground line-clamp-2 text-sm leading-tight font-bold tracking-wide uppercase">
+            {node.departmentName}
+          </p>
+        </div>
+        <p className="text-muted-foreground mt-1 truncate text-xs">
+          {childCount} role{childCount === 1 ? "" : "s"}
+          {isCollapsed && hiddenDescendantCount > childCount
+            ? ` (+${hiddenDescendantCount - childCount} below)`
+            : ""}
+        </p>
+      </button>
+      <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />
+    </div>
+  );
+}
+
 function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData }) {
   const {
     node,
@@ -47,7 +102,15 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
     onSelect,
     matchState = "none",
   } = data;
+
+  if (node.kind === "department") return <DepartmentNodeCard data={data} />;
+
   const occupantLabel = node.occupancyStatus === "occupied" ? node.occupantDisplayName : "Vacant";
+  // What expanding this card will actually reveal. Once the leadership
+  // filter hides some of a manager's reports, that is fewer than the real
+  // `directReportCount` — which stays intact on the node for the details
+  // panel, where the truthful number belongs.
+  const displayChildCount = node.displayChildCount ?? node.directReportCount;
   const matchStateLabel =
     matchState === "match"
       ? " Search or filter match."
@@ -147,7 +210,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             ) : (
               <ChevronDown aria-hidden="true" className="size-3.5" />
             )}
-            {node.directReportCount} direct report{node.directReportCount === 1 ? "" : "s"}
+            {displayChildCount} direct report{displayChildCount === 1 ? "" : "s"}
             {isCollapsed && hiddenDescendantCount > 0 ? ` (+${hiddenDescendantCount} hidden)` : ""}
           </button>
         ) : (

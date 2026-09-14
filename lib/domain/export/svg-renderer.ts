@@ -31,6 +31,12 @@ export interface SvgRenderNode {
   occupantDisplayName: string | null;
   positionStatus: "PLANNED" | "ACTIVE" | "INACTIVE";
   matchState: "none" | "match" | "context";
+  /**
+   * A synthetic department heading rather than a real position
+   * (lib/domain/organogram-leadership-graph.ts). Absent means "position",
+   * so every pre-existing caller keeps its behaviour unchanged.
+   */
+  kind?: "position" | "department";
 }
 
 export interface SvgRenderEdge {
@@ -159,6 +165,39 @@ function nodeBadge(node: SvgRenderNode): { label: string; color: string } | null
           ? EXPORT_COLORS.primary
           : EXPORT_COLORS.mutedForeground;
   return { label: labels.join(" · "), color };
+}
+
+/**
+ * The department tier's card. Mirrors `position-node.tsx`'s
+ * DepartmentNodeCard: filled rather than outlined, uppercase name, role
+ * count, and no occupancy dot or status badge — a department is a
+ * heading, not a seat. This renderer draws its own copy of every card, so
+ * the two only stay alike if they are changed together.
+ */
+function renderDepartmentCard(
+  node: SvgRenderNode,
+  position: SvgLayoutPosition,
+  roleCount: number
+): string {
+  const accentColor = resolveDepartmentColor(node.departmentColor);
+  const nameLines = wrapText(node.departmentName.toUpperCase(), 26, 2);
+
+  const parts: string[] = [];
+  parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="1">`);
+  parts.push(
+    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${EXPORT_COLORS.muted}" stroke="${accentColor}" stroke-width="2" />`
+  );
+  parts.push(`<rect x="0" y="0" width="6" height="${NODE_HEIGHT}" fill="${accentColor}" />`);
+  nameLines.forEach((line, index) => {
+    parts.push(
+      `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" letter-spacing="0.6" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
+    );
+  });
+  parts.push(
+    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${EXPORT_COLORS.mutedForeground}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
+  );
+  parts.push("</g>");
+  return parts.join("");
 }
 
 function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): string {
@@ -375,11 +414,21 @@ export function renderOrganogramSvg(
   const graphOffsetY = headerHeight;
 
   const nodesById = new Map(nodes.map((n) => [n.positionId, n]));
+  const childCountByParent = new Map<string, number>();
+  for (const edge of edges) {
+    childCountByParent.set(
+      edge.sourcePositionId,
+      (childCountByParent.get(edge.sourcePositionId) ?? 0) + 1
+    );
+  }
   const nodesSvg = nodes
     .map((node) => {
       const pos = positions.get(node.positionId);
       if (!pos) return "";
-      return renderNodeCard(node, { x: pos.x - minX, y: pos.y - minY });
+      const at = { x: pos.x - minX, y: pos.y - minY };
+      return node.kind === "department"
+        ? renderDepartmentCard(node, at, childCountByParent.get(node.positionId) ?? 0)
+        : renderNodeCard(node, at);
     })
     .join("");
 

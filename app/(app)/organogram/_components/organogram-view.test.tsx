@@ -31,9 +31,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { OrganogramView } from "./organogram-view";
-import type { OrganogramData } from "@/lib/services/organogram.service";
+import type { OrganogramChartData } from "@/lib/services/organogram.service";
 
-function makeData(overrides: Partial<OrganogramData> = {}): OrganogramData {
+function makeData(overrides: Partial<OrganogramChartData> = {}): OrganogramChartData {
   return {
     company: { name: "Acme", code: "ACME", effectiveDate: "2026-09-01" },
     nodes: [],
@@ -43,6 +43,13 @@ function makeData(overrides: Partial<OrganogramData> = {}): OrganogramData {
       extraRootCount: 0,
       cyclePositionCount: 0,
       disconnectedPositionCount: 0,
+    },
+    leadership: {
+      applied: true,
+      minGradeLevel: 7,
+      departmentGroupCount: 0,
+      shownPositionCount: 0,
+      hidden: { vacant: 0, ungraded: 0, belowGrade: 0, total: 0 },
     },
     ...overrides,
   };

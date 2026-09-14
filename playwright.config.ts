@@ -29,6 +29,16 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // Playwright drives `next dev` (see `webServer` below), so a test can
+  // be waiting on a Turbopack route compile or a cold server-action
+  // round-trip rather than on the app being slow. Under parallel workers
+  // that has repeatedly pushed navigations past the 30s default — the
+  // DEF-001 flakiness in
+  // docs/phase-reports/PHASE_13_1_PERFORMANCE_REMEDIATION.md. This buys
+  // headroom for the compile; it does not hide a broken assertion, which
+  // still fails, just later. e2e/auth.setup.ts additionally warms the
+  // heaviest routes once, before any worker starts.
+  timeout: process.env.CI ? 60_000 : 30_000,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL,

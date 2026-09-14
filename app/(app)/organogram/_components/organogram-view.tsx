@@ -36,7 +36,7 @@ import {
   serializeOrganogramUrlState,
   type OrganogramUrlState,
 } from "@/lib/domain/organogram-url-state";
-import type { OrganogramData } from "@/lib/services/organogram.service";
+import type { OrganogramChartData } from "@/lib/services/organogram.service";
 
 interface OrganogramViewProps {
   canManage: boolean;
@@ -44,14 +44,30 @@ interface OrganogramViewProps {
   canExport: boolean;
 }
 
-/** Default: root (level 1) and its direct children (level 2) visible — every level-2 node with children starts collapsed. Only meaningful in Full Company View; Position/Department Focus always start fully expanded within their own (already-bounded) subgraph. */
-function defaultCollapsedIds(data: OrganogramData): Set<string> {
+/**
+ * Default depth: show the top three display tiers and collapse anything
+ * with children below them. With the leadership view's department tier in
+ * place that reads as Founder → Departments → each department's
+ * leadership, which is exactly the shape the Demo 1 feedback asked for;
+ * without it (a raw, unprojected graph — every existing test fixture)
+ * it collapses at tier 2 exactly as it always did.
+ *
+ * Only meaningful in Full Company View; Position/Department Focus always
+ * start fully expanded within their own (already-bounded) subgraph.
+ */
+function defaultCollapsedIds(data: OrganogramChartData): Set<string> {
+  const hasDepartmentTier = data.nodes.some((n) => n.kind === "department");
+  const collapseFromTier = hasDepartmentTier ? 3 : 2;
   return new Set(
-    data.nodes.filter((n) => n.organizationalLevel === 2 && n.hasChildren).map((n) => n.positionId)
+    data.nodes
+      .filter(
+        (n) => (n.displayDepth ?? n.organizationalLevel) === collapseFromTier && n.hasChildren
+      )
+      .map((n) => n.positionId)
   );
 }
 
-function allCollapsibleIds(data: OrganogramData): Set<string> {
+function allCollapsibleIds(data: OrganogramChartData): Set<string> {
   return new Set(data.nodes.filter((n) => n.hasChildren).map((n) => n.positionId));
 }
 
@@ -63,7 +79,7 @@ export function OrganogramView({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [data, setData] = useState<OrganogramData | null>(null);
+  const [data, setData] = useState<OrganogramChartData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [layoutFailed, setLayoutFailed] = useState(false);
@@ -141,10 +157,23 @@ export function OrganogramView({
     setCollapsedIds(urlState.view === "full" ? defaultCollapsedIds(data) : new Set());
   }, [data, urlState.view, urlState.positionId, urlState.departmentId]);
 
-  const filterMatchIds = useMemo(() => {
-    if (!data) return new Set<string>();
-    return computeFilterMatchIds(data.nodes, urlState.filters);
-  }, [data, urlState.filters]);
+  /**
+   * The real Positions only — the leadership view also puts synthetic
+   * department headings in `data.nodes`, and every control that is ABOUT
+   * a position (search, filters, export scope pickers) must not offer one
+   * of those: there is no Position behind it to focus, export or filter
+   * on. They still reach the chart itself, which is the one place they
+   * mean something.
+   */
+  const positionNodes = useMemo(
+    () => (data ? data.nodes.filter((n) => n.kind !== "department") : []),
+    [data]
+  );
+
+  const filterMatchIds = useMemo(
+    () => computeFilterMatchIds(positionNodes, urlState.filters),
+    [positionNodes, urlState.filters]
+  );
 
   const filtersActive = isAnyFilterActive(urlState.filters);
 
@@ -234,9 +263,8 @@ export function OrganogramView({
   }, [data]);
 
   const selectedNode = useMemo(
-    () =>
-      data && selectedId ? (data.nodes.find((n) => n.positionId === selectedId) ?? null) : null,
-    [data, selectedId]
+    () => (selectedId ? (positionNodes.find((n) => n.positionId === selectedId) ?? null) : null),
+    [positionNodes, selectedId]
   );
 
   const focusLabel = useMemo(() => {
@@ -402,12 +430,12 @@ export function OrganogramView({
 
       <div className="flex flex-wrap items-center gap-2">
         <OrganogramSearchBox
-          nodes={data.nodes}
+          nodes={positionNodes}
           showPlanned={urlState.planned}
           onSelectResult={handleSearchSelect}
         />
         <OrganogramFilterDrawer
-          nodes={data.nodes}
+          nodes={positionNodes}
           filters={urlState.filters}
           onFiltersChange={handleFiltersChange}
           matchCount={filterMatchIds.size}
@@ -446,6 +474,35 @@ export function OrganogramView({
         onFitToView={handleFitToView}
         onResetView={handleResetView}
       />
+
+      {data.leadership.applied && data.leadership.hidden.total > 0 ? (
+        // Says out loud that this chart is a leadership view. A chart
+        // showing a fraction of the company without explaining why reads
+        // as missing data; the same chart with one line of explanation
+        // reads as a deliberate filter. The wording never implies anyone
+        // was removed — nothing here deletes a position.
+        <p role="status" className="text-muted-foreground text-xs">
+          Leadership view — named cards are L{data.leadership.minGradeLevel} and above.{" "}
+          {data.leadership.hidden.total} position
+          {data.leadership.hidden.total === 1 ? " is" : "s are"} not shown on the chart (
+          {[
+            data.leadership.hidden.belowGrade > 0
+              ? `${data.leadership.hidden.belowGrade} below L${data.leadership.minGradeLevel}`
+              : null,
+            data.leadership.hidden.vacant > 0 ? `${data.leadership.hidden.vacant} vacant` : null,
+            data.leadership.hidden.ungraded > 0
+              ? `${data.leadership.hidden.ungraded} with no level set`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(", ")}
+          ). All of them remain unchanged in{" "}
+          <Link href="/positions" className="underline">
+            Positions
+          </Link>
+          .
+        </p>
+      ) : null}
 
       {isFocusMode && focusTargetMissing ? (
         <section
@@ -523,7 +580,7 @@ export function OrganogramView({
         <OrganogramExportDialog
           open={exportDialogOpen}
           onOpenChange={setExportDialogOpen}
-          nodes={data.nodes}
+          nodes={positionNodes}
           departmentEntries={departmentLegendEntries}
           currentContext={{
             view: urlState.view,

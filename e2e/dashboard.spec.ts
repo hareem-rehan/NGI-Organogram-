@@ -29,7 +29,7 @@ test.describe.configure({ mode: "serial" });
 test.describe("Dashboard and Company Overview (Phase 7)", () => {
   const suffix = Date.now().toString(36).toUpperCase();
 
-  test("HR_EDITOR/ADMIN sees the full dashboard: summary cards, structure, vacancy, departments, warnings, and management quick actions", async ({
+  test("HR_EDITOR/ADMIN sees the full dashboard: summary cards, structure, departments, warnings, and management quick actions", async ({
     page,
   }) => {
     await page.goto("/dashboard");
@@ -39,13 +39,16 @@ test.describe("Dashboard and Company Overview (Phase 7)", () => {
     await expect(page.getByRole("link", { name: /active employees/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /active positions/i })).toBeVisible();
     await expect(page.getByText("Occupied Positions", { exact: true })).toBeVisible();
-    await expect(page.getByText("Vacant Positions", { exact: true })).toBeVisible();
     await expect(page.getByText("Planned Positions", { exact: true })).toBeVisible();
+    // Removed on the Demo 1 stakeholder feedback — the dashboard no
+    // longer leads with how many seats are empty. The per-department
+    // Vacant column in the Departments table below is untouched.
+    await expect(page.getByText("Vacant Positions", { exact: true })).toHaveCount(0);
 
     await expect(page.getByRole("heading", { name: "Organizational structure" })).toBeVisible();
     await expect(page.getByText(/root position/i)).toBeVisible();
 
-    await expect(page.getByRole("heading", { name: "Vacancy overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Vacancy overview" })).toHaveCount(0);
 
     await expect(page.getByRole("heading", { name: "Departments" })).toBeVisible();
     await expect(page.getByRole("table", { name: /department summary/i })).toBeVisible();
@@ -144,16 +147,19 @@ test.describe("Dashboard and Company Overview (Phase 7)", () => {
     }).toPass();
   });
 
-  test("Vacant Positions links to the Positions page filtered to vacant, active positions", async ({
+  // Reversed on 2026-09-14 (Demo 1 stakeholder feedback). The dashboard's
+  // "Vacant Positions" card was removed, so there is no link here to
+  // follow. The DESTINATION it used to point at is unchanged and still
+  // reachable — vacancies were taken off the dashboard, not out of the
+  // product — so this now proves that filtered Positions view still works
+  // when navigated to directly.
+  test("the vacancy-filtered Positions view still works, though the dashboard no longer links to it", async ({
     page,
   }) => {
     await page.goto("/dashboard");
-    const link = page.getByRole("link", { name: /^vacant positions/i });
-    await expect(link).toHaveAttribute("href", /status=ACTIVE/);
-    await expect(link).toHaveAttribute("href", /occupancy=vacant/);
+    await expect(page.getByRole("link", { name: /^vacant positions/i })).toHaveCount(0);
 
-    await link.click();
-    await expect(page).toHaveURL(/\/positions\?/);
+    await page.goto("/positions?status=ACTIVE&occupancy=vacant");
     await expect(page.getByRole("heading", { level: 1, name: "Positions" })).toBeVisible();
     await expect(page.getByRole("status", { name: /loading/i })).toHaveCount(0);
     const rows = page.getByRole("row").filter({ hasText: "Vacant" });

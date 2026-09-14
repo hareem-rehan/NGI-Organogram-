@@ -475,3 +475,82 @@ describe("renderOrganogramSvg", () => {
     expect(planned.svg).toContain(`fill="${EXPORT_COLORS.statusPlanned}">PLANNED`);
   });
 });
+
+describe("renderOrganogramSvg — department tier", () => {
+  const POSITIONS = new Map([
+    ["root", { x: 0, y: 0 }],
+    ["dept:eng", { x: 0, y: 200 }],
+  ]);
+
+  function renderWithDepartment(overrides: Partial<SvgRenderNode> = {}) {
+    return renderOrganogramSvg(
+      [
+        node({
+          positionId: "root",
+          title: "CEO",
+          occupancyStatus: "occupied",
+          occupantDisplayName: "Ada",
+        }),
+        node({
+          positionId: "dept:eng",
+          kind: "department",
+          title: "Engineering",
+          departmentName: "Engineering",
+          occupancyStatus: "occupied",
+          ...overrides,
+        }),
+      ],
+      [{ sourcePositionId: "root", targetPositionId: "dept:eng" }],
+      POSITIONS,
+      METADATA,
+      BASE_OPTIONS
+    ).svg;
+  }
+
+  it("draws the department name in caps with its role count", () => {
+    const svg = renderWithDepartment();
+    expect(svg).toContain(">ENGINEERING<");
+    expect(svg).toContain(">0 roles<");
+  });
+
+  it("counts the roles from the edges actually being drawn", () => {
+    const svg = renderOrganogramSvg(
+      [
+        node({ positionId: "dept:eng", kind: "department", departmentName: "Engineering" }),
+        node({ positionId: "a" }),
+        node({ positionId: "b" }),
+      ],
+      [
+        { sourcePositionId: "dept:eng", targetPositionId: "a" },
+        { sourcePositionId: "dept:eng", targetPositionId: "b" },
+      ],
+      new Map([
+        ["dept:eng", { x: 0, y: 0 }],
+        ["a", { x: 0, y: 200 }],
+        ["b", { x: 300, y: 200 }],
+      ]),
+      METADATA,
+      BASE_OPTIONS
+    ).svg;
+    expect(svg).toContain(">2 roles<");
+  });
+
+  it("gives a department heading no occupancy dot and no 'Vacant' text", () => {
+    // Drawn on its own, so the assertion cannot be satisfied by some
+    // other card on the page.
+    const svg = renderOrganogramSvg(
+      [node({ positionId: "dept:eng", kind: "department", departmentName: "Engineering" })],
+      [],
+      new Map([["dept:eng", { x: 0, y: 0 }]]),
+      METADATA,
+      { ...BASE_OPTIONS, includeLegend: false }
+    ).svg;
+    expect(svg).not.toContain(">Vacant<");
+    expect(svg).not.toContain("<circle");
+  });
+
+  it("fills the card rather than outlining it, so it never reads as a person", () => {
+    const svg = renderWithDepartment();
+    expect(svg).toContain(`fill="${EXPORT_COLORS.muted}"`);
+  });
+});

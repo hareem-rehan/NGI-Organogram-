@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { seedAuthenticatedSession } from "./support/seed-session";
+import { gradePositions, occupyPosition, seedJobGradeScale } from "./support/chart-fixtures";
 import { signInAs } from "./support/sign-in-as";
 
 // Same isolated-company pattern as e2e/organogram.spec.ts (Phase 8) — one
@@ -10,8 +11,14 @@ import { signInAs } from "./support/sign-in-as";
 // company no other spec file mutates concurrently.
 test.describe.configure({ mode: "serial" });
 
-function nodeCard(page: Page, title: string) {
-  return page.getByRole("button", { name: new RegExp(`^${title}`) });
+/**
+ * The compact card is person-first since the Demo 1 feedback, so its
+ * accessible name starts with the occupant, not the title — anchoring on
+ * the occupant keeps each query unambiguous against the node's own
+ * expand/collapse button ("Expand <title> ...").
+ */
+function nodeCard(page: Page, occupantName: string) {
+  return page.getByRole("button", { name: new RegExp(`^${occupantName}`) });
 }
 
 test.describe("Organogram search, filters, and focus (Phase 9)", () => {
@@ -28,14 +35,25 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
   const engManagerCode = `E2E-SEARCH-EM-${suffix}`;
   const engineerTitle = `E2E Search Engineer ${suffix}`;
   const engineerCode = `E2E-SEARCH-ENG-${suffix}`;
+  // Graded as leadership but never filled — the chart leaves it out.
+  const vacantTitle = `E2E Search Vacant Lead ${suffix}`;
+  const vacantCode = `E2E-SEARCH-VAC-${suffix}`;
   const employeeFirstName = "Nadia";
   const employeeLastName = `Volkov${suffix}`;
   const employeeCode = `E2E-SEARCH-EMP-${suffix}`;
 
+  // Every chart node is addressed by its occupant.
+  const vpEngOccupant = `${employeeFirstName} ${employeeLastName}`;
+  const ceoOccupant = `Rosalind Search${suffix}`;
+  const vpSalesOccupant = `Katherine Search${suffix}`;
+  const engManagerOccupant = `Dorothy Search${suffix}`;
+  const engineerOccupant = `Mary Search${suffix}`;
+
   let adminCookieValue: string;
+  let companyId: string;
 
   test.beforeAll(async () => {
-    ({ cookieValue: adminCookieValue } = await seedAuthenticatedSession("ADMIN"));
+    ({ cookieValue: adminCookieValue, companyId } = await seedAuthenticatedSession("ADMIN"));
   });
 
   test.beforeEach(async ({ page, baseURL }) => {
@@ -120,6 +138,12 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
       department: deptEngName,
       reportsTo: engManagerTitle,
     });
+    await createPosition({
+      title: vacantTitle,
+      code: vacantCode,
+      department: deptSalesName,
+      reportsTo: vpSalesTitle,
+    });
 
     // Assign one employee to VP Engineering so it's searchable by name
     // and testable as an "Occupied" filter match.
@@ -142,6 +166,27 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     await page.getByRole("option", { name: new RegExp(vpEngTitle) }).click();
     await dialog.getByRole("button", { name: /^assign$/i }).click();
     await expect(dialog).toBeHidden();
+
+    // The chart draws only graded, occupied positions (docs/DECISIONS.md
+    // §2b), so the rest of the hierarchy is graded and filled directly —
+    // the assignment UI itself is exercised above and in
+    // employees.spec.ts; these tests are about search, filters and focus.
+    await seedJobGradeScale(companyId);
+    await gradePositions(companyId, "L18", [ceoCode]);
+    await gradePositions(companyId, "L15", [vpEngCode, vpSalesCode]);
+    await gradePositions(companyId, "L10", [engManagerCode]);
+    await gradePositions(companyId, "L7", [engineerCode]);
+    await gradePositions(companyId, "L10", [vacantCode]);
+
+    for (const [code, name] of [
+      [ceoCode, ceoOccupant],
+      [vpSalesCode, vpSalesOccupant],
+      [engManagerCode, engManagerOccupant],
+      [engineerCode, engineerOccupant],
+    ] as const) {
+      const [firstName = name, lastName = ""] = name.split(" ");
+      await occupyPosition(companyId, code, { firstName, lastName });
+    }
   });
 
   test("search by employee name selects the result and switches to Position Focus", async ({
@@ -155,9 +200,9 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
 
     await expect(page).toHaveURL(/view=position/);
     await expect(page.getByText("Position Focus")).toBeVisible();
-    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
+    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
     // Ancestor context (CEO) is present even though it's not itself a search match.
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
   });
 
   test("search by position title", async ({ page }) => {
@@ -174,12 +219,21 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     await expect(page.getByRole("option", { name: new RegExp(engManagerTitle) })).toBeVisible();
   });
 
-  test("a vacant position is fully searchable and selectable", async ({ page }) => {
+  // Reversed on 2026-09-14 (Demo 1 stakeholder feedback). This used to
+  // assert that a vacant position was searchable and selectable FROM THE
+  // CHART. Vacant positions are no longer drawn on the chart at all, so
+  // the chart's own search — which searches what the chart shows — cannot
+  // offer one. Nothing was deleted: the position is still listed,
+  // searchable and editable on /positions, which is what this now proves.
+  test("a vacant position is absent from the chart and its search, but still on Positions", async ({
+    page,
+  }) => {
     await page.goto("/organogram");
-    await page.getByRole("combobox", { name: /search the organization chart/i }).fill(vpSalesTitle);
-    await page.getByRole("option", { name: new RegExp(vpSalesTitle) }).click();
-    await expect(page).toHaveURL(/view=position/);
-    await expect(nodeCard(page, vpSalesTitle)).toBeVisible();
+    await page.getByRole("combobox", { name: /search the organization chart/i }).fill(vacantTitle);
+    await expect(page.getByRole("option", { name: new RegExp(vacantTitle) })).toHaveCount(0);
+
+    await page.goto("/positions");
+    await expect(page.getByText(vacantTitle)).toBeVisible();
   });
 
   test("selecting a deep result auto-expands its full ancestor path", async ({ page }) => {
@@ -191,17 +245,17 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
 
     // Position Focus for a leaf shows its entire ancestor chain (CEO -> VP
     // Eng -> Eng Manager -> Engineer), never just the leaf in isolation.
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
-    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
-    await expect(nodeCard(page, engManagerTitle)).toBeVisible();
-    await expect(nodeCard(page, engineerTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
+    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
+    await expect(nodeCard(page, engManagerOccupant)).toBeVisible();
+    await expect(nodeCard(page, engineerOccupant)).toBeVisible();
   });
 
   test("filter by department narrows the visible graph to matches plus real ancestor context", async ({
     page,
   }) => {
     await page.goto("/organogram");
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
     await page.getByRole("checkbox", { name: deptSalesName }).check();
     // The filter drawer is a modal Sheet — Radix marks the rest of the
@@ -209,109 +263,123 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     // queries are unreliable until it closes.
     await page.keyboard.press("Escape");
 
-    await expect(nodeCard(page, vpSalesTitle)).toBeVisible();
+    await expect(nodeCard(page, vpSalesOccupant)).toBeVisible();
     // CEO is real ancestor context, not a Sales-department match, but must
     // still render to preserve the true reporting path.
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
     // Engineering-only positions are excluded entirely — never falsely
     // reattributed to Sales.
-    await expect(nodeCard(page, vpEngTitle)).toHaveCount(0);
+    await expect(nodeCard(page, vpEngOccupant)).toHaveCount(0);
   });
 
   test("filter by organizational level", async ({ page }) => {
     await page.goto("/organogram");
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
     await page.getByRole("checkbox", { name: "Level 1" }).check();
     await page.keyboard.press("Escape");
 
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
-    await expect(nodeCard(page, vpEngTitle)).toHaveCount(0);
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
+    await expect(nodeCard(page, vpEngOccupant)).toHaveCount(0);
   });
 
-  test("filter by occupancy — occupied", async ({ page }) => {
+  // Reversed on 2026-09-14 (Demo 1 stakeholder feedback). The Occupied
+  // filter used to be what removed vacant cards; the chart now excludes
+  // them before any filter runs. So Occupied is a no-op here and Vacant
+  // matches nothing — which is exactly what this asserts, rather than
+  // pretending the old distinction still exists.
+  test("filter by occupancy — the chart is already occupied-only", async ({ page }) => {
     await page.goto("/organogram");
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
     await page.getByRole("radio", { name: "Occupied" }).check();
     await page.keyboard.press("Escape");
 
-    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
-    await expect(nodeCard(page, vpSalesTitle)).toHaveCount(0);
+    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
+    await expect(nodeCard(page, vpSalesOccupant)).toBeVisible();
+
+    await page.getByRole("button", { name: /^filters/i }).click();
+    await page.getByRole("radio", { name: "Vacant" }).check();
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("No matching positions")).toBeVisible();
   });
 
   test("combined filters narrow further than either alone", async ({ page }) => {
+    // Sales alone matches VP Sales; Level 1 alone matches the CEO (who is
+    // in Engineering). Together they match nobody — the clearest possible
+    // demonstration that the two filters intersect rather than union.
     await page.goto("/organogram");
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
-    await page.getByRole("checkbox", { name: deptEngName }).check();
-    await page.getByRole("radio", { name: "Occupied" }).check();
+    await page.getByRole("checkbox", { name: deptSalesName }).check();
     await page.keyboard.press("Escape");
+    await expect(nodeCard(page, vpSalesOccupant)).toBeVisible();
 
-    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
-    // Eng Manager is Engineering but vacant — excluded by the occupancy filter.
-    await expect(nodeCard(page, engManagerTitle)).toHaveCount(0);
+    await page.getByRole("button", { name: /^filters/i }).click();
+    await page.getByRole("checkbox", { name: "Level 1" }).check();
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("No matching positions")).toBeVisible();
   });
 
   test("Clear All Filters restores the full structure", async ({ page }) => {
     await page.goto("/organogram");
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
     await page.getByRole("checkbox", { name: deptSalesName }).check();
     await page.keyboard.press("Escape");
-    await expect(nodeCard(page, vpEngTitle)).toHaveCount(0);
+    await expect(nodeCard(page, vpEngOccupant)).toHaveCount(0);
 
     await page.getByRole("button", { name: /^filters/i }).click();
 
     await page.getByRole("button", { name: /clear all filters/i }).click();
     await page.keyboard.press("Escape");
-    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
+    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
   });
 
   test("Position Focus via the details panel, then change descendant depth", async ({ page }) => {
     await page.goto("/organogram");
-    await nodeCard(page, vpEngTitle).click();
+    await nodeCard(page, vpEngOccupant).click();
     await page.getByRole("button", { name: /focus on this position/i }).click();
 
     // VP Eng -> Eng Manager -> Engineer is exactly 2 levels, so the
     // default depth (Two Levels) already shows the whole subtree.
     await expect(page).toHaveURL(/view=position/);
-    await expect(nodeCard(page, engManagerTitle)).toBeVisible();
-    await expect(nodeCard(page, engineerTitle)).toBeVisible();
+    await expect(nodeCard(page, engManagerOccupant)).toBeVisible();
+    await expect(nodeCard(page, engineerOccupant)).toBeVisible();
 
     // Direct Reports Only (depth 1) hides the grandchild.
     await page.getByRole("combobox", { name: /descendant depth/i }).selectOption("1");
-    await expect(nodeCard(page, engManagerTitle)).toBeVisible();
-    await expect(nodeCard(page, engineerTitle)).toHaveCount(0);
+    await expect(nodeCard(page, engManagerOccupant)).toBeVisible();
+    await expect(nodeCard(page, engineerOccupant)).toHaveCount(0);
 
     // All Descendants brings it back.
     await page.getByRole("combobox", { name: /descendant depth/i }).selectOption("all");
-    await expect(nodeCard(page, engineerTitle)).toBeVisible();
+    await expect(nodeCard(page, engineerOccupant)).toBeVisible();
   });
 
   test("Department Focus via the details panel shows cross-department context correctly", async ({
     page,
   }) => {
     await page.goto("/organogram");
-    await nodeCard(page, vpSalesTitle).click();
+    await nodeCard(page, vpSalesOccupant).click();
     await page.getByRole("button", { name: /focus on this department/i }).click();
 
     await expect(page).toHaveURL(/view=department/);
     await expect(page.getByText("Department Focus")).toBeVisible();
-    await expect(nodeCard(page, vpSalesTitle)).toBeVisible();
+    await expect(nodeCard(page, vpSalesOccupant)).toBeVisible();
     // CEO (a different department) is pulled in as real ancestor context.
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
   });
 
   test("Return to Full Company View", async ({ page }) => {
     await page.goto("/organogram");
-    await nodeCard(page, vpEngTitle).click();
+    await nodeCard(page, vpEngOccupant).click();
     await page.getByRole("button", { name: /focus on this position/i }).click();
     await expect(page).toHaveURL(/view=position/);
 
     await page.getByRole("button", { name: /full company view/i }).click();
     await expect(page).not.toHaveURL(/view=position/);
-    await expect(nodeCard(page, vpSalesTitle)).toBeVisible();
+    await expect(nodeCard(page, vpSalesOccupant)).toBeVisible();
   });
 
   test("Copy View Link copies a URL that reopens the identical authorized view", async ({
@@ -321,7 +389,7 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
   }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/organogram");
-    await nodeCard(page, vpEngTitle).click();
+    await nodeCard(page, vpEngOccupant).click();
     await page.getByRole("button", { name: /focus on this position/i }).click();
 
     await page.getByRole("button", { name: /copy view link/i }).click();
@@ -333,12 +401,12 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     expect(copiedUrl).not.toContain("@");
 
     await page.goto(copiedUrl.replace(baseURL ?? "http://127.0.0.1:3100", ""));
-    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
+    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
   });
 
   test("browser Back and Forward restore filter/focus state", async ({ page }) => {
     await page.goto("/organogram");
-    await nodeCard(page, vpEngTitle).click();
+    await nodeCard(page, vpEngOccupant).click();
     await page.getByRole("button", { name: /focus on this position/i }).click();
     await expect(page).toHaveURL(/view=position/);
 
@@ -347,7 +415,7 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
 
     await page.goForward();
     await expect(page).toHaveURL(/view=position/);
-    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
+    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
   });
 
   test("an invalid Position Focus deep link shows a safe not-found state, never a crash", async ({
@@ -365,7 +433,7 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     // Capture THIS company's real VP Engineering position id from its
     // own Position Focus URL — a genuine id, not a garbage one.
     await page.goto("/organogram");
-    await nodeCard(page, vpEngTitle).click();
+    await nodeCard(page, vpEngOccupant).click();
     await page.getByRole("button", { name: /focus on this position/i }).click();
     await expect(page).toHaveURL(/view=position/);
     const focusedUrl = new URL(page.url());
@@ -387,12 +455,12 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
   test("mobile viewport: the filter drawer opens and applies a filter", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/organogram");
-    await expect(nodeCard(page, ceoTitle)).toBeVisible();
+    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
     await page.getByRole("button", { name: /^filters/i }).click();
     await expect(page.getByRole("checkbox", { name: deptSalesName })).toBeVisible();
     await page.getByRole("checkbox", { name: deptSalesName }).check();
     await page.keyboard.press("Escape");
-    await expect(nodeCard(page, vpSalesTitle)).toBeVisible();
+    await expect(nodeCard(page, vpSalesOccupant)).toBeVisible();
   });
 
   test("keyboard-only: Tab reaches the search box and Enter-driven selection works", async ({
@@ -408,6 +476,6 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/view=position/);
-    await expect(nodeCard(page, vpSalesTitle)).toBeVisible();
+    await expect(nodeCard(page, vpSalesOccupant)).toBeVisible();
   });
 });

@@ -20,7 +20,7 @@ import {
   renderSvgToPng,
 } from "@/lib/domain/export/png-renderer";
 import { PdfPageLimitError, renderOrganogramPdf } from "@/lib/domain/export/pdf-renderer";
-import { getOrganogramData } from "@/lib/services/organogram.service";
+import { getOrganogramChartData } from "@/lib/services/organogram.service";
 import { recordAuditEvent } from "@/lib/services/audit.service";
 import type { DbClient } from "@/lib/repositories/types";
 import {
@@ -113,8 +113,8 @@ export interface RequestExportInput {
  * UI are forward-compatible with a future async worker without a
  * migration, per CLAUDE.md §5's "safest reversible default."
  *
- * Reuses `getOrganogramData` (the exact same company-scoped, safety-
- * filtered read the interactive chart uses), `buildExportSubgraph`
+ * Reuses `getOrganogramChartData` (the exact same company-scoped,
+ * safety-filtered, leadership-projected read the interactive chart uses), `buildExportSubgraph`
  * (Phase 9's own focus/filter functions), and `computeElkLayout` (the
  * interactive chart's own layout engine) — never an independent
  * recalculation of hierarchy or layout (organogram-hierarchy-safety
@@ -131,7 +131,9 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     throw error;
   }
 
-  const organogram = await getOrganogramData({ companyId: input.companyId });
+  // The CHART's read, not the full-company one: an exported file must be
+  // the same organogram the user was looking at when they pressed Export.
+  const organogram = await getOrganogramChartData({ companyId: input.companyId });
 
   const subgraph = buildExportSubgraph(organogram.nodes, organogram.edges, {
     scope: resolved.scope,
@@ -149,7 +151,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     );
   }
 
-  // Defensive-only under the current schema: `getOrganogramData` already
+  // Defensive-only under the current schema: the underlying read already
   // caps the underlying position read at 2000
   // (organogram.repository.ts), below MAX_EXPORT_NODE_COUNT, so this can
   // never fire via real data today — it exists so a future increase to
@@ -192,6 +194,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
   const svgResult = renderOrganogramSvg(
     subgraph.nodes.map((n) => ({
       positionId: n.positionId,
+      kind: n.kind,
       title: n.title,
       positionCode: n.positionCode,
       departmentName: n.departmentName,

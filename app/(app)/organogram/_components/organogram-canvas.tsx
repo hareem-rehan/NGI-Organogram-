@@ -159,6 +159,12 @@ function CanvasInner({
     ]
   );
 
+  const shownDepartmentCount = useMemo(
+    () => visibleNodes.filter((n) => n.kind === "department").length,
+    [visibleNodes]
+  );
+  const shownPositionCount = visibleNodes.length - shownDepartmentCount;
+
   const flowEdges = useMemo<Edge[]>(
     () =>
       visibleEdges
@@ -200,7 +206,14 @@ function CanvasInner({
       <Controls showInteractive={false} />
       <Panel position="top-right">
         <div className="text-muted-foreground bg-background/90 rounded-md border px-2 py-1 text-xs shadow-sm">
-          {visibleNodes.length} position{visibleNodes.length === 1 ? "" : "s"} shown
+          {/* Counted apart, because a department heading is not a
+              position — lumping them together would overstate how much
+              of the company is on screen. */}
+          {shownPositionCount} position{shownPositionCount === 1 ? "" : "s"}
+          {shownDepartmentCount > 0
+            ? ` · ${shownDepartmentCount} department${shownDepartmentCount === 1 ? "" : "s"}`
+            : ""}{" "}
+          shown
         </div>
       </Panel>
       <Panel position="bottom-left">

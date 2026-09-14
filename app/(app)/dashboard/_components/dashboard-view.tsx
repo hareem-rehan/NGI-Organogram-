@@ -90,7 +90,6 @@ export function DashboardView({ canManage }: DashboardViewProps) {
     departments,
     positions,
     employees,
-    vacancyRate,
     departmentSummaries,
     warnings,
     sectionErrors,
@@ -149,7 +148,7 @@ export function DashboardView({ canManage }: DashboardViewProps) {
         <h2 id="dashboard-summary-heading" className="text-foreground mb-3 text-base font-semibold">
           Summary
         </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <SummaryCard
             label="Active Employees"
             value={employees.active}
@@ -161,11 +160,14 @@ export function DashboardView({ canManage }: DashboardViewProps) {
             href="/positions?status=ACTIVE"
           />
           <SummaryCard label="Occupied Positions" value={positions.occupied} />
-          <SummaryCard
-            label="Vacant Positions"
-            value={positions.vacant}
-            href="/positions?status=ACTIVE&occupancy=vacant"
-          />
+          {/* "Vacant Positions" and the "Vacancy overview" section that
+              used to follow the structure summary were removed on the
+              Demo 1 stakeholder feedback: the chart and the dashboard
+              should not lead with how many seats are empty. Nothing about
+              the underlying data changed — `positions.vacant` and
+              `vacancyRate` are still computed by the dashboard service and
+              still exposed per-department in the Departments table below,
+              and the vacancy filter on /positions is untouched. */}
           <SummaryCard
             label="Planned Positions"
             value={positions.planned}
@@ -252,30 +254,6 @@ export function DashboardView({ canManage }: DashboardViewProps) {
               </table>
             )}
           </div>
-        </div>
-      </section>
-
-      <section aria-labelledby="dashboard-vacancy-heading">
-        <h2 id="dashboard-vacancy-heading" className="text-foreground mb-3 text-base font-semibold">
-          Vacancy overview
-        </h2>
-        <div className="border-border rounded-lg border p-4">
-          <p className="text-foreground text-sm">
-            <span className="text-2xl font-semibold">
-              {vacancyRate.percent === null ? "—" : `${vacancyRate.percent}%`}
-            </span>{" "}
-            <span className="text-muted-foreground">
-              ({vacancyRate.vacantCount} of {vacancyRate.eligibleCount} eligible active position
-              {vacancyRate.eligibleCount === 1 ? "" : "s"} vacant)
-            </span>
-          </p>
-          <p className="text-muted-foreground mt-1 text-xs">
-            Eligible active positions are Active positions in an Active department. Planned and
-            Inactive positions are never counted.
-          </p>
-          <Button asChild variant="outline" size="sm" className="mt-3">
-            <Link href="/positions?status=ACTIVE&occupancy=vacant">View vacant positions</Link>
-          </Button>
         </div>
       </section>
 

@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermissionMock, getOrganogramDataMock } = vi.hoisted(() => ({
+const { requirePermissionMock, getOrganogramChartDataMock } = vi.hoisted(() => ({
   requirePermissionMock: vi.fn(),
-  getOrganogramDataMock: vi.fn(),
+  getOrganogramChartDataMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({
   requirePermission: requirePermissionMock,
 }));
 vi.mock("@/lib/services/organogram.service", () => ({
-  getOrganogramData: getOrganogramDataMock,
+  getOrganogramChartData: getOrganogramChartDataMock,
 }));
 
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
@@ -22,7 +22,7 @@ describe("getOrganogramAction — server-side authorization", () => {
 
   it("requires organogram:view", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
-    getOrganogramDataMock.mockResolvedValue({});
+    getOrganogramChartDataMock.mockResolvedValue({});
 
     await getOrganogramAction();
 
@@ -39,7 +39,7 @@ describe("getOrganogramAction — server-side authorization", () => {
       error: "You don't have permission to do that.",
       authRedirect: "/access-denied",
     });
-    expect(getOrganogramDataMock).not.toHaveBeenCalled();
+    expect(getOrganogramChartDataMock).not.toHaveBeenCalled();
   });
 
   it("an unauthenticated caller is blocked before the service layer ever runs", async () => {
@@ -49,23 +49,23 @@ describe("getOrganogramAction — server-side authorization", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.authRedirect).toBe("/sign-in");
-    expect(getOrganogramDataMock).not.toHaveBeenCalled();
+    expect(getOrganogramChartDataMock).not.toHaveBeenCalled();
   });
 
   it("companyId always comes from the authenticated session, never from any input (the action takes none)", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
-    getOrganogramDataMock.mockResolvedValue({});
+    getOrganogramChartDataMock.mockResolvedValue({});
 
     await getOrganogramAction();
 
-    expect(getOrganogramDataMock).toHaveBeenCalledWith(
+    expect(getOrganogramChartDataMock).toHaveBeenCalledWith(
       expect.objectContaining({ companyId: ADMIN_USER.companyId })
     );
   });
 
   it("an unexpected service failure never leaks a raw error — returns the generic safe fallback message", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
-    getOrganogramDataMock.mockRejectedValue(
+    getOrganogramChartDataMock.mockRejectedValue(
       new Error("connection to server at ... failed: password=hunter2")
     );
 
