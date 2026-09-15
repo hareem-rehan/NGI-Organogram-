@@ -8,6 +8,7 @@ const { requirePermissionMock, serviceMocks, repositoryMocks } = vi.hoisted(() =
     moveDepartment: vi.fn(),
     archiveDepartment: vi.fn(),
     reactivateDepartment: vi.fn(),
+    deleteDepartment: vi.fn(),
   },
   repositoryMocks: {
     listDepartmentsForCompany: vi.fn(),
@@ -23,6 +24,7 @@ import { ForbiddenError } from "@/lib/auth/errors";
 import {
   archiveDepartmentAction,
   createDepartmentAction,
+  deleteDepartmentAction,
   listAllDepartmentsAction,
   listDepartmentsAction,
   moveDepartmentAction,
@@ -75,6 +77,10 @@ describe("department actions — server-side authorization", () => {
       "reactivateDepartmentAction",
       () => reactivateDepartmentAction({ departmentId: "11111111-1111-4111-8111-111111111111" }),
     ],
+    [
+      "deleteDepartmentAction",
+      () => deleteDepartmentAction({ departmentId: "11111111-1111-4111-8111-111111111111" }),
+    ],
   ])("%s requires departments:manage", async (_name, invoke) => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
     serviceMocks.createDepartment.mockResolvedValue({});
@@ -82,6 +88,7 @@ describe("department actions — server-side authorization", () => {
     serviceMocks.moveDepartment.mockResolvedValue({});
     serviceMocks.archiveDepartment.mockResolvedValue({});
     serviceMocks.reactivateDepartment.mockResolvedValue({});
+    serviceMocks.deleteDepartment.mockResolvedValue(undefined);
 
     await invoke();
 
@@ -128,5 +135,42 @@ describe("department actions — server-side authorization", () => {
         ADMIN_USER.companyId
       );
     }
+  });
+
+  it("deleteDepartmentAction passes the session's companyId, never one from the payload", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.deleteDepartment.mockResolvedValue(undefined);
+
+    await deleteDepartmentAction({
+      departmentId: "11111111-1111-4111-8111-111111111111",
+      companyId: "attacker-company",
+    });
+
+    // `.strict()`, so the forged field is a validation rejection rather
+    // than something silently dropped — either way the service never sees
+    // the attacker's company.
+    if (serviceMocks.deleteDepartment.mock.calls.length > 0) {
+      expect(serviceMocks.deleteDepartment.mock.calls[0]?.[1]).toBe(ADMIN_USER.companyId);
+    }
+  });
+
+  it("a VIEWER cannot delete a department — the service is never reached", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+
+    const result = await deleteDepartmentAction({
+      departmentId: "11111111-1111-4111-8111-111111111111",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.deleteDepartment).not.toHaveBeenCalled();
+  });
+
+  it("deleteDepartmentAction rejects a malformed department id before calling the service", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+
+    const result = await deleteDepartmentAction({ departmentId: "not-a-uuid" });
+
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.deleteDepartment).not.toHaveBeenCalled();
   });
 });

@@ -58,5 +58,70 @@ test.describe("Department management (Phase 4)", () => {
     await expect(page.getByRole("button", { name: /add department/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^edit$/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /deactivate/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^delete$/i })).toHaveCount(0);
+  });
+
+  test("an empty department can be deleted, and the confirm step is not skippable", async ({
+    page,
+  }) => {
+    await page.goto("/departments");
+
+    const code = `E2E-DEL-${Date.now().toString(36).toUpperCase()}`;
+    const name = `E2E Deletable ${code}`;
+    await page.getByRole("button", { name: /add department/i }).click();
+    const createDialog = page.getByRole("dialog");
+    await createDialog.getByLabel(/name/i).fill(name);
+    await createDialog.getByLabel(/code/i).fill(code);
+    await createDialog.getByRole("button", { name: /create department/i }).click();
+    await expect(createDialog).toBeHidden();
+
+    const row = page.getByRole("row").filter({ hasText: code });
+    await expect(row).toBeVisible();
+
+    // Cancelling leaves it alone — a destructive action is never one click.
+    await row.getByRole("button", { name: /^delete$/i }).click();
+    await expect(page.getByRole("heading", { name: /delete department/i })).toBeVisible();
+    await page.getByRole("button", { name: /^cancel$/i }).click();
+    await expect(row).toBeVisible();
+
+    await row.getByRole("button", { name: /^delete$/i }).click();
+    await page.getByRole("button", { name: "Delete" }).click();
+
+    await expect(page.getByRole("row").filter({ hasText: code })).toHaveCount(0);
+
+    // Gone from the server too, not just from this rendered list.
+    await page.reload();
+    await expect(page.getByText(code)).toHaveCount(0);
+  });
+
+  test("a department that still has positions cannot be deleted, and is told why", async ({
+    page,
+  }) => {
+    // positions.spec.ts runs to completion before this file starts (see
+    // playwright.config.ts's "positions-first" project) and leaves this
+    // shared company with a department that has positions in it — exactly
+    // the state this needs, without creating a second root position here.
+    await page.goto("/departments");
+    const row = page
+      .getByRole("row")
+      .filter({ hasText: /E2E Positions Dept/ })
+      .first();
+    await expect(row).toBeVisible();
+
+    await row.getByRole("button", { name: /^delete$/i }).click();
+    await page.getByRole("button", { name: "Delete" }).click();
+
+    // A named blocker and a route forward, not a generic failure.
+    await expect(page.getByText(/cannot be deleted/i)).toBeVisible();
+    await expect(page.getByText(/deactivate this department instead/i)).toBeVisible();
+
+    // Refused means nothing changed.
+    await page.reload();
+    await expect(
+      page
+        .getByRole("row")
+        .filter({ hasText: /E2E Positions Dept/ })
+        .first()
+    ).toBeVisible();
   });
 });

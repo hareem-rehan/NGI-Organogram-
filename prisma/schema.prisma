@@ -96,6 +96,10 @@ enum AuditCategory {
 enum AuditAction {
   CREATED
   UPDATED
+  /// Hard delete. Only reachable for a Department with nothing referencing
+  /// it (see lib/services/department.service.ts) — ARCHIVED remains the
+  /// normal way to retire something that is still referenced.
+  DELETED
   ARCHIVED
   REACTIVATED
   ASSIGNED

@@ -72,6 +72,13 @@ export const departmentStatusChangeSchema = z
   })
   .strict();
 
+/** Same shape as a status change, but a separate schema so the destructive path can never widen by accident. */
+export const deleteDepartmentSchema = z
+  .object({
+    departmentId: z.string().uuid(),
+  })
+  .strict();
+
 export const listDepartmentsQuerySchema = z
   .object({
     search: searchQuerySchema,

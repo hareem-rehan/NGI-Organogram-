@@ -8,11 +8,13 @@ const {
   listAllDepartmentsActionMock,
   archiveDepartmentActionMock,
   reactivateDepartmentActionMock,
+  deleteDepartmentActionMock,
 } = vi.hoisted(() => ({
   listDepartmentsActionMock: vi.fn(),
   listAllDepartmentsActionMock: vi.fn(),
   archiveDepartmentActionMock: vi.fn(),
   reactivateDepartmentActionMock: vi.fn(),
+  deleteDepartmentActionMock: vi.fn(),
 }));
 
 vi.mock("@/app/(app)/departments/actions", () => ({
@@ -20,6 +22,7 @@ vi.mock("@/app/(app)/departments/actions", () => ({
   listAllDepartmentsAction: listAllDepartmentsActionMock,
   archiveDepartmentAction: archiveDepartmentActionMock,
   reactivateDepartmentAction: reactivateDepartmentActionMock,
+  deleteDepartmentAction: deleteDepartmentActionMock,
 }));
 
 // See the identical mock/rationale in positions-view.test.tsx — RTL's
@@ -96,6 +99,7 @@ describe("DepartmentsView", () => {
     expect(screen.queryByRole("button", { name: /add department/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /edit/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /deactivate/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^delete$/i })).not.toBeInTheDocument();
   });
 
   it("shows Add Department and row actions for an HR_EDITOR/ADMIN (canManage=true)", async () => {
@@ -111,6 +115,7 @@ describe("DepartmentsView", () => {
     expect(screen.getByRole("button", { name: /add department/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /deactivate/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^delete$/i })).toBeInTheDocument();
   });
 
   it("re-queries the server when the search input changes", async () => {
@@ -178,6 +183,57 @@ describe("DepartmentsView", () => {
     await waitFor(() =>
       expect(archiveDepartmentActionMock).toHaveBeenCalledWith({ departmentId: "dept-1" })
     );
+  });
+
+  it("confirms before deleting, then calls deleteDepartmentAction", async () => {
+    listDepartmentsActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [makeDepartment()], totalCount: 1 },
+    });
+    listAllDepartmentsActionMock.mockResolvedValue({ ok: true, data: [] });
+    deleteDepartmentActionMock.mockResolvedValue({ ok: true, data: null });
+    const user = userEvent.setup();
+
+    render(<DepartmentsView canManage={true} />);
+    await screen.findByText("Engineering");
+
+    // Never a one-click destructive action.
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(deleteDepartmentActionMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: /delete department/i })).toBeInTheDocument();
+    expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(deleteDepartmentActionMock).toHaveBeenCalledWith({ departmentId: "dept-1" })
+    );
+  });
+
+  it("shows the server's reason verbatim when a delete is refused, and keeps the row", async () => {
+    listDepartmentsActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [makeDepartment()], totalCount: 1 },
+    });
+    listAllDepartmentsActionMock.mockResolvedValue({ ok: true, data: [] });
+    deleteDepartmentActionMock.mockResolvedValue({
+      ok: false,
+      error: "Engineering still has 12 positions in it, so it cannot be deleted.",
+    });
+    const user = userEvent.setup();
+
+    render(<DepartmentsView canManage={true} />);
+    await screen.findByText("Engineering");
+
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    // The blocker is named, not replaced by a generic failure message —
+    // "12 positions" is what tells the user what to do next.
+    await waitFor(() => expect(screen.getByText(/still has 12 positions/i)).toBeInTheDocument());
+    // The dialog stays open and the department is still listed.
+    expect(screen.getByRole("heading", { name: /delete department/i })).toBeInTheDocument();
+    expect(screen.getByText("Engineering")).toBeInTheDocument();
   });
 
   it("shows pagination reflecting server-reported totalCount, not the current page's item count", async () => {

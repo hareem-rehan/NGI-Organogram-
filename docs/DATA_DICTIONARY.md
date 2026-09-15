@@ -41,6 +41,8 @@ New in Phase 2 — not modeled in Phase 0, which implicitly assumed a single ten
 
 **Deletion rule:** hard delete rejected by the database (`ON DELETE RESTRICT`) while any Position or child Department references it (verified in `tests/integration/schema-and-company.integration.test.ts` and `department.integration.test.ts`). Archiving (`status = INACTIVE`) is always safe — the row persists, so nothing is orphaned.
 
+Since 2026-09-16 the **empty** case is reachable from the UI: Departments → Delete, behind a confirmation, gated on `departments:manage`, and refused by `deleteDepartment` with a message naming the blocker when anything still references it. The delete and its `DELETED` audit event are written in one transaction, so the before-snapshot — the only remaining record of a removed department — can never be lost.
+
 ---
 
 ## Job Grade

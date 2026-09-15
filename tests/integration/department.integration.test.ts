@@ -135,6 +135,80 @@ describe("Department", () => {
     await expect(deleteDepartment(dept.id, company.id)).rejects.toBeInstanceOf(UnsafeMutationError);
   });
 
+  it("blocks hard deletion while a sub-department still points at it", async () => {
+    const company = await makeCompany();
+    const parent = await makeDepartment(company.id, { code: "ENG" });
+    await testPrisma.department.create({
+      data: {
+        companyId: company.id,
+        code: "PLATFORM",
+        name: "Platform",
+        parentDepartmentId: parent.id,
+      },
+    });
+
+    await expect(deleteDepartment(parent.id, company.id)).rejects.toBeInstanceOf(
+      UnsafeMutationError
+    );
+    // The parent is still there — a refused delete changes nothing.
+    await expect(
+      testPrisma.department.findUnique({ where: { id: parent.id } })
+    ).resolves.not.toBeNull();
+  });
+
+  it("deletes an empty department and records what was removed, in the same transaction", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id, { code: "TEMP", name: "Temporary Team" });
+
+    await deleteDepartment(dept.id, company.id, "SYSTEM");
+
+    await expect(testPrisma.department.findUnique({ where: { id: dept.id } })).resolves.toBeNull();
+
+    // The row is gone, so the audit event's before-snapshot is the only
+    // remaining record of what was deleted. It must therefore exist, and
+    // must carry enough to identify the department after the fact.
+    const events = await testPrisma.auditEvent.findMany({
+      where: { companyId: company.id, action: "DELETED", entityType: "Department" },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.entityId).toBe(dept.id);
+    expect(events[0]?.entityDisplayReference).toBe("TEMP");
+    expect(JSON.stringify(events[0]?.beforeData)).toContain("Temporary Team");
+    expect(events[0]?.afterData).toBeNull();
+  });
+
+  it("writes no audit event when the delete is refused", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id, { code: "ENG" });
+    await testPrisma.position.create({
+      data: {
+        companyId: company.id,
+        departmentId: dept.id,
+        title: "CEO",
+        positionCode: "POS-AUDIT-1",
+        organizationalLevel: 1,
+      },
+    });
+
+    await expect(deleteDepartment(dept.id, company.id)).rejects.toBeInstanceOf(UnsafeMutationError);
+
+    const events = await testPrisma.auditEvent.findMany({
+      where: { companyId: company.id, action: "DELETED" },
+    });
+    expect(events).toEqual([]);
+  });
+
+  it("refuses to delete a department belonging to another company", async () => {
+    const companyA = await makeCompany();
+    const companyB = await makeCompany();
+    const deptB = await makeDepartment(companyB.id, { code: "OTHER" });
+
+    await expect(deleteDepartment(deptB.id, companyA.id)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      testPrisma.department.findUnique({ where: { id: deptB.id } })
+    ).resolves.not.toBeNull();
+  });
+
   it("allows archiving a department that still has positions (archive is safe by construction)", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id, { code: "ENG" });

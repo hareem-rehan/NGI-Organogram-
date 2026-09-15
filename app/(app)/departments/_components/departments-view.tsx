@@ -18,6 +18,7 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/validation/pagination";
 import { parseEnumParam } from "@/lib/utils/search-params";
 import {
   archiveDepartmentAction,
+  deleteDepartmentAction,
   listAllDepartmentsAction,
   listDepartmentsAction,
   reactivateDepartmentAction,
@@ -56,6 +57,11 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
   const statusDialog = useConfirmDialog();
   const [statusPending, setStatusPending] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<Department | null>(null);
+  const deleteDialog = useConfirmDialog();
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -122,6 +128,32 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
     }
     statusDialog.setOpen(false);
     refresh();
+  }
+
+  function openDelete(department: Department) {
+    setDeleteTarget(department);
+    setDeleteError(null);
+    deleteDialog.setOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeletePending(true);
+    setDeleteError(null);
+    const result = await deleteDepartmentAction({ departmentId: deleteTarget.id });
+    setDeletePending(false);
+    if (!result.ok) {
+      // The server names the actual blocker ("still has 12 positions in
+      // it"), so it is shown verbatim inside the dialog rather than
+      // replaced with a generic failure message.
+      setDeleteError(result.error);
+      return;
+    }
+    deleteDialog.setOpen(false);
+    // Deleting the last row of a page would otherwise leave the user on
+    // an empty page with no way back.
+    if (departments.length === 1 && page > 1) setPage(page - 1);
+    else refresh();
   }
 
   return (
@@ -258,6 +290,15 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
                         >
                           {department.status === "ACTIVE" ? "Deactivate" : "Reactivate"}
                         </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => openDelete(department)}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </td>
                   ) : null}
@@ -304,6 +345,20 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
           pending={statusPending}
           errorMessage={statusError}
           onConfirm={confirmStatusChange}
+        />
+      ) : null}
+
+      {deleteTarget ? (
+        <ConfirmDialog
+          open={deleteDialog.open}
+          onOpenChange={deleteDialog.setOpen}
+          title="Delete department?"
+          description={`${deleteTarget.name} (${deleteTarget.code}) will be permanently removed. This cannot be undone. A department can only be deleted while it is empty — if it still has positions or sub-departments, deactivate it instead.`}
+          confirmLabel="Delete"
+          destructive
+          pending={deletePending}
+          errorMessage={deleteError}
+          onConfirm={confirmDelete}
         />
       ) : null}
 

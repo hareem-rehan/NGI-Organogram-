@@ -7,6 +7,7 @@ import { runAction, type ActionResult } from "@/lib/server/action-result";
 import { toAuditActor } from "@/lib/server/audit-actor";
 import {
   createDepartment,
+  deleteDepartment,
   moveDepartment,
   archiveDepartment,
   reactivateDepartment,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/repositories/department.repository";
 import {
   createDepartmentSchema,
+  deleteDepartmentSchema,
   departmentStatusChangeSchema,
   listDepartmentsQuerySchema,
   moveDepartmentSchema,
@@ -84,5 +86,20 @@ export async function reactivateDepartmentAction(
     const user = await requirePermission("departments:manage");
     const { departmentId } = departmentStatusChangeSchema.parse(input);
     return reactivateDepartment(departmentId, user.companyId, toAuditActor(user));
+  });
+}
+
+/**
+ * Permanently removes a department. Re-authorized and re-validated here
+ * regardless of what the client sent (CLAUDE.md §1.8); the service then
+ * refuses any department that still has positions or sub-departments, so
+ * this can never orphan a position.
+ */
+export async function deleteDepartmentAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("departments:manage");
+    const { departmentId } = deleteDepartmentSchema.parse(input);
+    await deleteDepartment(departmentId, user.companyId, toAuditActor(user));
+    return null;
   });
 }

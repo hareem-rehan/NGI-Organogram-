@@ -306,39 +306,75 @@ export async function reactivateDepartment(
 }
 
 /**
- * Hard delete — never exposed through normal HR workflow (business rule:
- * "a Department cannot be hard-deleted while any Position references
- * it"). Exists so the rejection is a clean, typed UnsafeMutationError
- * instead of a raw Prisma foreign-key error leaking to a caller, and so
- * the rule is testable. The actual enforcement is the database's
- * ON DELETE RESTRICT constraint, not this function's own logic — see
- * the initial migration's SQL file under prisma/migrations/.
+ * Hard delete. Only ever possible for a department nothing references —
+ * no positions, no child departments — which is the business rule "a
+ * Department cannot be hard-deleted while any Position references it".
+ * Archiving remains the normal way to retire a department that is still
+ * in use, and the rejections below say so.
+ *
+ * The real enforcement is the database's ON DELETE RESTRICT constraint
+ * (see the initial migration's SQL under prisma/migrations/); the two
+ * checks here exist so a caller gets a clear, typed UnsafeMutationError
+ * naming the blocker instead of a raw Prisma foreign-key error, and so
+ * the rule is testable without relying on the error text Prisma happens
+ * to produce.
+ *
+ * The count checks and the delete run in ONE transaction. Read-then-write
+ * across two connections would let a position be created against this
+ * department in the gap; inside a transaction the constraint still
+ * catches that, but the caller would get the raw FK error instead of the
+ * friendly one. The audit event is written in the same transaction, so a
+ * committed delete can never be missing its record (CLAUDE.md §1.9).
  */
-export async function deleteDepartment(id: string, companyId: string): Promise<void> {
-  const department = await findDepartmentById(id, companyId);
-  if (!department) throw new NotFoundError("Department", id);
+export async function deleteDepartment(
+  id: string,
+  companyId: string,
+  actor: AuditActor = "SYSTEM",
+  db: DbClient = prisma
+): Promise<void> {
+  return withTransaction(db, async (tx) => {
+    const department = await findDepartmentById(id, companyId, tx);
+    if (!department) throw new NotFoundError("Department", id);
 
-  const [positionCount, childCount] = await Promise.all([
-    countPositionsInDepartment(id, companyId),
-    countChildDepartments(id, companyId),
-  ]);
+    const [positionCount, childCount] = await Promise.all([
+      countPositionsInDepartment(id, companyId, tx),
+      countChildDepartments(id, companyId, tx),
+    ]);
 
-  if (positionCount > 0) {
-    throw new UnsafeMutationError(
-      `Cannot delete department ${id}: ${positionCount} position(s) still reference it. Archive it instead.`
+    if (positionCount > 0) {
+      throw new UnsafeMutationError(
+        `${department.name} still has ${positionCount} position${positionCount === 1 ? "" : "s"} in it, so it cannot be deleted. Move or delete those positions first, or deactivate this department instead.`
+      );
+    }
+    if (childCount > 0) {
+      throw new UnsafeMutationError(
+        `${department.name} still has ${childCount} sub-department${childCount === 1 ? "" : "s"} under it, so it cannot be deleted. Move or delete those first, or deactivate this department instead.`
+      );
+    }
+
+    try {
+      await tx.department.delete({ where: { id } });
+    } catch (error) {
+      throw translateWriteError(error, "Department", id);
+    }
+
+    await recordAuditEvent(
+      {
+        companyId,
+        actor,
+        action: "DELETED",
+        category: "DEPARTMENT",
+        entityType: "Department",
+        entityId: department.id,
+        entityDisplayReference: department.code,
+        before: department,
+        // No `after`: the row is gone. The before-snapshot is the only
+        // record left of what was removed, which is exactly why it is
+        // written inside the same transaction as the delete.
+      },
+      tx
     );
-  }
-  if (childCount > 0) {
-    throw new UnsafeMutationError(
-      `Cannot delete department ${id}: ${childCount} child department(s) still reference it. Archive it instead.`
-    );
-  }
-
-  try {
-    await prisma.department.delete({ where: { id } });
-  } catch (error) {
-    throw translateWriteError(error, "Department", id);
-  }
+  });
 }
 
 /** Exported for reuse by lib/services/import.service.ts's bulk-create path (Phase 13.1). */
