@@ -105,7 +105,13 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
 
   if (node.kind === "department") return <DepartmentNodeCard data={data} />;
 
-  const occupantLabel = node.occupancyStatus === "occupied" ? node.occupantDisplayName : "Vacant";
+  // The card leads with the ROLE and adds the person underneath, matching
+  // the company's own chart: most approved roles have nobody in them yet,
+  // and stamping "Vacant" across ninety boxes reads as an alarm rather
+  // than as a fact. An empty second line says the same thing quietly. The
+  // accessible name below still states it outright, because a
+  // screen-reader user cannot see that the line is absent.
+  const occupantName = node.occupancyStatus === "occupied" ? node.occupantDisplayName : null;
   // What expanding this card will actually reveal. Once the leadership
   // filter hides some of a manager's reports, that is fewer than the real
   // `directReportCount` — which stays intact on the node for the details
@@ -159,12 +165,12 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // card sits underneath its department heading. Removing visual
         // clutter was the request; removing context from assistive tech
         // was not.
-        aria-label={`${occupantLabel}. ${node.title}.${node.jobGradeCode ? ` Level ${node.jobGradeCode}.` : ""} ${node.departmentName}, organizational level ${node.organizationalLevel}.${node.positionStatus !== "ACTIVE" ? ` ${node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}.` : ""}${matchStateLabel}`}
+        aria-label={`${node.title}. ${occupantName ?? "Vacant"}.${node.jobGradeCode ? ` Level ${node.jobGradeCode}.` : ""} ${node.departmentName}, organizational level ${node.organizationalLevel}.${node.positionStatus !== "ACTIVE" ? ` ${node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}.` : ""}${matchStateLabel}`}
         onClick={() => onSelect(node.positionId)}
         className="focus-visible:ring-ring flex flex-1 flex-col rounded-t-[calc(0.5rem-2px)] p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
-        {/* Compact leadership card (Demo 1 feedback): person first, then
-            role, then level. Deliberately NOT shown any more — the
+        {/* Compact leadership card (Demo 1 feedback): role, then the
+            person in it, then the level. Deliberately NOT shown — the
             position code (an internal identifier of no use to a chart
             reader), the department name (the card already sits under its
             department, so repeating it was pure duplication), and the
@@ -173,7 +179,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
           <p className="text-foreground truncate text-sm leading-tight font-semibold">
-            {occupantLabel}
+            {node.title}
           </p>
           <div className="flex shrink-0 items-center gap-1">
             {matchState === "match" ? <Badge variant="default">Match</Badge> : null}
@@ -185,7 +191,9 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             ) : null}
           </div>
         </div>
-        <p className="text-muted-foreground mt-1 truncate text-xs">{node.title}</p>
+        {occupantName ? (
+          <p className="text-foreground/80 mt-1 truncate text-xs">{occupantName}</p>
+        ) : null}
         {node.jobGradeCode ? (
           <p className="text-muted-foreground mt-0.5 truncate text-xs font-medium">
             {node.jobGradeCode}

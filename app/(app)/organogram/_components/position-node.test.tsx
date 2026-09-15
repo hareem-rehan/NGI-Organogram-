@@ -116,9 +116,41 @@ describe("PositionNode", () => {
     expect(screen.queryByText(/^L\d+$/)).not.toBeInTheDocument();
   });
 
-  it("shows Vacant for an unoccupied position", () => {
-    renderNode({ node: makeNode({ occupancyStatus: "vacant", occupantDisplayName: null }) });
-    expect(screen.getByText("Vacant")).toBeInTheDocument();
+  // Reversed on 2026-09-15. The card used to stamp "Vacant" on every
+  // unfilled role. The chart now opens on a role ladder where most rungs
+  // are unfilled by design, and the company's own chart simply leaves the
+  // name off — ninety amber "Vacant" labels read as an alarm, not a fact.
+  // The information is not lost: the accessible name still says it, which
+  // is what a screen-reader user needs, since they cannot see that a line
+  // is simply absent.
+  it("leaves the name line off an unfilled role instead of labelling it Vacant", () => {
+    renderNode({
+      node: makeNode({
+        title: "Head of Admin",
+        occupancyStatus: "vacant",
+        occupantDisplayName: null,
+      }),
+    });
+
+    expect(screen.getByText("Head of Admin")).toBeInTheDocument();
+    expect(screen.queryByText("Vacant")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Head of Admin\. Vacant\./ })).toBeInTheDocument();
+  });
+
+  it("puts the role first and the person underneath, matching the company's own chart", () => {
+    renderNode({
+      node: makeNode({
+        title: "Manager Admin",
+        occupancyStatus: "occupied",
+        occupantDisplayName: "Hammad Hussain",
+        jobGradeCode: "L10",
+      }),
+    });
+
+    const card = screen.getByRole("button", { name: /^Manager Admin\. Hammad Hussain\./ });
+    const lines = (card.textContent ?? "").trim();
+    expect(lines.indexOf("Manager Admin")).toBeLessThan(lines.indexOf("Hammad Hussain"));
+    expect(lines.indexOf("Hammad Hussain")).toBeLessThan(lines.indexOf("L10"));
   });
 
   it("shows the occupant's display name for an occupied position, never a raw employee id", () => {

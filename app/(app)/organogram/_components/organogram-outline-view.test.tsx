@@ -155,22 +155,19 @@ describe("OrganogramOutlineView", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  // The row now leads with the occupant (every fixture node here is
-  // vacant, so that reads "Vacant VP Eng") rather than with the title —
-  // the Demo 1 card order, applied to the outline so the two views
-  // describe a person the same way round.
+  // Rows lead with the role and add the person underneath, the same order
+  // the canvas card uses — every fixture node here is unfilled, so the row
+  // is just the title.
   it("clicking a node's row calls onSelect with its position id", async () => {
     const user = userEvent.setup();
     const { onSelect } = renderOutline();
-    await user.click(screen.getByRole("button", { name: /Vacant VP Eng/ }));
+    await user.click(screen.getByRole("button", { name: /^VP Eng/ }));
     expect(onSelect).toHaveBeenCalledWith("child");
   });
 
   it("highlights the selected node", () => {
     renderOutline({ selectedId: "child" });
-    expect(screen.getByRole("button", { name: /Vacant VP Eng/ }).parentElement).toHaveClass(
-      "bg-accent"
-    );
+    expect(screen.getByRole("button", { name: /^VP Eng/ }).parentElement).toHaveClass("bg-accent");
   });
 
   it("shows the job grade instead of repeating the department on every row", () => {
@@ -215,7 +212,7 @@ describe("OrganogramOutlineView", () => {
     expect(onToggleCollapse).toHaveBeenCalledWith("dept:dept-1");
     expect(onSelect).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: /Vacant VP Eng/ }));
+    await user.click(screen.getByRole("button", { name: /^VP Eng/ }));
     expect(onSelect).toHaveBeenCalledWith("child");
   });
 });

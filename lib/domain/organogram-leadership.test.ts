@@ -57,6 +57,19 @@ function opts(overrides: Partial<LeadershipViewOptions> = {}): LeadershipViewOpt
   return { ...DEFAULT_LEADERSHIP_VIEW_OPTIONS, ...overrides };
 }
 
+/**
+ * The strictest settings — drop below-threshold and vacant positions from
+ * the graph entirely, rather than the default of keeping them and folding
+ * the junior ones away. Both behaviours are supported and both are
+ * tested; this helper is for the tests that are specifically about
+ * REMOVAL, so the default flip (2026-09-15, stakeholder: "till L7 we will
+ * show names of team members with the roles, and each box should be
+ * expandable") did not quietly delete their coverage.
+ */
+function hidingOpts(overrides: Partial<LeadershipViewOptions> = {}): LeadershipViewOptions {
+  return opts({ belowThreshold: "hide", hideVacant: true, ...overrides });
+}
+
 describe("department group ids", () => {
   it("namespaces a department id so it can never collide with a position id", () => {
     const id = departmentGroupId("abc");
@@ -134,12 +147,12 @@ describe("buildLeadershipView — the L7 threshold", () => {
     expect(DEFAULT_LEADERSHIP_MIN_GRADE_LEVEL).toBe(7);
   });
 
-  it("shows L7 and above, hides below", () => {
+  it("with belowThreshold 'hide', shows L7 and above and drops the rest", () => {
     const principal = node({ positionId: "principal", jobGradeCode: "L7", jobGradeLevel: 7 });
     const seniorII = node({ positionId: "senior2", jobGradeCode: "L6", jobGradeLevel: 6 });
     const engineer = node({ positionId: "eng", jobGradeCode: "L3", jobGradeLevel: 3 });
 
-    const view = buildLeadershipView([ceo(), principal, seniorII, engineer], opts());
+    const view = buildLeadershipView([ceo(), principal, seniorII, engineer], hidingOpts());
 
     expect(view.visiblePositionIds.has("principal")).toBe(true);
     expect(view.visiblePositionIds.has("senior2")).toBe(false);
@@ -155,7 +168,7 @@ describe("buildLeadershipView — the L7 threshold", () => {
       jobGradeLevel: 4,
     });
 
-    const view = buildLeadershipView([ceo(), impostor], opts());
+    const view = buildLeadershipView([ceo(), impostor], hidingOpts());
 
     expect(view.visiblePositionIds.has("impostor")).toBe(false);
   });
@@ -186,7 +199,7 @@ describe("buildLeadershipView — the L7 threshold", () => {
       jobGradeLevel: 3,
     });
 
-    const view = buildLeadershipView([ceo(), deepLeader, shallowJunior], opts());
+    const view = buildLeadershipView([ceo(), deepLeader, shallowJunior], hidingOpts());
 
     expect(view.visiblePositionIds.has("deep")).toBe(true);
     expect(view.visiblePositionIds.has("shallow")).toBe(false);
@@ -202,7 +215,7 @@ describe("buildLeadershipView — exclusions", () => {
       occupantEmployeeId: null,
     });
 
-    const view = buildLeadershipView([ceo(), vacant], opts());
+    const view = buildLeadershipView([ceo(), vacant], hidingOpts());
 
     expect(view.visiblePositionIds.has("vacant")).toBe(false);
     expect(view.excluded.vacant).toBe(1);
@@ -266,7 +279,7 @@ describe("buildLeadershipView — exclusions", () => {
       jobGradeLevel: 7,
     });
 
-    const view = buildLeadershipView([ceo(), cto, vacantManager, lead], opts());
+    const view = buildLeadershipView([ceo(), cto, vacantManager, lead], hidingOpts());
 
     expect(view.visiblePositionIds.has("vacant-mgr")).toBe(false);
     // Still rendered, now hanging off the nearest VISIBLE ancestor.
@@ -283,11 +296,74 @@ describe("buildLeadershipView — exclusions", () => {
       jobGradeLevel: 2,
     });
 
-    const view = buildLeadershipView([ceo(), vacantAndJunior], opts());
+    const view = buildLeadershipView([ceo(), vacantAndJunior], hidingOpts());
 
     const totalExcluded = view.excluded.vacant + view.excluded.ungraded + view.excluded.belowGrade;
     expect(totalExcluded).toBe(1);
     expect(view.visiblePositionIds.size + totalExcluded).toBe(2);
+  });
+});
+
+describe("buildLeadershipView — below the threshold, by default, is folded not dropped", () => {
+  it("keeps junior roles in the graph and flags them, so a box can still expand into them", () => {
+    const principal = node({ positionId: "principal", jobGradeCode: "L7", jobGradeLevel: 7 });
+    const senior = node({
+      positionId: "senior",
+      primaryReportsToPositionId: "principal",
+      jobGradeCode: "L6",
+      jobGradeLevel: 6,
+    });
+
+    const view = buildLeadershipView([ceo(), principal, senior], opts());
+
+    expect(view.visiblePositionIds.has("senior")).toBe(true);
+    expect(view.belowThresholdIds.has("senior")).toBe(true);
+    expect(view.belowThresholdIds.has("principal")).toBe(false);
+    // Folded away is not the same as excluded, and the counts say so.
+    expect(view.excluded.belowGrade).toBe(0);
+    expect(view.collapsedBelowThreshold).toBe(1);
+    // It keeps its real manager, so expanding that manager reveals it.
+    expect(view.parentByPositionId.get("senior")).toBe("principal");
+  });
+
+  it("shows a role nobody holds, rather than dropping it", () => {
+    // The company's own chart shows every approved role and simply leaves
+    // the name off the unfilled ones.
+    const unfilled = node({
+      positionId: "unfilled",
+      occupancyStatus: "vacant",
+      occupantDisplayName: null,
+      occupantEmployeeId: null,
+    });
+
+    const view = buildLeadershipView([ceo(), unfilled], opts());
+
+    expect(view.visiblePositionIds.has("unfilled")).toBe(true);
+    expect(view.excluded.vacant).toBe(0);
+  });
+
+  it("still leaves ungraded positions off — a missing grade is missing data, not a junior role", () => {
+    const ungraded = node({ positionId: "ungraded", jobGradeId: null, jobGradeLevel: null });
+
+    const view = buildLeadershipView([ceo(), ungraded], opts());
+
+    expect(view.visiblePositionIds.has("ungraded")).toBe(false);
+    expect(view.belowThresholdIds.has("ungraded")).toBe(false);
+    expect(view.excluded.ungraded).toBe(1);
+  });
+
+  it("never flags the root as below the threshold, whatever its grade", () => {
+    const junyorRoot = node({
+      positionId: "ceo",
+      primaryReportsToPositionId: null,
+      jobGradeCode: "L2",
+      jobGradeLevel: 2,
+    });
+
+    const view = buildLeadershipView([junyorRoot], opts());
+
+    expect(view.belowThresholdIds.has("ceo")).toBe(false);
+    expect(view.collapsedBelowThreshold).toBe(0);
   });
 });
 

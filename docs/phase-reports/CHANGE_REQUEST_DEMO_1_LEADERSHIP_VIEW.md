@@ -45,6 +45,35 @@ The chart reads stored grades, so grades had to exist:
 - `prisma/seed.ts` now seeds the real **L2–L18** scale instead of an invented three-rung L4/L5/L6 ladder, and each seeded position was remapped onto it. On the old ladder nothing but the CEO cleared L7, so the seeded chart rendered essentially empty.
 - **`scripts/backfill-job-grades.ts`** (new) ensures the scale exists for a company and fills in missing grades by inferring from the title. **Dry run by default**; `--apply` to write. It never overwrites a grade a human already set, and lists the titles it could not map rather than guessing.
 
+## Revision, 2026-09-15 — the chart shows roles, not just filled seats
+
+The stakeholder shared their actual org chart, and it contradicted two of the four items above. Their chart shows **every approved role**, leaves the name off the unfilled ones, and runs well below L7 (Admin Officer, Jr. HR Executive, Finance Executive). Their confirmed answer: _"Till L7 we will show names of team members with the roles and each box should be expandable."_
+
+This mattered because their real position list is a **role ladder**, not a staffed chart — 185 positions, 18 people. Under the original reading the chart drew one box.
+
+What changed (`docs/DECISIONS.md` D9, D10):
+
+- **`hideVacant` now defaults to `false`.** An unfilled role is drawn, with no name line and no "Vacant" stamp. The accessible name still says it, because a sighted reader infers it from the missing line and a screen-reader user cannot.
+- **`belowThreshold: "collapse"` replaces outright removal.** Roles below L7 stay in the graph and start folded behind their manager's expand control, so the chart opens at leadership level and still drills all the way to the bottom. `"hide"` remains available and remains tested.
+- **The default collapse depth is now the grade threshold, not a tier count.** Every L7-and-above role is on screen however deep it sits; a box whose children are all below the line keeps its expand control rather than claiming it has no reports.
+- **Card order is role → person → level**, in the chart, the outline and the export, matching their chart. This revises D6.
+
+The banner distinguishes the two cases, because they are not the same thing: _"opens at L7 and above. 61 more junior roles are folded away — expand any box to drill further down. 16 positions are not on the chart (16 with no level set)."_ Folded is one click from view; ungraded genuinely is not drawn, and that is missing data rather than a filter.
+
+### Proven against the real data
+
+Their 185 positions were loaded through the real import pipeline (upload → validate → confirm → execute, zero error rows) after grades were inferred from titles:
+
+|                      |                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Positions imported   | 185 across 16 departments                                                                                          |
+| Graded from title    | 169 of 185                                                                                                         |
+| Drawn at L7+ on open | 108, plus 15 department headings                                                                                   |
+| Folded below L7      | 61                                                                                                                 |
+| Not drawn (no grade) | 16 — all section headers in the source doc ("Finance", "Engineering Team"), which the department tier now replaces |
+
+Expanding "Project Manager" revealed "APM II · Bilal Khan · L6", itself showing "+4 hidden" for the next rung — drill-down working end to end.
+
 ## Verification
 
 | Gate             | Result                                                  |
@@ -63,8 +92,10 @@ Per `CLAUDE.md` §14, each of these is a test whose **premise** the stakeholder 
 
 - `dashboard-view.test.tsx` — "links the vacant-positions card" → asserts the card and overview section are **gone and stay gone**.
 - `dashboard.spec.ts` — the same, plus: the vacancy-filtered Positions view still works when navigated to directly.
-- `organogram-search-and-focus.spec.ts` — "a vacant position is fully searchable" → a vacant position is absent from the chart's search **and still listed on `/positions`**. "Filter by occupancy — occupied" → the chart is already occupied-only, so `Vacant` is now the filter that matches nothing.
-- `organogram-outline-view.test.tsx` — row queries now anchor on the occupant, matching the person-first card order.
+- `position-node.test.tsx` — "shows Vacant for an unoccupied position" → asserts the card carries **no** such label while the accessible name still does.
+- `organogram-outline-view.test.tsx` — row queries anchor on the role, matching the role-first card order.
+
+`organogram-search-and-focus.spec.ts`'s vacancy tests were reversed on 14 September and then reversed **back** on the 15th when the stakeholder's own chart showed vacancies belonged on it. That round trip is the cost of having guessed at "remove vacant positions" instead of asking what their chart looked like first.
 
 ### Other test-fixture changes
 

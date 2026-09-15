@@ -21,16 +21,13 @@ test.describe.configure({ mode: "serial" });
 
 /**
  * A node's own card (Visual View) and its expand/collapse toggle button
- * both contain the node's title as a substring in their accessible name
- * ("Ada Byron. E2E Org VP Eng ..." vs. "Expand E2E Org VP Eng ..."), so an
- * unanchored name regex matches both and trips Playwright's strict mode.
- *
- * The card's accessible name now LEADS with the occupant (the Demo 1
- * compact card is person-first), so anchoring on the occupant name
- * disambiguates without touching component markup.
+ * both contain the node's title in their accessible name ("E2E Org VP Eng
+ * ... . Grace Org... ." vs. "Expand E2E Org VP Eng ..."), so an unanchored
+ * regex matches both and trips Playwright's strict mode. The card leads
+ * with the ROLE, so anchoring there picks out the card alone.
  */
-function nodeCard(page: Page, occupantName: string) {
-  return page.getByRole("button", { name: new RegExp(`^${occupantName}`) });
+function nodeCard(page: Page, title: string) {
+  return page.getByRole("button", { name: new RegExp(`^${title}`) });
 }
 
 /** Splits a fixture's "First Last" display name into the two fields an Employee row needs. */
@@ -66,7 +63,10 @@ test.describe("Interactive organogram (Phase 8)", () => {
   const juniorCode = `E2E-ORG-JR-${suffix}`;
   // Graded high enough, but nobody in the seat — the other half of the
   // filter.
-  const vacantTitle = `E2E Org Vacant Lead ${suffix}`;
+  // Deliberately does NOT contain the word "Vacant": the assertion below
+  // is that the card carries no such label, and a title containing it
+  // would make that assertion unfalsifiable.
+  const vacantTitle = `E2E Org Unfilled Lead ${suffix}`;
   const vacantCode = `E2E-ORG-VAC-${suffix}`;
 
   // The card is person-first, so every assertion below addresses a node
@@ -194,41 +194,53 @@ test.describe("Interactive organogram (Phase 8)", () => {
     // vacantCode deliberately gets no occupant.
   });
 
-  test("Visual View groups by department below the founder, with the tier below that collapsed", async ({
+  test("Visual View groups by department below the founder and opens at leadership level", async ({
     page,
   }) => {
     await page.goto("/organogram");
     await expect(page.getByRole("heading", { level: 1, name: "Organogram" })).toBeVisible();
 
-    // Founder -> department tier -> that department's leadership.
-    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
+    // Founder -> department tier -> that department's leadership. The
+    // opening depth is the GRADE threshold, not an arbitrary tier count:
+    // every L7-and-above role is on screen however deep it sits.
+    await expect(nodeCard(page, rootTitle)).toBeVisible();
     await expect(departmentCard(page, deptAName)).toBeVisible();
     await expect(departmentCard(page, deptBName)).toBeVisible();
-    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
-    await expect(nodeCard(page, vpSalesOccupant)).toBeVisible();
+    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
+    await expect(nodeCard(page, vpSalesTitle)).toBeVisible();
+    await expect(nodeCard(page, engManagerTitle)).toBeVisible();
 
-    // The tier below the department leads starts collapsed.
-    await expect(nodeCard(page, engManagerOccupant)).toHaveCount(0);
-    await expect(page.getByText(/hidden/i).first()).toBeVisible();
+    // Only the junior rung is folded.
+    await expect(nodeCard(page, juniorTitle)).toHaveCount(0);
   });
 
-  test("the chart leaves out below-threshold and vacant positions, and says how many", async ({
+  test("says plainly that junior roles are folded rather than missing", async ({ page }) => {
+    await page.goto("/organogram");
+
+    await expect(page.getByText(/Leadership view — opens at L7 and above/)).toBeVisible();
+    await expect(page.getByText(/1 more junior role is folded away/)).toBeVisible();
+
+    // And it is genuinely one click away, not gone.
+    await expect(nodeCard(page, juniorTitle)).toHaveCount(0);
+    await toggleButton(page, "Expand", engManagerTitle).click();
+    await expect(nodeCard(page, juniorTitle)).toBeVisible();
+
+    // Still fully present, and still editable, on the Positions page.
+    await page.goto("/positions");
+    await expect(page.getByText(juniorTitle)).toBeVisible();
+  });
+
+  test("shows a role nobody holds, with no name on it rather than a Vacant stamp", async ({
     page,
   }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: "Expand All" }).click();
 
-    // Neither is deleted — both are absent from the CHART only.
-    await expect(nodeCard(page, juniorOccupant)).toHaveCount(0);
-    await expect(page.getByText(vacantTitle)).toHaveCount(0);
-    await expect(page.getByText(/Leadership view — named cards are L7 and above/)).toBeVisible();
-    await expect(page.getByText(/1 below L7/)).toBeVisible();
-    await expect(page.getByText(/1 vacant/)).toBeVisible();
-
-    // Still fully present, and still editable, on the Positions page.
-    await page.goto("/positions");
-    await expect(page.getByText(juniorTitle)).toBeVisible();
-    await expect(page.getByText(vacantTitle)).toBeVisible();
+    const card = nodeCard(page, vacantTitle);
+    await expect(card).toBeVisible();
+    // The name line is simply absent; only the accessible name says it.
+    await expect(card).not.toContainText("Vacant");
+    await expect(card).toHaveAttribute("aria-label", new RegExp(`^${vacantTitle}\\. Vacant\\.`));
   });
 
   test("a department card expands and collapses but never opens the details panel", async ({
@@ -238,38 +250,38 @@ test.describe("Interactive organogram (Phase 8)", () => {
     await departmentCard(page, deptAName).click();
 
     await expect(page.getByRole("complementary", { name: "Position details" })).toHaveCount(0);
-    await expect(nodeCard(page, vpEngOccupant)).toHaveCount(0);
+    await expect(nodeCard(page, vpEngTitle)).toHaveCount(0);
 
     await departmentCard(page, deptAName).click();
-    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
+    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
   });
 
   test("expanding a branch reveals the hidden grandchild; collapsing hides it again", async ({
     page,
   }) => {
     await page.goto("/organogram");
-    await toggleButton(page, "Expand", vpEngTitle).click();
-    await expect(nodeCard(page, engManagerOccupant)).toBeVisible();
+    await toggleButton(page, "Expand", engManagerTitle).click();
+    await expect(nodeCard(page, juniorTitle)).toBeVisible();
 
-    await toggleButton(page, "Collapse", vpEngTitle).click();
-    await expect(nodeCard(page, engManagerOccupant)).toHaveCount(0);
+    await toggleButton(page, "Collapse", engManagerTitle).click();
+    await expect(nodeCard(page, juniorTitle)).toHaveCount(0);
   });
 
   test("Expand All / Collapse All toolbar controls work", async ({ page }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: "Expand All" }).click();
-    await expect(nodeCard(page, engManagerOccupant)).toBeVisible();
+    await expect(nodeCard(page, engManagerTitle)).toBeVisible();
 
     await page.getByRole("button", { name: "Collapse All" }).click();
-    await expect(nodeCard(page, vpEngOccupant)).toHaveCount(0);
-    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
+    await expect(nodeCard(page, vpEngTitle)).toHaveCount(0);
+    await expect(nodeCard(page, rootTitle)).toBeVisible();
   });
 
   test("clicking a node opens the read-only details panel with its fields; Escape closes it", async ({
     page,
   }) => {
     await page.goto("/organogram");
-    await nodeCard(page, ceoOccupant).click();
+    await nodeCard(page, rootTitle).click();
 
     const panel = page.getByRole("complementary", { name: "Position details" });
     await expect(panel).toBeVisible();
@@ -287,12 +299,13 @@ test.describe("Interactive organogram (Phase 8)", () => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: "Outline View" }).click();
 
-    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
-    await expect(nodeCard(page, vpEngOccupant)).toBeVisible();
-    await expect(nodeCard(page, engManagerOccupant)).toHaveCount(0);
+    await expect(nodeCard(page, rootTitle)).toBeVisible();
+    await expect(nodeCard(page, vpEngTitle)).toBeVisible();
+    await expect(nodeCard(page, engManagerTitle)).toBeVisible();
+    await expect(nodeCard(page, juniorTitle)).toHaveCount(0);
 
-    await toggleButton(page, "Expand", vpEngTitle).click();
-    await expect(nodeCard(page, engManagerOccupant)).toBeVisible();
+    await toggleButton(page, "Expand", engManagerTitle).click();
+    await expect(nodeCard(page, juniorTitle)).toBeVisible();
   });
 
   test("Fit to View and Reset View controls do not error and keep the canvas usable", async ({
@@ -301,14 +314,14 @@ test.describe("Interactive organogram (Phase 8)", () => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: "Fit to View" }).click();
     await page.getByRole("button", { name: "Reset View" }).click();
-    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
+    await expect(nodeCard(page, rootTitle)).toBeVisible();
   });
 
   test("keyboard navigation: Tab reaches a node and Enter opens its details panel", async ({
     page,
   }) => {
     await page.goto("/organogram");
-    await nodeCard(page, ceoOccupant).focus();
+    await nodeCard(page, rootTitle).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("complementary", { name: "Position details" })).toBeVisible();
   });
@@ -319,7 +332,7 @@ test.describe("Interactive organogram (Phase 8)", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/organogram");
     await page.getByRole("button", { name: "Outline View" }).click();
-    await expect(nodeCard(page, ceoOccupant)).toBeVisible();
+    await expect(nodeCard(page, rootTitle)).toBeVisible();
     const hasOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
     );

@@ -56,6 +56,11 @@ function opts(overrides: Partial<LeadershipViewOptions> = {}): LeadershipViewOpt
   return { ...DEFAULT_LEADERSHIP_VIEW_OPTIONS, ...overrides };
 }
 
+/** Drop below-threshold and unfilled roles entirely, instead of the default of keeping them. */
+function hidingOpts(overrides: Partial<LeadershipViewOptions> = {}): LeadershipViewOptions {
+  return opts({ belowThreshold: "hide", hideVacant: true, ...overrides });
+}
+
 function byId(result: { nodes: OrganogramNode[] }, id: string): OrganogramNode {
   const found = result.nodes.find((n) => n.positionId === id);
   if (!found) throw new Error(`expected node ${id} in the projected graph`);
@@ -140,7 +145,7 @@ describe("projectLeadershipGraph — structure", () => {
       }),
     ];
 
-    const result = projectLeadershipGraph(nodes);
+    const result = projectLeadershipGraph(nodes, hidingOpts());
 
     expect(result.nodes.some((n) => n.positionId === departmentGroupId(ENG))).toBe(true);
     expect(result.nodes.some((n) => n.positionId === departmentGroupId(HR))).toBe(false);
@@ -156,7 +161,7 @@ describe("projectLeadershipGraph — filtering", () => {
       node({ positionId: "junior", jobGradeLevel: 4, jobGradeCode: "L4" }),
     ];
 
-    const result = projectLeadershipGraph(nodes);
+    const result = projectLeadershipGraph(nodes, hidingOpts());
 
     expect(result.nodes.some((n) => n.positionId === "junior")).toBe(false);
     expect(result.summary.hidden.belowGrade).toBe(1);
@@ -176,7 +181,7 @@ describe("projectLeadershipGraph — filtering", () => {
       }),
     ];
 
-    const result = projectLeadershipGraph(nodes);
+    const result = projectLeadershipGraph(nodes, hidingOpts());
 
     expect(result.nodes.some((n) => n.positionId === "empty-cfo")).toBe(false);
     expect(result.summary.hidden).toEqual({
@@ -199,7 +204,7 @@ describe("projectLeadershipGraph — filtering", () => {
       node({ positionId: "director", departmentId: ENG, primaryReportsToPositionId: "vacant-vp" }),
     ];
 
-    const result = projectLeadershipGraph(nodes);
+    const result = projectLeadershipGraph(nodes, hidingOpts());
 
     expect(result.nodes.some((n) => n.positionId === "vacant-vp")).toBe(false);
     expect(byId(result, "director").primaryReportsToPositionId).toBe(departmentGroupId(ENG));
@@ -259,7 +264,7 @@ describe("projectLeadershipGraph — node contract", () => {
       }),
     ];
 
-    const result = projectLeadershipGraph(nodes);
+    const result = projectLeadershipGraph(nodes, hidingOpts());
     const cto = byId(result, "cto");
 
     expect(cto.directReportCount).toBe(2);
@@ -279,7 +284,7 @@ describe("projectLeadershipGraph — node contract", () => {
       }),
     ];
 
-    const result = projectLeadershipGraph(nodes);
+    const result = projectLeadershipGraph(nodes, hidingOpts());
 
     expect(byId(result, "cto").hasChildren).toBe(false);
     expect(byId(result, "cto").displayChildCount).toBe(0);
@@ -323,5 +328,46 @@ describe("projectLeadershipGraph — degenerate input", () => {
 
     expect(result.nodes.map((n) => n.positionId)).toEqual(["ceo"]);
     expect(result.summary.hidden.total).toBe(0);
+  });
+});
+
+describe("projectLeadershipGraph — the default keeps junior roles in the graph", () => {
+  it("draws a junior report under its manager and counts it as folded, not hidden", () => {
+    const nodes = [
+      ceo(),
+      node({ positionId: "cto", departmentId: ENG }),
+      node({
+        positionId: "junior",
+        departmentId: ENG,
+        primaryReportsToPositionId: "cto",
+        jobGradeCode: "L4",
+        jobGradeLevel: 4,
+      }),
+    ];
+
+    const result = projectLeadershipGraph(nodes);
+
+    expect(byId(result, "junior").primaryReportsToPositionId).toBe("cto");
+    expect(byId(result, "cto").hasChildren).toBe(true);
+    expect(result.summary.collapsedBelowThreshold).toBe(1);
+    expect(result.summary.hidden.total).toBe(0);
+  });
+
+  it("draws a role nobody holds", () => {
+    const nodes = [
+      ceo(),
+      node({
+        positionId: "unfilled",
+        departmentId: ENG,
+        occupancyStatus: "vacant",
+        occupantDisplayName: null,
+        occupantEmployeeId: null,
+      }),
+    ];
+
+    const result = projectLeadershipGraph(nodes);
+
+    expect(result.nodes.some((n) => n.positionId === "unfilled")).toBe(true);
+    expect(result.summary.hidden.vacant).toBe(0);
   });
 });

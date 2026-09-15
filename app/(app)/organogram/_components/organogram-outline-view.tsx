@@ -37,7 +37,9 @@ function OutlineNodeRow({
   );
   const isCollapsed = collapsedIds.has(node.positionId);
   const isSelected = selectedId === node.positionId;
-  const occupantLabel = node.occupancyStatus === "occupied" ? node.occupantDisplayName : "Vacant";
+  // No "Vacant" stamp, matching the card: an unfilled role simply has no
+  // name line. See position-node.tsx for why.
+  const occupantName = node.occupancyStatus === "occupied" ? node.occupantDisplayName : null;
   const matchState = matchStateById?.get(node.positionId) ?? "none";
   // The synthetic department tier (lib/domain/organogram-leadership-graph.ts).
   // Same reasoning as the canvas card: it is a heading, not a seat, so it
@@ -83,18 +85,12 @@ function OutlineNodeRow({
             onClick={() => onSelect(node.positionId)}
             className="focus-visible:ring-ring flex flex-1 flex-wrap items-center gap-x-2 rounded px-1 text-left text-sm outline-none focus-visible:ring-2"
           >
-            <span
-              className={cn(
-                "text-foreground font-medium",
-                node.occupancyStatus === "vacant" && "text-status-vacant"
-              )}
-            >
-              {occupantLabel}
-            </span>
-            <span className="text-muted-foreground">{node.title}</span>
-            {/* The department name used to repeat on every row; it is now
-                the heading this row already sits under, so the row shows
-                the grade instead — the same three fields as the card. */}
+            {/* Role first, then whoever holds it — the same order, and the
+                same three fields, as the canvas card. The two views must
+                describe a person the same way round, and an e2e helper
+                that queries "the card for X" addresses both. */}
+            <span className="text-foreground font-medium">{node.title}</span>
+            {occupantName ? <span className="text-foreground/80">{occupantName}</span> : null}
             {node.jobGradeCode ? (
               <span className="text-muted-foreground text-xs font-medium">{node.jobGradeCode}</span>
             ) : null}

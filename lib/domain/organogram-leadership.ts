@@ -60,8 +60,21 @@ export function isDepartmentGroupId(id: string): boolean {
 export const DEFAULT_LEADERSHIP_MIN_GRADE_LEVEL = 7;
 
 export interface LeadershipViewOptions {
-  /** Positions graded below this are excluded from the chart. Never deletes them. */
+  /** The leadership threshold. What happens below it is `belowThreshold`. */
   minGradeLevel: number;
+  /**
+   * What to do with positions graded below `minGradeLevel`.
+   *
+   * - `"collapse"` (default) keeps them in the graph but leaves them
+   *   folded away behind their manager's expand control, so the chart
+   *   OPENS at leadership level and still drills all the way down. This
+   *   is the stakeholder's "till L7 we will show names of team members
+   *   with the roles, and each box should be expandable".
+   * - `"hide"` removes them from the chart entirely.
+   *
+   * Neither deletes anything.
+   */
+  belowThreshold: "collapse" | "hide";
   /**
    * Positions with no job grade at all cannot be shown to BE leadership,
    * so they are excluded and counted. The count is surfaced rather than
@@ -69,7 +82,14 @@ export interface LeadershipViewOptions {
    * position that mysteriously vanished.
    */
   hideUngraded: boolean;
-  /** Vacant positions are excluded (the chart should not imply many unfilled roles). */
+  /**
+   * Whether to drop positions nobody currently holds.
+   *
+   * Default `false`. The company's own chart shows every approved role
+   * and simply leaves the name off the ones that are unfilled, and their
+   * position list is a role ladder — most rungs have no occupant — so
+   * hiding them emptied the chart rather than tidying it.
+   */
   hideVacant: boolean;
   /** Group positions under a synthetic department tier below the root. */
   departmentFirst: boolean;
@@ -77,8 +97,9 @@ export interface LeadershipViewOptions {
 
 export const DEFAULT_LEADERSHIP_VIEW_OPTIONS: LeadershipViewOptions = {
   minGradeLevel: DEFAULT_LEADERSHIP_MIN_GRADE_LEVEL,
+  belowThreshold: "collapse",
   hideUngraded: true,
-  hideVacant: true,
+  hideVacant: false,
   departmentFirst: true,
 };
 
@@ -99,6 +120,13 @@ export interface LeadershipView {
   departmentGroups: DepartmentGroupNode[];
   /** Positions that should render. */
   visiblePositionIds: ReadonlySet<string>;
+  /**
+   * Of those, the ones graded below the threshold — present in the graph
+   * but folded away by default (see `belowThreshold: "collapse"`). Empty
+   * when `belowThreshold` is `"hide"`, because then they are not in
+   * `visiblePositionIds` at all.
+   */
+  belowThresholdIds: ReadonlySet<string>;
   /** Display parent of each visible position — a position id, or a department group id. */
   parentByPositionId: ReadonlyMap<string, string>;
   /**
@@ -109,8 +137,11 @@ export interface LeadershipView {
   excluded: {
     vacant: number;
     ungraded: number;
+    /** Left off the chart entirely — only ever non-zero when `belowThreshold` is `"hide"`. */
     belowGrade: number;
   };
+  /** Kept, but folded away behind their manager's expand control. */
+  collapsedBelowThreshold: number;
 }
 
 /**
@@ -127,8 +158,17 @@ function classify(
   if (isRoot) return "visible";
   if (options.hideVacant && node.occupancyStatus === "vacant") return "vacant";
   if (node.jobGradeLevel === null) return options.hideUngraded ? "ungraded" : "visible";
-  if (node.jobGradeLevel < options.minGradeLevel) return "belowGrade";
+  if (node.jobGradeLevel < options.minGradeLevel) {
+    // "collapse" keeps the node in the graph — it is reachable by
+    // expanding its manager, and only the DEFAULT collapse state hides it.
+    return options.belowThreshold === "hide" ? "belowGrade" : "visible";
+  }
   return "visible";
+}
+
+/** Graded, and graded below the threshold. An ungraded position is not "below" anything. */
+export function isBelowThreshold(node: OrganogramNode, minGradeLevel: number): boolean {
+  return node.jobGradeLevel !== null && node.jobGradeLevel < minGradeLevel;
 }
 
 /**
@@ -229,11 +269,19 @@ export function buildLeadershipView(
     // departments sharing a name still order stably.
     .sort((a, b) => a.name.localeCompare(b.name) || a.departmentId.localeCompare(b.departmentId));
 
+  const belowThresholdIds = new Set(
+    visible
+      .filter((n) => n.positionId !== rootPositionId && isBelowThreshold(n, options.minGradeLevel))
+      .map((n) => n.positionId)
+  );
+
   return {
     rootPositionId,
     departmentGroups,
     visiblePositionIds: visibleIds,
+    belowThresholdIds,
     parentByPositionId,
     excluded,
+    collapsedBelowThreshold: belowThresholdIds.size,
   };
 }

@@ -31,6 +31,12 @@ export interface LeadershipSummary {
   minGradeLevel: number;
   departmentGroupCount: number;
   shownPositionCount: number;
+  /**
+   * In the graph but folded away by default, because they are graded
+   * below the threshold. Expanding their manager reveals them — they are
+   * "not shown yet", not "not shown".
+   */
+  collapsedBelowThreshold: number;
   hidden: {
     vacant: number;
     ungraded: number;
@@ -215,6 +221,7 @@ export function projectLeadershipGraph(
       minGradeLevel: options.minGradeLevel,
       departmentGroupCount: departmentNodes.length,
       shownPositionCount: positionNodes.length,
+      collapsedBelowThreshold: view.collapsedBelowThreshold,
       hidden: {
         vacant: view.excluded.vacant,
         ungraded: view.excluded.ungraded,

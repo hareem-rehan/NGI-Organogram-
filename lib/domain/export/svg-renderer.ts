@@ -208,16 +208,15 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
   const strokeWidth = isMatch ? 2 : 1;
   const opacity = isContext ? 0.6 : 1;
 
-  // Mirrors position-node.tsx's compact card exactly: occupant name,
-  // role title, grade level. The position code and the repeated
-  // department name were removed there (Demo 1 feedback) and must be
-  // removed here too — this renderer draws its own copy of the card, so
-  // the two silently diverge unless changed together.
+  // Mirrors position-node.tsx's compact card exactly: role title, then
+  // the person in it (omitted entirely when the role is unfilled), then
+  // the grade. The position code and the repeated department name were
+  // removed there (Demo 1 feedback) and must be removed here too — this
+  // renderer draws its own copy of the card, so the two silently diverge
+  // unless changed together.
   const titleLines = wrapText(node.title, 30, 2);
-  const occupantText =
-    node.occupancyStatus === "vacant" ? "Vacant" : (node.occupantDisplayName ?? "—");
-  const occupantColor =
-    node.occupancyStatus === "vacant" ? EXPORT_COLORS.statusVacant : EXPORT_COLORS.foreground;
+  const occupantName =
+    node.occupancyStatus === "vacant" ? null : (node.occupantDisplayName ?? null);
   const badge = nodeBadge(node);
   const statusDotColor =
     node.occupancyStatus === "vacant" ? EXPORT_COLORS.statusVacant : EXPORT_COLORS.statusFilled;
@@ -235,27 +234,31 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
     );
   }
 
-  // Row 1 — the person. The occupancy dot the "Occupied"/"Vacant" legend
-  // rows are the key to; colour is never the only signal
-  // (docs/PROJECT_SPEC.md §12), so it sits beside the name or the literal
-  // word "Vacant".
+  // Row 1 — the role, wrapped to at most two lines. The occupancy dot
+  // still rides alongside it, because a printed chart has no hover or
+  // detail panel to fall back on, and colour is never the only signal
+  // (docs/PROJECT_SPEC.md §12) — the presence or absence of the name on
+  // row 2 carries the same information.
   parts.push(`<circle cx="22" cy="22" r="4" fill="${statusDotColor}" />`);
-  parts.push(
-    `<text x="34" y="26" font-size="13" font-weight="700" fill="${occupantColor}">${escapeXmlText(occupantText)}</text>`
-  );
-
-  // Row 2 — the role, wrapped to at most two lines.
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="16" y="${46 + index * 14}" font-size="11" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(line)}</text>`
+      `<text x="34" y="${26 + index * 15}" font-size="13" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
     );
   });
 
-  // Row 3 — the grade level, positioned BELOW however many title lines
-  // were actually drawn, so a two-line title can never be overprinted.
+  // Rows 2 and 3 — the person (omitted when nobody holds the role) and
+  // the grade, each positioned BELOW however many title lines were
+  // actually drawn, so a two-line title can never be overprinted.
+  let y = 30 + titleLines.length * 15;
+  if (occupantName) {
+    parts.push(
+      `<text x="16" y="${y}" font-size="11" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(occupantName)}</text>`
+    );
+    y += 14;
+  }
   if (node.jobGradeCode) {
     parts.push(
-      `<text x="16" y="${46 + titleLines.length * 14}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(node.jobGradeCode)}</text>`
+      `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(node.jobGradeCode)}</text>`
     );
   }
 

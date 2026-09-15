@@ -21,7 +21,12 @@ import {
   type OrganogramViewMode,
 } from "@/app/(app)/organogram/_components/organogram-toolbar";
 import type { PositionNodeMatchState } from "@/app/(app)/organogram/_components/position-node";
-import { computeVisiblePositionIds, countHiddenDescendants } from "@/lib/domain/organogram";
+import {
+  computeVisiblePositionIds,
+  countHiddenDescendants,
+  type OrganogramNode,
+} from "@/lib/domain/organogram";
+import { isBelowThreshold } from "@/lib/domain/organogram-leadership";
 import { computeFilterMatchIds, isAnyFilterActive } from "@/lib/domain/organogram-filters";
 import {
   buildDepartmentFocusVisibleSet,
@@ -56,15 +61,29 @@ interface OrganogramViewProps {
  * start fully expanded within their own (already-bounded) subgraph.
  */
 function defaultCollapsedIds(data: OrganogramChartData): Set<string> {
-  const hasDepartmentTier = data.nodes.some((n) => n.kind === "department");
-  const collapseFromTier = hasDepartmentTier ? 3 : 2;
-  return new Set(
-    data.nodes
-      .filter(
-        (n) => (n.displayDepth ?? n.organizationalLevel) === collapseFromTier && n.hasChildren
-      )
-      .map((n) => n.positionId)
-  );
+  const minGrade = data.leadership.minGradeLevel;
+  const below = (n: OrganogramNode) => isBelowThreshold(n, minGrade);
+
+  // The chart opens at leadership level and drills down from there: fold
+  // away anything below the threshold, and fold any box whose children
+  // are ALL below it, so that box still offers an expand control rather
+  // than claiming it has no reports. Expanding walks down one rung at a
+  // time, because each rung below is itself collapsed.
+  const childrenByParent = new Map<string, OrganogramNode[]>();
+  for (const node of data.nodes) {
+    if (!node.primaryReportsToPositionId) continue;
+    const list = childrenByParent.get(node.primaryReportsToPositionId) ?? [];
+    list.push(node);
+    childrenByParent.set(node.primaryReportsToPositionId, list);
+  }
+
+  const collapsed = new Set<string>();
+  for (const node of data.nodes) {
+    const children = childrenByParent.get(node.positionId) ?? [];
+    if (children.length === 0) continue;
+    if (below(node) || children.every(below)) collapsed.add(node.positionId);
+  }
+  return collapsed;
 }
 
 function allCollapsibleIds(data: OrganogramChartData): Set<string> {
@@ -475,32 +494,48 @@ export function OrganogramView({
         onResetView={handleResetView}
       />
 
-      {data.leadership.applied && data.leadership.hidden.total > 0 ? (
-        // Says out loud that this chart is a leadership view. A chart
-        // showing a fraction of the company without explaining why reads
-        // as missing data; the same chart with one line of explanation
-        // reads as a deliberate filter. The wording never implies anyone
-        // was removed — nothing here deletes a position.
+      {data.leadership.applied &&
+      (data.leadership.hidden.total > 0 || data.leadership.collapsedBelowThreshold > 0) ? (
+        // Says out loud what the chart is doing. There are two different
+        // things to be honest about and they are NOT the same: roles below
+        // the threshold are folded away and one click from view, while
+        // ungraded ones genuinely are not drawn. Calling both "hidden"
+        // would make a missing job grade look like a deliberate filter.
         <p role="status" className="text-muted-foreground text-xs">
-          Leadership view — named cards are L{data.leadership.minGradeLevel} and above.{" "}
-          {data.leadership.hidden.total} position
-          {data.leadership.hidden.total === 1 ? " is" : "s are"} not shown on the chart (
-          {[
-            data.leadership.hidden.belowGrade > 0
-              ? `${data.leadership.hidden.belowGrade} below L${data.leadership.minGradeLevel}`
-              : null,
-            data.leadership.hidden.vacant > 0 ? `${data.leadership.hidden.vacant} vacant` : null,
-            data.leadership.hidden.ungraded > 0
-              ? `${data.leadership.hidden.ungraded} with no level set`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(", ")}
-          ). All of them remain unchanged in{" "}
-          <Link href="/positions" className="underline">
-            Positions
-          </Link>
-          .
+          Leadership view — opens at L{data.leadership.minGradeLevel} and above.
+          {data.leadership.collapsedBelowThreshold > 0 ? (
+            <>
+              {" "}
+              {data.leadership.collapsedBelowThreshold} more junior role
+              {data.leadership.collapsedBelowThreshold === 1 ? " is" : "s are"} folded away — expand
+              any box to drill further down.
+            </>
+          ) : null}
+          {data.leadership.hidden.total > 0 ? (
+            <>
+              {" "}
+              {data.leadership.hidden.total} position
+              {data.leadership.hidden.total === 1 ? " is" : "s are"} not on the chart (
+              {[
+                data.leadership.hidden.ungraded > 0
+                  ? `${data.leadership.hidden.ungraded} with no level set`
+                  : null,
+                data.leadership.hidden.vacant > 0
+                  ? `${data.leadership.hidden.vacant} vacant`
+                  : null,
+                data.leadership.hidden.belowGrade > 0
+                  ? `${data.leadership.hidden.belowGrade} below L${data.leadership.minGradeLevel}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+              ), and unchanged in{" "}
+              <Link href="/positions" className="underline">
+                Positions
+              </Link>
+              .
+            </>
+          ) : null}
         </p>
       ) : null}
 
