@@ -113,6 +113,28 @@ DATABASE_URL="$DATABASE_URL" DIRECT_DATABASE_URL="$DIRECT_DATABASE_URL" npx pris
 
 Expected output: `6 migrations found` and all applied. Safe to re-run — `migrate deploy` only applies committed migrations and never resets anything.
 
+#### If you get `P1001: Can't reach database server`
+
+Check first whether the problem is Prisma or the network. From the project directory:
+
+```bash
+python3 -c "import socket;print(socket.getaddrinfo('aws-0-<region>.pooler.supabase.com',5432)[0][4])"
+```
+
+If that prints an address, DNS and the network are fine and the failure is inside Prisma's own resolver — a local-machine quirk seen on macOS, where the OS resolves the host but Prisma's engine does not. It does **not** affect GitHub Actions or Vercel.
+
+Work around it by putting the resolved IP in the URL for that one command:
+
+```bash
+DATABASE_URL="postgresql://postgres.<ref>:<password>@<ip>:5432/postgres?sslmode=require" \
+DIRECT_DATABASE_URL="postgresql://postgres.<ref>:<password>@<ip>:5432/postgres?sslmode=require" \
+npx prisma migrate deploy
+```
+
+`sslmode=require` keeps the connection encrypted without verifying the hostname against the certificate, which an IP cannot match. Use this for a one-off migration only — never store an IP in a deployed environment variable, since Supabase's load balancer addresses change.
+
+How to tell the two apart: `P1001` means Prisma never reached the server; `P1000` means it connected and only the password was wrong. Getting `P1000` is progress.
+
 ### 2d. The database starts empty
 
 That is deliberate (`docs/DECISIONS.md` D12). The seed script refuses to run outside `development`/`test`, so there is no way to populate this by accident. Load real data through the app's own **Imports** page once you can sign in — departments first, then positions, then employees, then assignments.
