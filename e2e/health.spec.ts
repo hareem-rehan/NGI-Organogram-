@@ -32,6 +32,10 @@ test.describe("Health endpoint", () => {
     const body = await response.json();
     expect(body.status).toBe("ok");
     expect(body.database).toBe("reachable");
+    // Connecting to an empty database succeeds, so reachability alone is
+    // not readiness — the schema has to be there too.
+    expect(body.schema).toBe("ready");
+    expect(body.migrationsApplied).toBeGreaterThan(0);
 
     // A probe that anyone can call before signing in must give away
     // nothing beyond reachable/not — no host, no driver, no error text.
