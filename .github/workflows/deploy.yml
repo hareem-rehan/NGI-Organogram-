@@ -141,6 +141,29 @@ jobs:
           echo "Health endpoint never returned 200 — deployment is NOT healthy."
           exit 1
 
+      - name: Smoke check — the deployed app can reach the database
+        # /api/health proves the process booted and its configuration
+        # parsed. It deliberately touches nothing else, so it stays green
+        # even when DATABASE_URL points somewhere unreachable — which is
+        # the easiest mistake to make here, since the app connects through
+        # a pooled URL while migrations use a direct one. This catches
+        # that at deploy time instead of leaving it for the first user who
+        # tries to sign in.
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url/api/health/ready" || true)
+            if [ "$code" = "200" ]; then
+              echo "Readiness check passed ($url/api/health/ready -> 200)"
+              exit 0
+            fi
+            echo "Attempt $i: got HTTP $code, retrying in 5s..."
+            sleep 5
+          done
+          echo "Readiness never returned 200 — the app is running but cannot reach its database."
+          echo "Check DATABASE_URL (the POOLED string, port 6543, with ?pgbouncer=true)."
+          exit 1
+
       - name: Smoke check — the dev sign-in backdoor is absent
         # lib/auth/dev-sign-in.ts gates on NODE_ENV !== "production" at three
         # layers. This proves the gate actually held on the deployed build,
@@ -245,6 +268,22 @@ jobs:
             sleep 5
           done
           echo "Health endpoint never returned 200 — CONSIDER ROLLBACK (runbook section 7)."
+          exit 1
+
+      - name: Smoke check — the deployed app can reach the database
+        # See the staging job's copy for why liveness alone is not enough.
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url/api/health/ready" || true)
+            if [ "$code" = "200" ]; then
+              echo "Readiness check passed"
+              exit 0
+            fi
+            echo "Attempt $i: got HTTP $code, retrying in 5s..."
+            sleep 5
+          done
+          echo "App is running but cannot reach its database — CONSIDER ROLLBACK (runbook section 7)."
           exit 1
 
       - name: Smoke check — the dev sign-in backdoor is absent

@@ -10,11 +10,15 @@ export interface HealthPayload {
 }
 
 /**
- * Shallow application-health check for Phase 1: proves the process is up
- * and configuration loaded correctly. It does NOT check database
- * connectivity — there is no database client yet (Phase 2). Add a
- * readiness check alongside the Prisma client when that lands, without
- * changing this function's contract for callers that only need liveness.
+ * Shallow application-health check: proves the process is up and its
+ * configuration loaded correctly. It deliberately does NOT check database
+ * connectivity, and must not start — the deploy pipeline treats this as a
+ * LIVENESS probe, and a liveness check that fails on a database blip
+ * would roll back a perfectly good deployment.
+ *
+ * The readiness question ("can it actually serve a request?") is answered
+ * separately by `app/api/health/ready/route.ts`, added once the Prisma
+ * client existed, exactly as this comment previously said it should be.
  */
 export function buildHealthPayload(): HealthPayload {
   return {
