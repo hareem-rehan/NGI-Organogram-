@@ -221,7 +221,10 @@ describe("buildLeadershipView — exclusions", () => {
     expect(view.excluded.vacant).toBe(1);
   });
 
-  it("hides ungraded positions and counts them separately, so missing data is visible", () => {
+  it("shows ungraded positions by default, so a company still assigning grades still sees its chart", () => {
+    // Default flipped 2026-09-17: a position with no grade yet is SHOWN,
+    // not hidden. Otherwise a company that has not set up grades adds
+    // positions and watches nothing appear.
     const ungraded = node({
       positionId: "ungraded",
       jobGradeId: null,
@@ -232,18 +235,24 @@ describe("buildLeadershipView — exclusions", () => {
 
     const view = buildLeadershipView([ceo(), ungraded], opts());
 
+    expect(view.visiblePositionIds.has("ungraded")).toBe(true);
+    expect(view.excluded.ungraded).toBe(0);
+  });
+
+  it("hides ungraded positions and counts them separately when that is chosen instead", () => {
+    const ungraded = node({
+      positionId: "ungraded",
+      jobGradeId: null,
+      jobGradeName: null,
+      jobGradeCode: null,
+      jobGradeLevel: null,
+    });
+
+    const view = buildLeadershipView([ceo(), ungraded], opts({ hideUngraded: true }));
+
     expect(view.visiblePositionIds.has("ungraded")).toBe(false);
     expect(view.excluded.ungraded).toBe(1);
     expect(view.excluded.belowGrade).toBe(0);
-  });
-
-  it("can show ungraded positions when that is chosen instead", () => {
-    const ungraded = node({ positionId: "ungraded", jobGradeId: null, jobGradeLevel: null });
-
-    const view = buildLeadershipView([ceo(), ungraded], opts({ hideUngraded: false }));
-
-    expect(view.visiblePositionIds.has("ungraded")).toBe(true);
-    expect(view.excluded.ungraded).toBe(0);
   });
 
   it("never excludes the root — a chart with no top is not a chart", () => {
@@ -342,14 +351,16 @@ describe("buildLeadershipView — below the threshold, by default, is folded not
     expect(view.excluded.vacant).toBe(0);
   });
 
-  it("still leaves ungraded positions off — a missing grade is missing data, not a junior role", () => {
+  it("shows an ungraded position but never treats it as below-threshold — no grade is not a low grade", () => {
     const ungraded = node({ positionId: "ungraded", jobGradeId: null, jobGradeLevel: null });
 
     const view = buildLeadershipView([ceo(), ungraded], opts());
 
-    expect(view.visiblePositionIds.has("ungraded")).toBe(false);
+    // Shown by default now, but "no grade" and "graded below L7" are
+    // different states: only the latter is folded away.
+    expect(view.visiblePositionIds.has("ungraded")).toBe(true);
     expect(view.belowThresholdIds.has("ungraded")).toBe(false);
-    expect(view.excluded.ungraded).toBe(1);
+    expect(view.excluded.ungraded).toBe(0);
   });
 
   it("never flags the root as below the threshold, whatever its grade", () => {

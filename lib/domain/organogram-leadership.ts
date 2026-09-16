@@ -76,10 +76,15 @@ export interface LeadershipViewOptions {
    */
   belowThreshold: "collapse" | "hide";
   /**
-   * Positions with no job grade at all cannot be shown to BE leadership,
-   * so they are excluded and counted. The count is surfaced rather than
-   * swallowed, so a missing grade looks like missing data instead of a
-   * position that mysteriously vanished.
+   * What to do with a position that has no job grade at all.
+   *
+   * Default `false` — SHOWN. A position with no grade cannot be placed
+   * against the L7 threshold, but hiding it means a company still setting
+   * up (no grades assigned yet) sees an empty chart no matter how many
+   * positions it adds. Showing it lets the org chart be built and read
+   * before grades exist; when `hideUngraded` is `true` instead, such a
+   * position is excluded and counted, so a missing grade reads as missing
+   * data rather than a vanished role.
    */
   hideUngraded: boolean;
   /**
@@ -98,7 +103,7 @@ export interface LeadershipViewOptions {
 export const DEFAULT_LEADERSHIP_VIEW_OPTIONS: LeadershipViewOptions = {
   minGradeLevel: DEFAULT_LEADERSHIP_MIN_GRADE_LEVEL,
   belowThreshold: "collapse",
-  hideUngraded: true,
+  hideUngraded: false,
   hideVacant: false,
   departmentFirst: true,
 };
