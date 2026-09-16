@@ -225,10 +225,35 @@ The pipeline will:
 1. Run the full quality gate (`ci.yml`: lint, typecheck, unit, integration, secret scan, integrity check, build, Playwright)
 2. Apply migrations to the staging database
 3. Build and deploy to Vercel
-4. Verify `/api/health` returns 200
-5. Verify `/dev-sign-in` returns **404** — proving the local-testing backdoor did not ship
+4. Verify `/api/health` returns 200 — the app booted and its configuration parsed
+5. Verify `/api/health/ready` returns 200 — it can actually reach the database AND the schema is migrated
+6. Verify `/dev-sign-in` returns **404** — proving the local-testing backdoor did not ship
 
-If step 5 fails, treat it as a security incident, not a flaky test.
+If step 6 fails, treat it as a security incident, not a flaky test.
+
+Steps 4 and 5 answer different questions, which is why both exist. Liveness stays green when `DATABASE_URL` points somewhere unreachable, and stays green again when the database is reachable but was never migrated — connecting to an empty database succeeds perfectly well. Readiness reports which of the three states you are in:
+
+```jsonc
+{ "status": "ok",    "database": "reachable",   "schema": "ready",   "migrationsApplied": 6 }
+{ "status": "error", "database": "reachable",   "schema": "missing" }  // 503 — run the migrations
+{ "status": "error", "database": "unreachable" }                       // 503 — check DATABASE_URL
+```
+
+It is also the quickest way to confirm a database from outside, without signing in:
+
+```bash
+curl -s https://<your-app>.vercel.app/api/health/ready
+```
+
+### Deploying by hand, before the pipeline exists
+
+The pipeline above needs GitHub Environments and secrets. Until those are set up, you can deploy straight from a developer machine with the Vercel CLI, which is enough to prove the app boots and reaches its database:
+
+```bash
+npx vercel --prod
+```
+
+Environment variables must already be set in the Vercel project — `NEXT_PUBLIC_*` values are baked in at build time, so a missing one fails the build rather than the deployment.
 
 ### Then verify SSO by hand
 
