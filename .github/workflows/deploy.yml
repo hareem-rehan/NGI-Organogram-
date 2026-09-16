@@ -9,10 +9,21 @@
 # Required GitHub Environments (Settings -> Environments):
 #
 #   staging     secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID,
-#                        DATABASE_URL  (the STAGING database, never production)
+#                        DATABASE_URL         (STAGING, never production)
+#                        DIRECT_DATABASE_URL  (same database, direct — see below)
 #
 #   production  secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID,
-#                        DATABASE_URL  (the PRODUCTION database)
+#                        DATABASE_URL         (the PRODUCTION database)
+#                        DIRECT_DATABASE_URL  (same database, direct — see below)
+#
+# On a managed host that puts a connection pooler in front of Postgres
+# (Supabase, Neon, RDS Proxy), those two are DIFFERENT strings for the
+# SAME database: DATABASE_URL is the pooled endpoint the app runs on, and
+# DIRECT_DATABASE_URL bypasses the pooler for migrations, which use
+# advisory locks and transactional DDL that transaction-mode pooling
+# cannot carry. Without a pooler, set both to the same value. Prisma
+# fails loudly if DIRECT_DATABASE_URL is missing, so a migration can
+# never silently run through a pooler. See docs/DEPLOYMENT_RUNBOOK.md.
 #               protection rule: Required reviewers -> the named deployment
 #                        approver (docs/DEPLOYMENT_DECISIONS.md #19).
 #
@@ -87,6 +98,7 @@ jobs:
         # never generates or resets anything.
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
         run: npx prisma migrate deploy
 
       - name: Install Vercel CLI
@@ -192,6 +204,7 @@ jobs:
       - name: Apply migrations to the PRODUCTION database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
         run: npx prisma migrate deploy
 
       - name: Install Vercel CLI

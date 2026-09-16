@@ -18,7 +18,18 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  /// What the running app connects through. On Supabase this is the
+  /// POOLED connection (port 6543, PgBouncer in transaction mode) — a
+  /// serverless deployment opens far more short-lived connections than a
+  /// Postgres instance will accept directly. Locally it is just the
+  /// Docker container, which needs no pooler.
   url      = env("DATABASE_URL")
+  /// What `prisma migrate` connects through. Migrations issue statements
+  /// (advisory locks, DDL in an explicit transaction) that PgBouncer's
+  /// transaction mode cannot carry, so they must bypass the pooler — on
+  /// Supabase that is the DIRECT connection, port 5432. Locally both
+  /// point at the same container.
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ---------------------------------------------------------------------

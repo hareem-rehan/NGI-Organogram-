@@ -41,7 +41,10 @@ npm install
    Prisma's CLI reads `.env` (not `.env.local`) by default — `.env` is the right place for `DATABASE_URL` so both Prisma and Next.js pick it up consistently. Use `.env.local` only for browser-safe (`NEXT_PUBLIC_*`) values if you want them layered separately.
 
 2. Set `NEXT_PUBLIC_APP_NAME` (required — the app will not start without it; see [lib/env.ts](lib/env.ts)). The example value in `.env.example` works as-is.
-3. Set `DATABASE_URL` — **required as of Phase 2**. If you're using the Docker Compose setup below, the value in `.env.example` already matches it exactly.
+3. Set `DATABASE_URL` and `DIRECT_DATABASE_URL` — **required as of Phase 2**. If you're using the Docker Compose setup below, the values in `.env.example` already match it exactly.
+
+   Locally these are the same string, because there is no connection pooler in front of your container. They only diverge in a deployed environment: the app connects through a pooled endpoint, while `prisma migrate` has to bypass the pooler (advisory locks and transactional DDL do not survive transaction-mode pooling). `prisma generate` does not need `DIRECT_DATABASE_URL`; every `prisma migrate` command does, and fails loudly without it rather than migrating through a pooler by accident. See [docs/DEPLOYMENT_RUNBOOK.md](docs/DEPLOYMENT_RUNBOOK.md) §2 for the deployed values.
+
 4. Set the `AUTH_*` variables — **required as of Phase 3**. See "Company SSO Setup" below for what each one means and how to point them at a real identity provider.
 5. Never commit `.env`, `.env.local`, or `.env.test` — all three are git-ignored. Never put a secret behind a `NEXT_PUBLIC_` variable; anything with that prefix ships to every visitor's browser.
 

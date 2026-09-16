@@ -63,6 +63,12 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
+      # CI runs a plain Postgres service container with no pooler in front
+      # of it, so the direct URL is the same one. It must still be set:
+      # prisma/schema.prisma declares `directUrl`, and every `prisma
+      # migrate` command fails without it (by design — see the datasource
+      # block's comment).
+      DIRECT_DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
       NODE_ENV: "test"
       # Throwaway, non-functional OIDC configuration — exists only so
       # lib/env.server.ts validation and the production build succeed in
@@ -234,6 +240,12 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
+      # CI runs a plain Postgres service container with no pooler in front
+      # of it, so the direct URL is the same one. It must still be set:
+      # prisma/schema.prisma declares `directUrl`, and every `prisma
+      # migrate` command fails without it (by design — see the datasource
+      # block's comment).
+      DIRECT_DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
       NODE_ENV: "test"
       # Non-standard host:port (127.0.0.1:PORT) under NODE_ENV=test needs
       # this explicitly — see .env.test's comment on the same variable.

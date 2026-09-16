@@ -24,6 +24,22 @@ export const serverEnvSchema = z.object({
       (value) => value.startsWith("postgres://") || value.startsWith("postgresql://"),
       "DATABASE_URL must be a PostgreSQL connection string (postgres:// or postgresql://)"
     ),
+  /**
+   * Optional, and deliberately so: only the Prisma CLI reads it (via
+   * `directUrl` in prisma/schema.prisma), never the running app. Making
+   * it required here would fail a deployment that migrates from CI and
+   * therefore has no reason to carry a direct connection string into its
+   * runtime environment. Validated only for SHAPE when it is present, so
+   * a typo is caught at boot rather than at the next migration.
+   */
+  DIRECT_DATABASE_URL: z
+    .string()
+    .trim()
+    .refine(
+      (value) => value.startsWith("postgres://") || value.startsWith("postgresql://"),
+      "DIRECT_DATABASE_URL must be a PostgreSQL connection string (postgres:// or postgresql://)"
+    )
+    .optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
   // ---- Authentication (Phase 3) — Company SSO, provider-neutral OIDC ----

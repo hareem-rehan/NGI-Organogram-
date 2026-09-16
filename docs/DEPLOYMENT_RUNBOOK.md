@@ -15,7 +15,7 @@ Nothing in this runbook has been executed yet. Every command is written to be ru
 | Hosting         | Vercel (`docs/DEPLOYMENT_DECISIONS.md` #1)                                                                      |
 | SSO provider    | Google Workspace (#12)                                                                                          |
 | Auth model      | **SSO only** — there is no password login anywhere, by design (`docs/adr/0010-authjs-provider-neutral-oidc.md`) |
-| Database        | PostgreSQL 16, 5 migrations, managed provider **not yet chosen** (#5)                                           |
+| Database        | PostgreSQL, 6 migrations, **Supabase** (#5) — Postgres only, not its Auth/Storage                               |
 | Deploy pipeline | `.github/workflows/deploy.yml` — functional, but fails until sections 1–4 are done                              |
 
 ⚠️ **The single most important consequence of SSO-only auth:** until section 3 is finished, a deployed site rejects _every_ sign-in, including yours. There is no fallback login. Do not deploy expecting to "sort auth out afterwards".
@@ -48,25 +48,69 @@ Finally, create a deploy token at **Vercel → Account Settings → Tokens**. Th
 
 ---
 
-## 2. Managed PostgreSQL (~10 minutes)
+## 2. Managed PostgreSQL — Supabase (~15 minutes)
 
-Provision **two** databases — staging and production. Never point staging at the production database; the pipeline runs migrations against whatever `DATABASE_URL` the environment provides.
+Provision **two** projects — staging and production. Never point staging at the production database; the pipeline runs migrations against whatever `DATABASE_URL` the environment provides.
 
-Lowest-friction option is Vercel's own Postgres (or Neon) from the same dashboard, since it wires the connection string in for you. Any managed Postgres 16 works.
+Supabase is the chosen provider (`docs/DECISIONS.md` D12). Only its Postgres is used — not its Auth, Storage or Realtime. This app authenticates through its own OIDC provider (section 3) and Auth.js's Prisma adapter; wiring Supabase Auth in as well would give you two competing session systems.
 
-For each database, record its connection string. Then apply the schema:
+### 2a. Create each project
+
+**supabase.com → New project**, once for staging and once for production. Choose a region near your users, and let it generate the database password — you will not need to type it anywhere by hand.
+
+Postgres 17 is Supabase's current default and is fine; the schema uses nothing version-specific beyond Postgres 12.
+
+### 2b. Take BOTH connection strings
+
+**Project → Connect**. You need two strings per project, and they are not interchangeable:
+
+| Supabase calls it                           | Port   | Goes into             | Used by               |
+| ------------------------------------------- | ------ | --------------------- | --------------------- |
+| **Transaction pooler** / Connection pooling | `6543` | `DATABASE_URL`        | the running app       |
+| **Direct connection** / Session pooler      | `5432` | `DIRECT_DATABASE_URL` | `prisma migrate` only |
+
+Why both: the app runs on Vercel's serverless functions, which open far more short-lived connections than a Postgres instance will accept directly — that is what the pooler is for. But migrations take advisory locks and run transactional DDL, which a transaction-mode pooler cannot carry, so they have to bypass it.
+
+**Append `?pgbouncer=true&connection_limit=1` to the pooled URL.** Without it Prisma prepares statements the pooler cannot reuse, and you get intermittent `prepared statement "s0" already exists` errors under load — which look like application bugs and are not.
+
+So `DATABASE_URL` ends up shaped like:
+
+```
+postgresql://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+```
+
+and `DIRECT_DATABASE_URL` like:
+
+```
+postgresql://postgres.<ref>:<password>@<region>.pooler.supabase.com:5432/postgres
+```
+
+If you ever move off Supabase to a Postgres with no pooler, set both to the same string. Prisma refuses to run any migration when `DIRECT_DATABASE_URL` is unset, so a migration can never silently go through a pooler.
+
+### 2c. Apply the schema
+
+Run this from a shell, not from this repo's `.env` — these are production credentials and belong in your environment for the length of one command, never in a file:
 
 ```bash
 # Staging
-DATABASE_URL="<staging connection string>" npx prisma migrate deploy
+read -rs -p "staging pooled URL: " DATABASE_URL && \
+read -rs -p "staging direct URL: " DIRECT_DATABASE_URL && \
+DATABASE_URL="$DATABASE_URL" DIRECT_DATABASE_URL="$DIRECT_DATABASE_URL" npx prisma migrate deploy
 
-# Production
-DATABASE_URL="<production connection string>" npx prisma migrate deploy
+# Production — same, with the production project's two strings
 ```
 
-Expected output: `5 migrations found` and all applied. This is safe to re-run — `migrate deploy` only applies committed migrations and never resets anything.
+`read -rs` keeps the strings out of your shell history and off the screen.
 
-Then record which provider you chose in `docs/DEPLOYMENT_DECISIONS.md` (#5), which is currently blank.
+Expected output: `6 migrations found` and all applied. Safe to re-run — `migrate deploy` only applies committed migrations and never resets anything.
+
+### 2d. The database starts empty
+
+That is deliberate (`docs/DECISIONS.md` D12). The seed script refuses to run outside `development`/`test`, so there is no way to populate this by accident. Load real data through the app's own **Imports** page once you can sign in — departments first, then positions, then employees, then assignments.
+
+You will need one ADMIN user before you can reach Imports. See section 5.
+
+Then record Supabase in `docs/DEPLOYMENT_DECISIONS.md` (#5), which is currently blank.
 
 ---
 
@@ -108,7 +152,7 @@ In **Vercel → Project → Settings → Environment Variables**, add these for 
 | Variable                      | Value                                                            |
 | ----------------------------- | ---------------------------------------------------------------- |
 | `NEXT_PUBLIC_APP_NAME`        | `DotZero Organogram`                                             |
-| `DATABASE_URL`                | The matching database from section 2                             |
+| `DATABASE_URL`                | Section 2's **pooled** string (`:6543`, with `?pgbouncer=true`)  |
 | `AUTH_SECRET`                 | From section 3 — different per environment                       |
 | `AUTH_OIDC_ISSUER`            | `https://accounts.google.com`                                    |
 | `AUTH_OIDC_CLIENT_ID`         | From section 3                                                   |
@@ -127,12 +171,13 @@ In **Vercel → Project → Settings → Environment Variables**, add these for 
 
 In **Settings → Environments**, create `staging` and `production`. Add to each:
 
-| Secret              | Notes                                                                                |
-| ------------------- | ------------------------------------------------------------------------------------ |
-| `VERCEL_TOKEN`      | From section 1                                                                       |
-| `VERCEL_ORG_ID`     | From section 1                                                                       |
-| `VERCEL_PROJECT_ID` | From section 1                                                                       |
-| `DATABASE_URL`      | The matching database — **double-check you have not pasted production into staging** |
+| Secret                | Notes                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `VERCEL_TOKEN`        | From section 1                                                                               |
+| `VERCEL_ORG_ID`       | From section 1                                                                               |
+| `VERCEL_PROJECT_ID`   | From section 1                                                                               |
+| `DATABASE_URL`        | Section 2's **pooled** string — **double-check you have not pasted production into staging** |
+| `DIRECT_DATABASE_URL` | Section 2's **direct** string (`:5432`) for the same database. Migrations fail without it    |
 
 On the **`production`** environment, also set **Required reviewers** to your named deployment approver. That protection rule _is_ the manual approval gate; it is enforced by GitHub, not by anything in the workflow file, so it cannot be bypassed by editing YAML.
 

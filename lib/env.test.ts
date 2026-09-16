@@ -166,3 +166,24 @@ describe("parseServerEnv — authentication configuration (Phase 3)", () => {
     expect(result.AUTH_OIDC_TENANT_CLAIM).toBe("tid");
   });
 });
+
+describe("parseServerEnv — DIRECT_DATABASE_URL (migrations vs. the running app)", () => {
+  it("is optional — only the Prisma CLI reads it, so a runtime that migrates from CI need not carry it", () => {
+    const result = parseServerEnv(VALID_SERVER_ENV);
+    expect(result.DIRECT_DATABASE_URL).toBeUndefined();
+  });
+
+  it("accepts a PostgreSQL connection string", () => {
+    const result = parseServerEnv({
+      ...VALID_SERVER_ENV,
+      DIRECT_DATABASE_URL: "postgresql://user:pw@db.example.test:5432/postgres",
+    });
+    expect(result.DIRECT_DATABASE_URL).toBe("postgresql://user:pw@db.example.test:5432/postgres");
+  });
+
+  it("rejects a non-PostgreSQL value, so a typo fails at boot rather than at the next migration", () => {
+    expect(() =>
+      parseServerEnv({ ...VALID_SERVER_ENV, DIRECT_DATABASE_URL: "https://db.example.test" })
+    ).toThrow(EnvValidationError);
+  });
+});
