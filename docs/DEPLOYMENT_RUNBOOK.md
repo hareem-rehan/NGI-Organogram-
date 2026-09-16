@@ -62,14 +62,19 @@ Postgres 17 is Supabase's current default and is fine; the schema uses nothing v
 
 ### 2b. Take BOTH connection strings
 
-**Project → Connect**. You need two strings per project, and they are not interchangeable:
+**Project → Connect**. Supabase offers _three_ strings, not two, and picking the wrong pair is the most likely way to lose an afternoon here:
 
-| Supabase calls it                           | Port   | Goes into             | Used by               |
-| ------------------------------------------- | ------ | --------------------- | --------------------- |
-| **Transaction pooler** / Connection pooling | `6543` | `DATABASE_URL`        | the running app       |
-| **Direct connection** / Session pooler      | `5432` | `DIRECT_DATABASE_URL` | `prisma migrate` only |
+| Supabase calls it      | Host                           | Port   | Use it for            |
+| ---------------------- | ------------------------------ | ------ | --------------------- |
+| **Transaction pooler** | `<region>.pooler.supabase.com` | `6543` | `DATABASE_URL`        |
+| **Session pooler**     | `<region>.pooler.supabase.com` | `5432` | `DIRECT_DATABASE_URL` |
+| **Direct connection**  | `db.<ref>.supabase.co`         | `5432` | ⚠️ see below          |
 
-Why both: the app runs on Vercel's serverless functions, which open far more short-lived connections than a Postgres instance will accept directly — that is what the pooler is for. But migrations take advisory locks and run transactional DDL, which a transaction-mode pooler cannot carry, so they have to bypass it.
+Why two at all: the app runs on Vercel's serverless functions, which open far more short-lived connections than a Postgres instance will accept directly — that is what the transaction pooler is for. But migrations take advisory locks and run transactional DDL, which transaction-mode pooling cannot carry, so they need a session-mode connection instead.
+
+⚠️ **Use the Session pooler for `DIRECT_DATABASE_URL`, not the Direct connection.** The `db.<ref>.supabase.co` endpoint resolves to IPv6 only unless the project has Supabase's paid IPv4 add-on, and GitHub Actions runners are IPv4-only. Put it in a GitHub Environment and the migration step fails to connect, with an error that looks like a credentials or firewall problem and is neither. The Session pooler is IPv4-reachable and is session-mode, which is what migrations actually need.
+
+The Direct connection string is still the right one to use from your own machine if your network has IPv6 — it is what Supabase shows first, which is why it is worth knowing why it is not the one in the table above.
 
 **Append `?pgbouncer=true&connection_limit=1` to the pooled URL.** Without it Prisma prepares statements the pooler cannot reuse, and you get intermittent `prepared statement "s0" already exists` errors under load — which look like application bugs and are not.
 
@@ -84,6 +89,8 @@ and `DIRECT_DATABASE_URL` like:
 ```
 postgresql://postgres.<ref>:<password>@<region>.pooler.supabase.com:5432/postgres
 ```
+
+Note the username differs between the two poolers and the direct endpoint: both pooler strings use `postgres.<ref>`, while the direct connection uses plain `postgres`. Copy each string whole from the dashboard rather than editing one into the other.
 
 If you ever move off Supabase to a Postgres with no pooler, set both to the same string. Prisma refuses to run any migration when `DIRECT_DATABASE_URL` is unset, so a migration can never silently go through a pooler.
 
