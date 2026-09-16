@@ -1,30 +1,38 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermissionMock, serviceMocks, positionRepoMocks, deptRepoMock, jobGradeRepoMock } =
-  vi.hoisted(() => ({
-    requirePermissionMock: vi.fn(),
-    serviceMocks: {
-      createPosition: vi.fn(),
-      updatePosition: vi.fn(),
-      movePosition: vi.fn(),
-      archivePosition: vi.fn(),
-      activatePosition: vi.fn(),
-    },
-    positionRepoMocks: {
-      searchPositions: vi.fn(),
-      listAllPositionsForCompany: vi.fn(),
-      listOccupiedPositionIds: vi.fn(),
-      getPositionSubtree: vi.fn(),
-    },
-    deptRepoMock: { listDepartmentsForCompany: vi.fn() },
-    jobGradeRepoMock: { listJobGradesForCompany: vi.fn() },
-  }));
+const {
+  requirePermissionMock,
+  serviceMocks,
+  positionRepoMocks,
+  deptRepoMock,
+  jobGradeRepoMock,
+  jobGradeServiceMock,
+} = vi.hoisted(() => ({
+  requirePermissionMock: vi.fn(),
+  serviceMocks: {
+    createPosition: vi.fn(),
+    updatePosition: vi.fn(),
+    movePosition: vi.fn(),
+    archivePosition: vi.fn(),
+    activatePosition: vi.fn(),
+  },
+  positionRepoMocks: {
+    searchPositions: vi.fn(),
+    listAllPositionsForCompany: vi.fn(),
+    listOccupiedPositionIds: vi.fn(),
+    getPositionSubtree: vi.fn(),
+  },
+  deptRepoMock: { listDepartmentsForCompany: vi.fn() },
+  jobGradeRepoMock: { listJobGradesForCompany: vi.fn() },
+  jobGradeServiceMock: { ensureJobGradeByCode: vi.fn() },
+}));
 
 vi.mock("@/lib/auth/current-user", () => ({ requirePermission: requirePermissionMock }));
 vi.mock("@/lib/services/hierarchy.service", () => serviceMocks);
 vi.mock("@/lib/repositories/position.repository", () => positionRepoMocks);
 vi.mock("@/lib/repositories/department.repository", () => deptRepoMock);
 vi.mock("@/lib/repositories/job-grade.repository", () => jobGradeRepoMock);
+vi.mock("@/lib/services/job-grade.service", () => jobGradeServiceMock);
 
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
 import {
@@ -152,5 +160,46 @@ describe("position actions — server-side authorization", () => {
       ADMIN_USER.companyId,
       expect.any(Date)
     );
+  });
+});
+
+describe("createPositionAction — level (jobGradeCode) resolution", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("resolves a chosen level code to a grade id, creating the grade on first use", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    jobGradeServiceMock.ensureJobGradeByCode.mockResolvedValue({ id: "grade-l7" });
+    serviceMocks.createPosition.mockResolvedValue({});
+
+    await createPositionAction({
+      title: "Principal Engineer",
+      positionCode: "POS-PE",
+      departmentId: VALID_UUID,
+      jobGradeCode: "L7",
+    });
+
+    // The form's level code is resolved with the SESSION's company, never
+    // anything from the payload.
+    expect(jobGradeServiceMock.ensureJobGradeByCode).toHaveBeenCalledWith(
+      ADMIN_USER.companyId,
+      "L7"
+    );
+    // The service is handed the resolved id, not the code.
+    expect(serviceMocks.createPosition.mock.calls[0]?.[0]?.jobGradeId).toBe("grade-l7");
+  });
+
+  it("passes no grade when no level is chosen, without touching the resolver", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.createPosition.mockResolvedValue({});
+
+    await createPositionAction({
+      title: "Coordinator",
+      positionCode: "POS-CO",
+      departmentId: VALID_UUID,
+      jobGradeCode: null,
+    });
+
+    expect(jobGradeServiceMock.ensureJobGradeByCode).not.toHaveBeenCalled();
+    expect(serviceMocks.createPosition.mock.calls[0]?.[0]?.jobGradeId).toBeNull();
   });
 });

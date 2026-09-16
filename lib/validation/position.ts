@@ -42,6 +42,15 @@ export const createPositionSchema = z
     positionCode: positionCodeSchema,
     departmentId: z.string().uuid(),
     jobGradeId: z.string().uuid().nullable().optional(),
+    /**
+     * A level code such as "L7" chosen in the form. The action resolves
+     * it to a job-grade id (creating the grade from the standard scale if
+     * it does not exist yet — see lib/services/job-grade.service.ts), so
+     * a level can be set at creation time on a company with no grades set
+     * up. `jobGradeId` stays supported for callers (imports, tests) that
+     * already hold a resolved id.
+     */
+    jobGradeCode: z.string().trim().min(1).max(16).nullable().optional(),
     description: descriptionSchema,
     location: locationSchema,
     primaryReportsToPositionId: z.string().uuid().nullable().optional(),
@@ -56,6 +65,15 @@ export const updatePositionSchema = z
     positionCode: positionCodeSchema.optional(),
     departmentId: z.string().uuid().optional(),
     jobGradeId: z.string().uuid().nullable().optional(),
+    /**
+     * A level code such as "L7" chosen in the form. The action resolves
+     * it to a job-grade id (creating the grade from the standard scale if
+     * it does not exist yet — see lib/services/job-grade.service.ts), so
+     * a level can be set at creation time on a company with no grades set
+     * up. `jobGradeId` stays supported for callers (imports, tests) that
+     * already hold a resolved id.
+     */
+    jobGradeCode: z.string().trim().min(1).max(16).nullable().optional(),
     description: descriptionSchema,
     location: locationSchema,
   })

@@ -4,6 +4,7 @@ import type { Department, JobGrade, Position } from "@prisma/client";
 
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
+import { ensureJobGradeByCode } from "@/lib/services/job-grade.service";
 import { toAuditActor } from "@/lib/server/audit-actor";
 import {
   archivePosition,
@@ -84,16 +85,37 @@ export async function getSubtreeSizeAction(positionId: string): Promise<ActionRe
 export async function createPositionAction(input: unknown): Promise<ActionResult<Position>> {
   return runAction(async () => {
     const user = await requirePermission("positions:manage");
-    const values = createPositionSchema.parse(input);
-    return createPosition({ companyId: user.companyId, actor: toAuditActor(user), ...values });
+    const { jobGradeCode, ...values } = createPositionSchema.parse(input);
+    // A level chosen in the form (e.g. "L7") is resolved to a grade id
+    // here, creating the grade from the standard scale on first use.
+    const jobGradeId = jobGradeCode
+      ? (await ensureJobGradeByCode(user.companyId, jobGradeCode)).id
+      : (values.jobGradeId ?? null);
+    return createPosition({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      ...values,
+      jobGradeId,
+    });
   });
 }
 
 export async function updatePositionAction(input: unknown): Promise<ActionResult<Position>> {
   return runAction(async () => {
     const user = await requirePermission("positions:manage");
-    const values = updatePositionSchema.parse(input);
-    return updatePosition({ companyId: user.companyId, actor: toAuditActor(user), ...values });
+    const { jobGradeCode, ...values } = updatePositionSchema.parse(input);
+    const jobGradeId =
+      jobGradeCode === undefined
+        ? values.jobGradeId
+        : jobGradeCode === null
+          ? null
+          : (await ensureJobGradeByCode(user.companyId, jobGradeCode)).id;
+    return updatePosition({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      ...values,
+      jobGradeId,
+    });
   });
 }
 

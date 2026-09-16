@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createPositionSchema, type CreatePositionValues } from "@/lib/validation/position";
+import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
 import { createPositionAction, updatePositionAction } from "@/app/(app)/positions/actions";
 
 interface PositionFormDialogProps {
@@ -65,7 +66,7 @@ export function PositionFormDialog({
       title: "",
       positionCode: "",
       departmentId: "",
-      jobGradeId: null,
+      jobGradeCode: null,
       description: null,
       location: null,
       primaryReportsToPositionId: null,
@@ -85,7 +86,9 @@ export function PositionFormDialog({
   const positionRef = useRef(position);
   positionRef.current = position;
   const departmentsRef = useRef(departments);
+  const jobGradesRef = useRef(jobGrades);
   departmentsRef.current = departments;
+  jobGradesRef.current = jobGrades;
 
   useEffect(() => {
     if (open && !wasOpen.current) {
@@ -97,7 +100,9 @@ export function PositionFormDialog({
         title: currentPosition?.title ?? "",
         positionCode: currentPosition?.positionCode ?? "",
         departmentId: currentPosition?.departmentId ?? currentDepartments[0]?.id ?? "",
-        jobGradeId: currentPosition?.jobGradeId ?? null,
+        jobGradeCode: currentPosition?.jobGradeId
+          ? (jobGradesRef.current.find((g) => g.id === currentPosition.jobGradeId)?.code ?? null)
+          : null,
         description: currentPosition?.description ?? null,
         location: currentPosition?.location ?? null,
         primaryReportsToPositionId: null,
@@ -118,10 +123,27 @@ export function PositionFormDialog({
   }, [open, departments]);
 
   const departmentId = watch("departmentId");
-  const jobGradeId = watch("jobGradeId");
+  const jobGradeCode = watch("jobGradeCode");
   const primaryReportsToPositionId = watch("primaryReportsToPositionId");
 
   const hasRoot = allPositions.some((candidate) => candidate.primaryReportsToPositionId === null);
+
+  // The level dropdown offers the whole standard L2–L18 scale (a
+  // constant, so it works even on a company that has no grade rows yet),
+  // plus any grade already in the database whose code is not on that
+  // scale. Picking one and saving creates the matching grade on first use
+  // (see lib/services/job-grade.service.ts). Value is the code, so it is
+  // resolvable without a pre-existing id.
+  const levelOptions = useMemo(() => {
+    const byCode = new Map<string, { code: string; label: string }>();
+    for (const g of JOB_GRADE_SCALE) {
+      byCode.set(g.code, { code: g.code, label: `${g.code} — ${g.name}` });
+    }
+    for (const g of jobGrades) {
+      if (!byCode.has(g.code)) byCode.set(g.code, { code: g.code, label: `${g.code} — ${g.name}` });
+    }
+    return [...byCode.values()];
+  }, [jobGrades]);
 
   const reportsToOptions: ComboboxOption[] = useMemo(() => {
     const candidates = allPositions.filter(
@@ -146,7 +168,7 @@ export function PositionFormDialog({
             title: values.title,
             positionCode: values.positionCode,
             departmentId: values.departmentId,
-            jobGradeId: values.jobGradeId,
+            jobGradeCode: values.jobGradeCode,
             description: values.description,
             location: values.location,
           })
@@ -220,22 +242,22 @@ export function PositionFormDialog({
           </Field>
 
           <Field
-            label="Job grade"
+            label="Level"
             error={undefined}
-            hint="Optional — independent of organizational level."
+            hint="Sets where this role sits on the organization chart. Picking a level creates it for your company if it doesn't exist yet."
           >
             {(fieldProps) => (
               <Select
                 {...fieldProps}
-                value={jobGradeId ?? ""}
+                value={jobGradeCode ?? ""}
                 onChange={(event) =>
-                  setValue("jobGradeId", event.target.value || null, { shouldValidate: true })
+                  setValue("jobGradeCode", event.target.value || null, { shouldValidate: true })
                 }
               >
-                <option value="">No job grade</option>
-                {jobGrades.map((grade) => (
-                  <option key={grade.id} value={grade.id}>
-                    {grade.name}
+                <option value="">No level</option>
+                {levelOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
                   </option>
                 ))}
               </Select>
