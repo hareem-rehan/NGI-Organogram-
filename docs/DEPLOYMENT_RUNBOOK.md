@@ -255,6 +255,22 @@ npx vercel --prod
 
 Environment variables must already be set in the Vercel project — `NEXT_PUBLIC_*` values are baked in at build time, so a missing one fails the build rather than the deployment.
 
+### Getting in before SSO exists
+
+There is a genuine chicken-and-egg problem on a fresh deployment: the app authenticates only through Company SSO, so you cannot sign in to load data, and you cannot configure anything through the UI until you can sign in.
+
+`scripts/provision-session.ts` writes an Auth.js database session directly — the same thing the E2E suite does — and prints a cookie to set:
+
+```bash
+npx tsx scripts/provision-session.ts --email you@company.com --company DOTZERO --yes-bypass-sso --hours 12
+```
+
+Run it with `DATABASE_URL` pointing at the target database. Then in the browser: **DevTools → Application → Cookies → your site → new row**, with the name, value and Secure flag it printed, and reload.
+
+It grants no capability the connection string does not already grant, changes no application code, and the session expires on its own. It is a bootstrap tool, not a login mechanism — configure a real provider and stop using it.
+
+⚠️ **Do not load real employee data into an environment that has no working sign-in.** A deployment reachable on a public URL with no identity provider configured is protected only by nobody having guessed the URL. Load real data after SSO works, or keep the environment empty until then.
+
 ### Then verify SSO by hand
 
 **This has never been done.** Every sign-in to date has used a seeded session cookie, never a real identity provider. Open the staging URL and sign in with a real Google Workspace account. Confirm:
