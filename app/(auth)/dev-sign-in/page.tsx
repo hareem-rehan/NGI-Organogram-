@@ -9,14 +9,31 @@ import { devSignInAsRoleAction } from "./actions";
 
 export const metadata: Metadata = { title: "Dev sign-in" };
 
+/**
+ * Evaluate the gate per request, not at build time.
+ *
+ * Without this Next prerenders the route statically, which bakes in
+ * whatever `isDevSignInEnabled()` returned during the build. On a
+ * deployed build that means a permanent 404 no matter what
+ * AUTH_ALLOW_DEV_SIGN_IN is set to afterwards — the flag would appear to
+ * do nothing. (Caught by actually running a production build with the
+ * flag set, rather than assuming the runtime read was enough.)
+ *
+ * This makes the page respect the flag; it does not make it reachable.
+ * The gate below still runs on every request, as do the two independent
+ * checks behind it.
+ */
+export const dynamic = "force-dynamic";
+
 const ROLES: readonly UserRole[] = ["ADMIN", "HR_EDITOR", "VIEWER"];
 
 /**
- * Local-development-only convenience — never reachable in production.
+ * Never reachable unless deliberately enabled — always in local
+ * development, and on a deployed build only with AUTH_ALLOW_DEV_SIGN_IN.
  * `notFound()` here is defense in depth: `devSignInAsRoleAction` and
- * `createDevSession` each independently re-check
- * `isDevSignInEnabled()` too, so this page rendering is never the only
- * thing standing between a real deployment and this feature.
+ * `createDevSession` each independently re-check `isDevSignInEnabled()`
+ * too, so this page rendering is never the only thing standing between a
+ * real deployment and this feature.
  */
 export default async function DevSignInPage() {
   if (!isDevSignInEnabled()) {

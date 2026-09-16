@@ -117,6 +117,26 @@ export const serverEnvSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === "true"),
+
+  /**
+   * Opens the local-development sign-in page on a DEPLOYED environment,
+   * which otherwise refuses to exist there. Absent means off; only the
+   * exact string "true" enables it.
+   *
+   * This bypasses Company SSO entirely — anyone who can reach the URL can
+   * sign in as ADMIN. It exists so a staging deployment is usable before
+   * an identity provider has been registered, and for nothing else. The
+   * header shows a standing warning while it is on, and the production
+   * deploy job fails if it finds the page reachable.
+   *
+   * Declared here for validation and documentation. The gate itself
+   * (lib/auth/dev-sign-in.ts) reads process.env directly, so it cannot
+   * depend on when this config is constructed.
+   */
+  AUTH_ALLOW_DEV_SIGN_IN: z
+    .string()
+    .optional()
+    .transform((value) => value === "true"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

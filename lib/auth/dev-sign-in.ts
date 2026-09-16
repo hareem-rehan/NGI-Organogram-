@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import type { UserRole } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
+import { isDevSignInEnabled } from "@/lib/auth/dev-sign-in-flag";
 
 /**
  * A local-development-only convenience for signing in without a real
@@ -11,13 +12,15 @@ import { prisma } from "@/lib/db/prisma";
  * docs/DECISIONS.md P8). Every entry point into this feature (the page,
  * the server action, and this function itself) independently checks
  * `isDevSignInEnabled()` — never trusting that an earlier check already
- * ran — so this can NEVER activate outside local development, no matter
- * which layer someone tries to reach it from (CLAUDE.md §1.8: server-
- * side enforcement, not UI-only).
+ * ran — so this can NEVER activate unless deliberately enabled, no
+ * matter which layer someone tries to reach it from (CLAUDE.md §1.8:
+ * server-side enforcement, not UI-only).
+ *
+ * The gate itself lives in `dev-sign-in-flag.ts`, which carries no server
+ * dependency, so the header's bypass warning can import it too. Re-exported
+ * here because every existing caller imports it from this module.
  */
-export function isDevSignInEnabled(): boolean {
-  return process.env.NODE_ENV !== "production";
-}
+export { isDevSignInEnabled } from "@/lib/auth/dev-sign-in-flag";
 
 const DEV_COMPANY_CODE = "DEV-LOCAL";
 const SESSION_MAX_AGE_SECONDS = 12 * 60 * 60; // matches lib/auth/config.ts's real session maxAge

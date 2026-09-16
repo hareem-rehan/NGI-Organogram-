@@ -24,4 +24,29 @@ describe("EnvironmentBadge", () => {
     const { container } = render(<EnvironmentBadge />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("warns on every page when a production build has sign-in bypassed", () => {
+    // This instance looks like production and is not secured like it —
+    // anyone reaching the URL can sign in as ADMIN. Distinguishable only
+    // by an extra page existing would not be good enough.
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_ALLOW_DEV_SIGN_IN", "true");
+    render(<EnvironmentBadge />);
+    expect(screen.getByText("Sign-in bypassed")).toBeInTheDocument();
+  });
+
+  it("stays silent on a production build where the flag is anything but 'true'", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_ALLOW_DEV_SIGN_IN", "false");
+    const { container } = render(<EnvironmentBadge />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("does not warn in local development, where nothing is being bypassed", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("AUTH_ALLOW_DEV_SIGN_IN", "true");
+    render(<EnvironmentBadge />);
+    expect(screen.getByText("Development")).toBeInTheDocument();
+    expect(screen.queryByText("Sign-in bypassed")).not.toBeInTheDocument();
+  });
 });
