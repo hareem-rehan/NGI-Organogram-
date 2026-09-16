@@ -76,12 +76,24 @@ Why two at all: the app runs on Vercel's serverless functions, which open far mo
 
 The Direct connection string is still the right one to use from your own machine if your network has IPv6 — it is what Supabase shows first, which is why it is worth knowing why it is not the one in the table above.
 
-**Append `?pgbouncer=true&connection_limit=1` to the pooled URL.** Without it Prisma prepares statements the pooler cannot reuse, and you get intermittent `prepared statement "s0" already exists` errors under load — which look like application bugs and are not.
+**Append `?pgbouncer=true&connection_limit=5` to the pooled URL.**
+
+`pgbouncer=true` stops Prisma preparing statements the pooler cannot reuse; without it you get intermittent `prepared statement "s0" already exists` under load, which looks like an application bug and is not.
+
+`connection_limit` sizes Prisma's own pool inside each serverless instance. Prisma's general serverless advice is `1`, to avoid many instances each holding idle connections — but **`1` deadlocks this app.** Several pages (the dashboard especially) issue their queries concurrently, and with a pool of one they sit waiting on each other until the 10-second pool timeout, surfacing as a generic "Something went wrong". Verified the hard way on the first staging deployment:
+
+```
+Invalid `prisma.positionAssignment.findMany()` invocation:
+Timed out fetching a new connection from the connection pool.
+(Current connection pool timeout: 10, connection limit: 1)
+```
+
+`5` is comfortably above the widest concurrent fan-out in a single request and still small enough that many warm instances will not exhaust Supabase's pooler. Raise it only if you see pool timeouts under real load; lower it only if the pooler starts refusing connections.
 
 So `DATABASE_URL` ends up shaped like:
 
 ```
-postgresql://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+postgresql://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=5
 ```
 
 and `DIRECT_DATABASE_URL` like:
