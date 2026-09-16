@@ -90,7 +90,9 @@ and `DIRECT_DATABASE_URL` like:
 postgresql://postgres.<ref>:<password>@<region>.pooler.supabase.com:5432/postgres
 ```
 
-Note the username differs between the two poolers and the direct endpoint: both pooler strings use `postgres.<ref>`, while the direct connection uses plain `postgres`. Copy each string whole from the dashboard rather than editing one into the other.
+Note the username differs between the two poolers and the direct endpoint: both pooler strings use `postgres.<ref>`, while the direct connection uses plain `postgres`. That username is the quickest way to tell which string you are holding — if it lacks the `.<ref>` suffix, it is the direct connection, whatever the dashboard tab was labelled.
+
+The two pooler strings are otherwise identical to each other: same host, same user, same password, differing only by port (`6543` transaction, `5432` session). Finding one gives you the other.
 
 If you ever move off Supabase to a Postgres with no pooler, set both to the same string. Prisma refuses to run any migration when `DIRECT_DATABASE_URL` is unset, so a migration can never silently go through a pooler.
 
