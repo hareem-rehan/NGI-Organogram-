@@ -2,6 +2,7 @@ import "server-only";
 
 import { findCompanyById } from "@/lib/repositories/company.repository";
 import { getOrganogramRawData } from "@/lib/repositories/organogram.repository";
+import { listDepartmentsForCompany } from "@/lib/repositories/department.repository";
 import {
   analyzeOrganogramSafety,
   buildOrganogramGraph,
@@ -145,9 +146,18 @@ export async function getOrganogramChartData(
   input: GetOrganogramDataInput
 ): Promise<OrganogramChartData> {
   const full = await getOrganogramData(input);
+
+  // Active departments, so a department with no position in it yet still
+  // appears on the chart as an empty heading (an archived department is
+  // left off). Cheap extra read; keeps getOrganogramData's contract as-is.
+  const activeDepartments = (await listDepartmentsForCompany(input.companyId))
+    .filter((d) => d.status === "ACTIVE")
+    .map((d) => ({ id: d.id, name: d.name, code: d.code, color: d.color }));
+
   const { nodes, edges, summary } = projectLeadershipGraph(
     full.nodes,
-    DEFAULT_LEADERSHIP_VIEW_OPTIONS
+    DEFAULT_LEADERSHIP_VIEW_OPTIONS,
+    activeDepartments
   );
   return { ...full, nodes, edges, leadership: summary };
 }

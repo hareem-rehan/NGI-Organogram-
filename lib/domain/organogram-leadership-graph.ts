@@ -115,14 +115,21 @@ function makeDepartmentNode(args: {
  */
 export function projectLeadershipGraph(
   nodes: readonly OrganogramNode[],
-  options: LeadershipViewOptions = DEFAULT_LEADERSHIP_VIEW_OPTIONS
+  options: LeadershipViewOptions = DEFAULT_LEADERSHIP_VIEW_OPTIONS,
+  /** Active departments, so ones with no position yet still appear as empty headings. */
+  allDepartments: readonly { id: string; name: string; code: string; color: string | null }[] = []
 ): LeadershipGraph {
-  const view = buildLeadershipView(nodes, options);
+  const view = buildLeadershipView(nodes, options, allDepartments);
 
   // Department code/colour come from the real Department rows already
   // denormalized onto every member node, so the heading matches what the
   // Departments page shows instead of being reconstructed from the name.
+  // Seeded from `allDepartments` first, so an EMPTY department (which has
+  // no member node to read from) still gets its real code and colour.
   const departmentMeta = new Map<string, { code: string; color: string | null }>();
+  for (const dept of allDepartments) {
+    departmentMeta.set(dept.id, { code: dept.code, color: dept.color });
+  }
   for (const node of nodes) {
     if (!departmentMeta.has(node.departmentId)) {
       departmentMeta.set(node.departmentId, {

@@ -460,3 +460,58 @@ describe("buildLeadershipView — deactivated positions", () => {
     expect(view.visiblePositionIds.has("ceo")).toBe(true);
   });
 });
+
+describe("buildLeadershipView — empty departments", () => {
+  it("shows an active department with no positions as an empty heading", () => {
+    // HR has a role; Engineering has none. Both should appear under the CEO.
+    const nodes = [
+      ceo(),
+      node({ positionId: "chro", departmentId: HR, departmentName: "Human Resources" }),
+    ];
+    const allDepartments = [
+      { id: HR, name: "Human Resources", color: null },
+      { id: ENG, name: "Engineering", color: null },
+    ];
+
+    const view = buildLeadershipView([...nodes], opts(), allDepartments);
+
+    const names = view.departmentGroups.map((d) => d.name);
+    expect(names).toContain("Engineering");
+    expect(names).toContain("Human Resources");
+    // The empty one has zero members; the populated one has one.
+    expect(view.departmentGroups.find((d) => d.departmentId === ENG)?.memberCount).toBe(0);
+    expect(view.departmentGroups.find((d) => d.departmentId === HR)?.memberCount).toBe(1);
+  });
+
+  it("does not duplicate a department that already has positions", () => {
+    const nodes = [ceo(), node({ positionId: "cto", departmentId: ENG })];
+    const view = buildLeadershipView([...nodes], opts(), [
+      { id: ENG, name: "Engineering", color: null },
+    ]);
+
+    expect(view.departmentGroups.filter((d) => d.departmentId === ENG)).toHaveLength(1);
+  });
+
+  it("omits an empty department when there is no root to hang it off", () => {
+    // No node has a null parent → no root → no department tier to place an
+    // empty department in. The supplied ENG department (which has no member
+    // of its own) must therefore not appear.
+    const orphan = node({
+      positionId: "orphan",
+      departmentId: HR,
+      primaryReportsToPositionId: "missing",
+    });
+
+    const view = buildLeadershipView([orphan], opts(), [
+      { id: ENG, name: "Engineering", color: null },
+    ]);
+
+    expect(view.rootPositionId).toBeNull();
+    expect(view.departmentGroups.some((d) => d.departmentId === ENG)).toBe(false);
+  });
+
+  it("adds no empty departments when none are supplied — unchanged from before", () => {
+    const view = buildLeadershipView([ceo(), node({ positionId: "chro", departmentId: HR })]);
+    expect(view.departmentGroups.map((d) => d.departmentId)).toEqual([HR]);
+  });
+});

@@ -372,3 +372,24 @@ describe("projectLeadershipGraph — the default keeps junior roles in the graph
     expect(result.summary.hidden.vacant).toBe(0);
   });
 });
+
+describe("projectLeadershipGraph — empty departments", () => {
+  it("draws an empty active department as a childless heading node under the root", () => {
+    const nodes = [ceo(), node({ positionId: "chro", departmentId: HR, departmentName: "People" })];
+    const result = projectLeadershipGraph(nodes, DEFAULT_LEADERSHIP_VIEW_OPTIONS, [
+      { id: HR, name: "People", code: "HR", color: null },
+      { id: ENG, name: "Engineering", code: "ENG", color: null },
+    ]);
+
+    const engNode = result.nodes.find((n) => n.positionId === departmentGroupId(ENG));
+    expect(engNode).toBeDefined();
+    expect(engNode?.kind).toBe("department");
+    expect(engNode?.title).toBe("Engineering");
+    expect(engNode?.departmentCode).toBe("ENG");
+    expect(engNode?.hasChildren).toBe(false);
+    expect(engNode?.primaryReportsToPositionId).toBe("ceo");
+    // No dangling edge: an empty department has an edge from the root but none below it.
+    expect(result.edges.some((e) => e.targetPositionId === departmentGroupId(ENG))).toBe(true);
+    expect(result.edges.some((e) => e.sourcePositionId === departmentGroupId(ENG))).toBe(false);
+  });
+});

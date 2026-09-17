@@ -210,7 +210,16 @@ export function isBelowThreshold(node: OrganogramNode, minGradeLevel: number): b
  */
 export function buildLeadershipView(
   nodes: readonly OrganogramNode[],
-  options: LeadershipViewOptions = DEFAULT_LEADERSHIP_VIEW_OPTIONS
+  options: LeadershipViewOptions = DEFAULT_LEADERSHIP_VIEW_OPTIONS,
+  /**
+   * Active departments to show as an empty heading even when no position
+   * lives in them yet — so a department appears on the chart the moment it
+   * is created, before any role is added. Omitted (existing callers), only
+   * departments that actually have a visible member appear, exactly as
+   * before. Empty department headings only make sense with a root to hang
+   * them off and a department tier to hang them in.
+   */
+  allDepartments: readonly { id: string; name: string; color: string | null }[] = []
 ): LeadershipView {
   const byId = new Map(nodes.map((n) => [n.positionId, n]));
 
@@ -272,6 +281,17 @@ export function buildLeadershipView(
         color: node.departmentColor,
       });
       memberCounts.set(node.departmentId, (memberCounts.get(node.departmentId) ?? 0) + 1);
+    }
+  }
+
+  // Departments with no visible position yet — added as empty headings so
+  // a freshly-created department is visible on the chart before it has a
+  // single role. memberCount stays 0 (never set in `memberCounts`).
+  if (options.departmentFirst && rootPositionId !== null) {
+    for (const dept of allDepartments) {
+      if (!departmentsInUse.has(dept.id)) {
+        departmentsInUse.set(dept.id, { name: dept.name, color: dept.color });
+      }
     }
   }
 
