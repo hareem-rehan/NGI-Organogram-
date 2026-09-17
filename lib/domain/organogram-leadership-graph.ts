@@ -2,6 +2,7 @@ import type { OrganogramEdge, OrganogramNode } from "@/lib/domain/organogram";
 import {
   buildLeadershipView,
   DEFAULT_LEADERSHIP_VIEW_OPTIONS,
+  departmentGroupId,
   type LeadershipViewOptions,
 } from "@/lib/domain/organogram-leadership";
 
@@ -118,10 +119,39 @@ function makeDepartmentNode(args: {
 export function projectLeadershipGraph(
   nodes: readonly OrganogramNode[],
   options: LeadershipViewOptions = DEFAULT_LEADERSHIP_VIEW_OPTIONS,
-  /** Active departments, so ones with no position yet still appear as empty headings. */
-  allDepartments: readonly { id: string; name: string; code: string; color: string | null }[] = []
+  /** Active departments, so ones with no position yet still appear as empty headings. `parentDepartmentId` nests a sub-department's box under its parent department's box. */
+  allDepartments: readonly {
+    id: string;
+    name: string;
+    code: string;
+    color: string | null;
+    parentDepartmentId?: string | null;
+  }[] = []
 ): LeadershipGraph {
   const view = buildLeadershipView(nodes, options, allDepartments);
+
+  // Department parent chain, so a sub-department (Product under Client
+  // Delivery Services) hangs under its parent department's box instead of
+  // flat under the root. Only departments that actually have a box on the
+  // chart can be a display parent; a sub-department whose parent is absent
+  // (archived, or filtered out) climbs to the nearest ancestor that does
+  // have a box, and otherwise falls back to the root — so it is never
+  // orphaned. The walk is cycle-guarded (a department parent cycle would
+  // otherwise loop forever).
+  const parentDeptById = new Map<string, string | null>();
+  for (const dept of allDepartments) parentDeptById.set(dept.id, dept.parentDepartmentId ?? null);
+  const groupDeptIds = new Set(view.departmentGroups.map((g) => g.departmentId));
+  function resolveDepartmentParentId(departmentId: string): string | null {
+    const seen = new Set<string>([departmentId]);
+    let current = parentDeptById.get(departmentId) ?? null;
+    while (current) {
+      if (seen.has(current)) break; // defensive: department parent cycle
+      seen.add(current);
+      if (groupDeptIds.has(current)) return departmentGroupId(current);
+      current = parentDeptById.get(current) ?? null;
+    }
+    return view.rootPositionId;
+  }
 
   // Department code/colour come from the real Department rows already
   // denormalized onto every member node, so the heading matches what the
@@ -159,7 +189,7 @@ export function projectLeadershipGraph(
       name: group.name,
       code: departmentMeta.get(group.departmentId)?.code ?? "—",
       color: group.color ?? departmentMeta.get(group.departmentId)?.color ?? null,
-      parentId: view.rootPositionId,
+      parentId: resolveDepartmentParentId(group.departmentId),
       memberCount: group.memberCount,
     })
   );

@@ -152,7 +152,13 @@ export async function getOrganogramChartData(
   // left off). Cheap extra read; keeps getOrganogramData's contract as-is.
   const activeDepartments = (await listDepartmentsForCompany(input.companyId))
     .filter((d) => d.status === "ACTIVE")
-    .map((d) => ({ id: d.id, name: d.name, code: d.code, color: d.color }));
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      code: d.code,
+      color: d.color,
+      parentDepartmentId: d.parentDepartmentId,
+    }));
 
   const { nodes, edges, summary } = projectLeadershipGraph(
     full.nodes,

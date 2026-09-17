@@ -119,6 +119,43 @@ describe("projectLeadershipGraph — structure", () => {
     expect(engGroup.departmentMemberCount).toBe(2);
   });
 
+  it("nests a sub-department's box under its parent department's box", () => {
+    const CD = "dept-cd";
+    const PROD = "dept-prod";
+    const nodes = [
+      ceo(),
+      // A role in the parent department and one in the sub-department.
+      node({ positionId: "csm", departmentId: CD, departmentName: "Client Delivery" }),
+      node({ positionId: "pm", departmentId: PROD, departmentName: "Product" }),
+    ];
+
+    const result = projectLeadershipGraph(nodes, DEFAULT_LEADERSHIP_VIEW_OPTIONS, [
+      { id: CD, name: "Client Delivery", code: "CD", color: null, parentDepartmentId: null },
+      { id: PROD, name: "Product", code: "PROD", color: null, parentDepartmentId: CD },
+    ]);
+
+    // Product hangs under Client Delivery's box; Client Delivery under the root.
+    expect(byId(result, departmentGroupId(PROD)).primaryReportsToPositionId).toBe(
+      departmentGroupId(CD)
+    );
+    expect(byId(result, departmentGroupId(CD)).primaryReportsToPositionId).toBe("ceo");
+  });
+
+  it("hangs a sub-department under the root when its parent department has no box", () => {
+    const CD = "dept-cd";
+    const PROD = "dept-prod";
+    // Only the sub-department has a member/box; the parent department is
+    // not on the chart, so the sub-department falls back to the root
+    // rather than being orphaned.
+    const nodes = [ceo(), node({ positionId: "pm", departmentId: PROD, departmentName: "Product" })];
+
+    const result = projectLeadershipGraph(nodes, DEFAULT_LEADERSHIP_VIEW_OPTIONS, [
+      { id: PROD, name: "Product", code: "PROD", color: null, parentDepartmentId: CD },
+    ]);
+
+    expect(byId(result, departmentGroupId(PROD)).primaryReportsToPositionId).toBe("ceo");
+  });
+
   it("emits exactly one edge per non-root node and never a dangling one", () => {
     const nodes = [
       ceo(),
