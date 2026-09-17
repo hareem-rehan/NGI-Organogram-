@@ -76,9 +76,11 @@ function makeDepartmentNode(args: {
   code: string;
   color: string | null;
   parentId: string | null;
+  memberCount: number;
 }): OrganogramNode {
   return {
     kind: "department",
+    departmentMemberCount: args.memberCount,
     positionId: args.groupId,
     positionCode: args.code,
     title: args.name,
@@ -158,6 +160,7 @@ export function projectLeadershipGraph(
       code: departmentMeta.get(group.departmentId)?.code ?? "—",
       color: group.color ?? departmentMeta.get(group.departmentId)?.color ?? null,
       parentId: view.rootPositionId,
+      memberCount: group.memberCount,
     })
   );
 

@@ -273,6 +273,7 @@ describe("PositionNode — department tier (Demo 1 feedback)", () => {
         title: "Engineering",
         departmentName: "Engineering",
         hasChildren: true,
+        departmentMemberCount: 3,
         displayChildCount: 3,
         ...nodeOverrides,
       }),
@@ -284,6 +285,21 @@ describe("PositionNode — department tier (Demo 1 feedback)", () => {
     renderDepartment();
     expect(screen.getByText("Engineering")).toBeInTheDocument();
     expect(screen.getByText("3 roles")).toBeInTheDocument();
+  });
+
+  it("counts EVERY role in the department, not just the box's direct children", () => {
+    // The real bug: a department heading showed its direct child count
+    // ("1 role") even when the department held many roles that nest under
+    // that child in the collapsed leadership layout. The heading answers
+    // "how big is this department?", so it shows the full member total.
+    renderDepartment({ departmentMemberCount: 23, displayChildCount: 1 });
+    expect(screen.getByText("23 roles")).toBeInTheDocument();
+    expect(screen.queryByText("1 role")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the displayed child count when no member total is set", () => {
+    renderDepartment({ departmentMemberCount: undefined, displayChildCount: 4 });
+    expect(screen.getByText("4 roles")).toBeInTheDocument();
   });
 
   it("never shows occupancy or a position code — a department is a heading, not a seat", () => {
@@ -304,7 +320,7 @@ describe("PositionNode — department tier (Demo 1 feedback)", () => {
   });
 
   it("singularizes a one-role department", () => {
-    renderDepartment({ displayChildCount: 1 });
+    renderDepartment({ departmentMemberCount: 1, displayChildCount: 1 });
     expect(screen.getByText("1 role")).toBeInTheDocument();
   });
 });

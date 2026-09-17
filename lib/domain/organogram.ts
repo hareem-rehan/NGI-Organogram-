@@ -129,6 +129,16 @@ export interface OrganogramNode {
    * the details panel. Absent on the raw graph, where they are equal.
    */
   displayChildCount?: number;
+  /**
+   * For a department GROUPING node only (`kind: "department"`): the total
+   * number of roles that belong to the department in the displayed view —
+   * every position nested anywhere beneath the heading, not just its
+   * direct children. This is what the department box shows ("23 roles"),
+   * because a department heading answers "how big is this department?",
+   * not "how many roles hang directly off the box?". Absent on position
+   * nodes and on the raw graph.
+   */
+  departmentMemberCount?: number;
   organizationalLevel: number;
   positionStatus: PositionStatus;
   occupancyStatus: OccupancyStatus;

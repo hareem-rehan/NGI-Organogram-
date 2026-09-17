@@ -50,3 +50,6 @@ npm-debug.log*
 # reads as though it also covers `.env.example`, which is tracked on
 # purpose as the documented template.
 !.env.example
+
+# Local staging deploy secrets (never commit)
+.env.staging

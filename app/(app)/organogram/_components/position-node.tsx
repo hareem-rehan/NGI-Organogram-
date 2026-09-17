@@ -51,8 +51,14 @@ export interface PositionNodeData extends Record<string, unknown> {
  * itself is still one click away from any member card's details panel.
  */
 function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
-  const { node, isCollapsed, hiddenDescendantCount, onToggleCollapse } = data;
-  const childCount = node.displayChildCount ?? node.directReportCount;
+  const { node, isCollapsed, onToggleCollapse } = data;
+  // A department heading answers "how big is this department?", so it
+  // shows the department's TOTAL role count — every role nested anywhere
+  // beneath it — not just the one or two that happen to hang directly off
+  // the box in the collapsed leadership layout. `departmentMemberCount` is
+  // that total (set by the projection); the display/ direct counts are the
+  // fallback for any caller that hasn't populated it.
+  const roleCount = node.departmentMemberCount ?? node.displayChildCount ?? node.directReportCount;
   const accent = node.departmentColor ?? "var(--color-primary)";
 
   return (
@@ -65,7 +71,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         type="button"
         onClick={() => onToggleCollapse(node.positionId)}
         aria-expanded={!isCollapsed}
-        aria-label={`${node.departmentName} department, ${childCount} role${childCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
+        aria-label={`${node.departmentName} department, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
         className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         <div className="flex min-w-0 items-center gap-1.5">
@@ -81,10 +87,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
           </p>
         </div>
         <p className="text-muted-foreground mt-1 truncate text-xs">
-          {childCount} role{childCount === 1 ? "" : "s"}
-          {isCollapsed && hiddenDescendantCount > childCount
-            ? ` (+${hiddenDescendantCount - childCount} below)`
-            : ""}
+          {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
       <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />

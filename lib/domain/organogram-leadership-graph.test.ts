@@ -110,6 +110,13 @@ describe("projectLeadershipGraph — structure", () => {
     expect(byId(result, "cto").primaryReportsToPositionId).toBe(departmentGroupId(ENG));
     // CEO -> Engineering -> CTO -> VP
     expect(byId(result, "vp").displayDepth).toBe(4);
+
+    // The department heading counts EVERY role in the department (both cto
+    // and the vp nested under it), not just its one direct child — this is
+    // the number the department box shows.
+    const engGroup = byId(result, departmentGroupId(ENG));
+    expect(engGroup.displayChildCount).toBe(1);
+    expect(engGroup.departmentMemberCount).toBe(2);
   });
 
   it("emits exactly one edge per non-root node and never a dangling one", () => {
