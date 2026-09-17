@@ -287,9 +287,16 @@ export function buildLeadershipView(
   // Departments with no visible position yet — added as empty headings so
   // a freshly-created department is visible on the chart before it has a
   // single role. memberCount stays 0 (never set in `memberCounts`).
+  //
+  // The root's OWN department is deliberately excluded: the root sits at
+  // the top and already represents that department, so surfacing it again
+  // as an empty box hanging beneath the root reads as a stray duplicate
+  // (e.g. a company with just a CEO in "Executive" should not show an
+  // empty "Executive" box under the CEO).
   if (options.departmentFirst && rootPositionId !== null) {
+    const rootDepartmentId = byId.get(rootPositionId)?.departmentId ?? null;
     for (const dept of allDepartments) {
-      if (!departmentsInUse.has(dept.id)) {
+      if (dept.id !== rootDepartmentId && !departmentsInUse.has(dept.id)) {
         departmentsInUse.set(dept.id, { name: dept.name, color: dept.color });
       }
     }

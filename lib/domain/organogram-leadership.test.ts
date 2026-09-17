@@ -510,6 +510,18 @@ describe("buildLeadershipView — empty departments", () => {
     expect(view.departmentGroups.some((d) => d.departmentId === ENG)).toBe(false);
   });
 
+  it("never adds the root's own department as an empty box under the root", () => {
+    // The root already represents its department at the top of the chart.
+    const view = buildLeadershipView([ceo()], opts(), [
+      { id: EXEC, name: "Executive", color: null },
+      { id: ENG, name: "Engineering", color: null },
+    ]);
+
+    // ceo() is in EXEC; EXEC must NOT appear as an empty heading, ENG should.
+    expect(view.departmentGroups.some((d) => d.departmentId === EXEC)).toBe(false);
+    expect(view.departmentGroups.some((d) => d.departmentId === ENG)).toBe(true);
+  });
+
   it("adds no empty departments when none are supplied — unchanged from before", () => {
     const view = buildLeadershipView([ceo(), node({ positionId: "chro", departmentId: HR })]);
     expect(view.departmentGroups.map((d) => d.departmentId)).toEqual([HR]);
