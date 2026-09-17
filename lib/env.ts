@@ -173,6 +173,44 @@ export function parseServerEnv(raw: Record<string, string | undefined>): ServerE
   return result.data;
 }
 
+/**
+ * Inert stand-ins used ONLY to let `next build` evaluate server modules
+ * without a database or real secrets present — never read at runtime.
+ */
+const BUILD_PLACEHOLDERS: Readonly<Record<string, string>> = {
+  DATABASE_URL: "postgresql://build-placeholder:build@localhost:5432/build",
+  AUTH_SECRET: "build-phase-placeholder-secret-never-used-at-runtime-000000",
+  AUTH_OIDC_ISSUER: "https://build-placeholder.invalid",
+  AUTH_OIDC_CLIENT_ID: "build-placeholder",
+  AUTH_OIDC_CLIENT_SECRET: "build-placeholder",
+  AUTH_ALLOWED_EMAIL_DOMAINS: "build-placeholder.invalid",
+};
+
+/**
+ * Parses the server env, tolerating MISSING runtime secrets only during
+ * `next build` (`isBuildPhase`). The build has no database and no real
+ * secrets and must not require them; the values are read on the running
+ * server, which re-evaluates with the real environment.
+ *
+ * A value that IS present is still validated, in every phase — a
+ * placeholder only ever fills a genuinely absent key, so a malformed real
+ * value fails the build just as it fails at runtime, and outside the
+ * build phase this behaves exactly like `parseServerEnv`.
+ */
+export function resolveServerEnv(
+  raw: Record<string, string | undefined>,
+  options: { isBuildPhase: boolean }
+): ServerEnv {
+  if (!options.isBuildPhase) {
+    return parseServerEnv(raw);
+  }
+  const merged: Record<string, string | undefined> = { ...raw };
+  for (const [key, placeholder] of Object.entries(BUILD_PLACEHOLDERS)) {
+    if (!merged[key]) merged[key] = placeholder;
+  }
+  return parseServerEnv(merged);
+}
+
 export function parsePublicEnv(raw: Record<string, string | undefined>): PublicEnv {
   const result = publicEnvSchema.safeParse({
     NEXT_PUBLIC_APP_NAME: raw.NEXT_PUBLIC_APP_NAME,

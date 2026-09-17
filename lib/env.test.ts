@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { EnvValidationError, parsePublicEnv, parseServerEnv } from "./env";
+import { EnvValidationError, parsePublicEnv, parseServerEnv, resolveServerEnv } from "./env";
 
 describe("parsePublicEnv", () => {
   it("accepts a valid configuration", () => {
@@ -185,5 +185,38 @@ describe("parseServerEnv — DIRECT_DATABASE_URL (migrations vs. the running app
     expect(() =>
       parseServerEnv({ ...VALID_SERVER_ENV, DIRECT_DATABASE_URL: "https://db.example.test" })
     ).toThrow(EnvValidationError);
+  });
+});
+
+describe("resolveServerEnv — build-phase tolerance", () => {
+  const runtimeEnv = { ...VALID_SERVER_ENV };
+
+  it("outside the build phase, behaves exactly like parseServerEnv (strict)", () => {
+    const { DATABASE_URL: _omit, ...missingDb } = runtimeEnv;
+    void _omit;
+    expect(() => resolveServerEnv(missingDb, { isBuildPhase: false })).toThrow(EnvValidationError);
+  });
+
+  it("during the build phase, tolerates missing runtime secrets with inert placeholders", () => {
+    const result = resolveServerEnv({ NODE_ENV: "production" }, { isBuildPhase: true });
+    // Filled from placeholders, never thrown — the build has no database.
+    expect(result.DATABASE_URL).toContain("postgresql://");
+    expect(result.AUTH_SECRET.length).toBeGreaterThanOrEqual(32);
+  });
+
+  it("during the build phase, still rejects a value that IS present but malformed", () => {
+    // The placeholder only fills a genuinely absent key; a bad real value
+    // fails the build exactly as it would fail at runtime.
+    expect(() =>
+      resolveServerEnv(
+        { ...runtimeEnv, DATABASE_URL: "not-a-postgres-url" },
+        { isBuildPhase: true }
+      )
+    ).toThrow(EnvValidationError);
+  });
+
+  it("during the build phase, keeps a real value that IS present rather than overriding it", () => {
+    const result = resolveServerEnv(runtimeEnv, { isBuildPhase: true });
+    expect(result.DATABASE_URL).toBe(runtimeEnv.DATABASE_URL);
   });
 });

@@ -1,5 +1,5 @@
 import "server-only";
-import { parseServerEnv, type ServerEnv } from "./env";
+import { resolveServerEnv, type ServerEnv } from "./env";
 
 /**
  * Server-only environment values. Importing this file from client
@@ -12,4 +12,15 @@ import { parseServerEnv, type ServerEnv } from "./env";
  * code (route handlers, server actions, server components that don't
  * pass the values as props to a client component).
  */
-export const serverEnv: ServerEnv = parseServerEnv(process.env);
+
+/**
+ * `next build` evaluates server modules (this one, via the auth config)
+ * to collect page data, and a build has no database and no real secrets:
+ * it must not require DATABASE_URL, AUTH_SECRET, or the OIDC values. The
+ * build-phase tolerance lives in `resolveServerEnv` (pure, and tested in
+ * env.test.ts). Validation stays strict at runtime, where a genuinely
+ * missing or malformed secret still fails fast.
+ */
+export const serverEnv: ServerEnv = resolveServerEnv(process.env, {
+  isBuildPhase: process.env.NEXT_PHASE === "phase-production-build",
+});
