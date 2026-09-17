@@ -188,6 +188,7 @@ describe("projectLeadershipGraph — filtering", () => {
       vacant: 1,
       ungraded: 0,
       belowGrade: 0,
+      inactive: 0,
       total: 1,
     });
   });

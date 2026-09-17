@@ -10,6 +10,7 @@ import {
   archivePosition,
   activatePosition,
   createPosition,
+  deletePosition,
   movePosition,
   updatePosition,
 } from "@/lib/services/hierarchy.service";
@@ -27,6 +28,7 @@ import {
   listPositionsQuerySchema,
   movePositionSchema,
   positionStatusChangeSchema,
+  deletePositionSchema,
   updatePositionSchema,
   type ListPositionsQuery,
 } from "@/lib/validation/position";
@@ -140,5 +142,20 @@ export async function activatePositionAction(input: unknown): Promise<ActionResu
     const user = await requirePermission("positions:manage");
     const { positionId } = positionStatusChangeSchema.parse(input);
     return activatePosition(positionId, user.companyId, toAuditActor(user));
+  });
+}
+
+/**
+ * Permanently removes a position. Re-authorized and re-validated here
+ * regardless of the client (CLAUDE.md §1.8); the service refuses any
+ * position that still has direct reports or employment history, so this
+ * can never orphan a report or lose an assignment record.
+ */
+export async function deletePositionAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { positionId } = deletePositionSchema.parse(input);
+    await deletePosition(positionId, user.companyId, toAuditActor(user));
+    return null;
   });
 }

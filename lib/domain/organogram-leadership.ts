@@ -98,6 +98,14 @@ export interface LeadershipViewOptions {
   hideVacant: boolean;
   /** Group positions under a synthetic department tier below the root. */
   departmentFirst: boolean;
+  /**
+   * Drop deactivated (INACTIVE) positions from the chart. Default `true`:
+   * a deactivated role is not part of the current organisation, so it
+   * should not appear. Its active reports (if any) re-attach to the
+   * nearest visible ancestor, exactly as for any other filtered node, so
+   * hiding it never orphans anyone. The root is always kept.
+   */
+  hideInactive: boolean;
 }
 
 export const DEFAULT_LEADERSHIP_VIEW_OPTIONS: LeadershipViewOptions = {
@@ -106,6 +114,7 @@ export const DEFAULT_LEADERSHIP_VIEW_OPTIONS: LeadershipViewOptions = {
   hideUngraded: false,
   hideVacant: false,
   departmentFirst: true,
+  hideInactive: true,
 };
 
 export interface DepartmentGroupNode {
@@ -144,6 +153,8 @@ export interface LeadershipView {
     ungraded: number;
     /** Left off the chart entirely — only ever non-zero when `belowThreshold` is `"hide"`. */
     belowGrade: number;
+    /** Deactivated positions, dropped from the chart. */
+    inactive: number;
   };
   /** Kept, but folded away behind their manager's expand control. */
   collapsedBelowThreshold: number;
@@ -159,8 +170,11 @@ function classify(
   node: OrganogramNode,
   options: LeadershipViewOptions,
   isRoot: boolean
-): "visible" | "vacant" | "ungraded" | "belowGrade" {
+): "visible" | "vacant" | "ungraded" | "belowGrade" | "inactive" {
   if (isRoot) return "visible";
+  // Status first: a deactivated role is not part of the current org at
+  // all, so it drops out before any grade/occupancy consideration.
+  if (options.hideInactive && node.positionStatus === "INACTIVE") return "inactive";
   if (options.hideVacant && node.occupancyStatus === "vacant") return "vacant";
   if (node.jobGradeLevel === null) return options.hideUngraded ? "ungraded" : "visible";
   if (node.jobGradeLevel < options.minGradeLevel) {
@@ -205,7 +219,7 @@ export function buildLeadershipView(
   const rootPositionId =
     nodes.find((n) => n.primaryReportsToPositionId === null)?.positionId ?? null;
 
-  const excluded = { vacant: 0, ungraded: 0, belowGrade: 0 };
+  const excluded = { vacant: 0, ungraded: 0, belowGrade: 0, inactive: 0 };
   const visible: OrganogramNode[] = [];
   for (const node of nodes) {
     const verdict = classify(node, options, node.positionId === rootPositionId);

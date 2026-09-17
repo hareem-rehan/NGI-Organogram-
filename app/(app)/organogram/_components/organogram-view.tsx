@@ -526,6 +526,9 @@ export function OrganogramView({
                 data.leadership.hidden.belowGrade > 0
                   ? `${data.leadership.hidden.belowGrade} below L${data.leadership.minGradeLevel}`
                   : null,
+                data.leadership.hidden.inactive > 0
+                  ? `${data.leadership.hidden.inactive} deactivated`
+                  : null,
               ]
                 .filter(Boolean)
                 .join(", ")}

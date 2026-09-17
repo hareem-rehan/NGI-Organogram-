@@ -93,6 +93,13 @@ export const positionStatusChangeSchema = z
   })
   .strict();
 
+/** Separate schema for the destructive path, so it can never widen by accident. */
+export const deletePositionSchema = z
+  .object({
+    positionId: z.string().uuid(),
+  })
+  .strict();
+
 export const listPositionsQuerySchema = z
   .object({
     search: searchQuerySchema,

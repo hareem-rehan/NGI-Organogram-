@@ -406,3 +406,57 @@ describe("buildLeadershipView — determinism", () => {
     ]);
   });
 });
+
+describe("buildLeadershipView — deactivated positions", () => {
+  it("hides an INACTIVE position by default and counts it", () => {
+    const inactive = node({ positionId: "old-role", positionStatus: "INACTIVE" });
+
+    const view = buildLeadershipView([ceo(), inactive], opts());
+
+    expect(view.visiblePositionIds.has("old-role")).toBe(false);
+    expect(view.excluded.inactive).toBe(1);
+  });
+
+  it("re-attaches an active report of a hidden inactive manager, never orphaning it", () => {
+    // Active director reports to a deactivated VP, which reports to the CTO.
+    const cto = node({ positionId: "cto" });
+    const inactiveVp = node({
+      positionId: "vp",
+      primaryReportsToPositionId: "cto",
+      positionStatus: "INACTIVE",
+    });
+    const director = node({
+      positionId: "director",
+      primaryReportsToPositionId: "vp",
+      positionStatus: "ACTIVE",
+    });
+
+    const view = buildLeadershipView([ceo(), cto, inactiveVp, director], opts());
+
+    expect(view.visiblePositionIds.has("vp")).toBe(false);
+    expect(view.visiblePositionIds.has("director")).toBe(true);
+    // Hangs off the nearest still-visible ancestor instead of the removed VP.
+    expect(view.parentByPositionId.get("director")).toBe("cto");
+  });
+
+  it("keeps an inactive position when hideInactive is turned off", () => {
+    const inactive = node({ positionId: "old-role", positionStatus: "INACTIVE" });
+
+    const view = buildLeadershipView([ceo(), inactive], opts({ hideInactive: false }));
+
+    expect(view.visiblePositionIds.has("old-role")).toBe(true);
+    expect(view.excluded.inactive).toBe(0);
+  });
+
+  it("never hides the root even if it is somehow inactive — a chart needs a top", () => {
+    const inactiveRoot = node({
+      positionId: "ceo",
+      primaryReportsToPositionId: null,
+      positionStatus: "INACTIVE",
+    });
+
+    const view = buildLeadershipView([inactiveRoot], opts());
+
+    expect(view.visiblePositionIds.has("ceo")).toBe(true);
+  });
+});

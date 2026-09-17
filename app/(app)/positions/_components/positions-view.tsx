@@ -19,6 +19,7 @@ import { parseEnumParam, parseUuidParam } from "@/lib/utils/search-params";
 import {
   activatePositionAction,
   archivePositionAction,
+  deletePositionAction,
   listAllPositionsAction,
   listDepartmentOptionsAction,
   listJobGradeOptionsAction,
@@ -80,6 +81,11 @@ export function PositionsView({ canManage }: PositionsViewProps) {
   const statusDialog = useConfirmDialog();
   const [statusPending, setStatusPending] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<Position | null>(null);
+  const deleteDialog = useConfirmDialog();
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -152,6 +158,29 @@ export function PositionsView({ canManage }: PositionsViewProps) {
     }
     statusDialog.setOpen(false);
     refresh();
+  }
+
+  function openDelete(position: Position) {
+    setDeleteTarget(position);
+    setDeleteError(null);
+    deleteDialog.setOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeletePending(true);
+    setDeleteError(null);
+    const result = await deletePositionAction({ positionId: deleteTarget.id });
+    setDeletePending(false);
+    if (!result.ok) {
+      // The server names the blocker ("3 positions reporting to it",
+      // "has employment history") — shown verbatim, not replaced.
+      setDeleteError(result.error);
+      return;
+    }
+    deleteDialog.setOpen(false);
+    if (positions.length === 1 && page > 1) setPage(page - 1);
+    else refresh();
   }
 
   function departmentName(departmentId: string): string {
@@ -359,6 +388,15 @@ export function PositionsView({ canManage }: PositionsViewProps) {
                         >
                           {position.status === "INACTIVE" ? "Reactivate" : "Deactivate"}
                         </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => openDelete(position)}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </td>
                   ) : null}
@@ -416,6 +454,20 @@ export function PositionsView({ canManage }: PositionsViewProps) {
           pending={statusPending}
           errorMessage={statusError}
           onConfirm={confirmStatusChange}
+        />
+      ) : null}
+
+      {deleteTarget ? (
+        <ConfirmDialog
+          open={deleteDialog.open}
+          onOpenChange={deleteDialog.setOpen}
+          title="Delete position?"
+          description={`${deleteTarget.title} (${deleteTarget.positionCode}) will be permanently removed. This cannot be undone. A position can only be deleted while nothing reports to it and no one is or was assigned to it — otherwise deactivate it instead.`}
+          confirmLabel="Delete"
+          destructive
+          pending={deletePending}
+          errorMessage={deleteError}
+          onConfirm={confirmDelete}
         />
       ) : null}
     </div>

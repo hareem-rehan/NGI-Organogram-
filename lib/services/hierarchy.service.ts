@@ -401,22 +401,62 @@ export async function activatePosition(
  * direct reports for a clean error and otherwise relies on that DB
  * constraint as the real enforcement.
  */
-export async function deletePosition(id: string, companyId: string): Promise<void> {
-  const position = await findPositionById(id, companyId);
-  if (!position) throw new NotFoundError("Position", id);
+export async function deletePosition(
+  id: string,
+  companyId: string,
+  actor: AuditActor = "SYSTEM",
+  db: DbClient = prisma
+): Promise<void> {
+  return withTransaction(db, async (tx) => {
+    const position = await findPositionById(id, companyId, tx);
+    if (!position) throw new NotFoundError("Position", id);
 
-  const directReportCount = await countDirectReports(id, companyId);
-  if (directReportCount > 0) {
-    throw new UnsafeMutationError(
-      `Cannot delete position ${id}: ${directReportCount} position(s) directly report to it. Archive it instead.`
+    // Two things must not be orphaned by a delete, and both are also
+    // enforced by ON DELETE RESTRICT at the database — these checks exist
+    // to turn the raw FK error into a message that names the blocker and
+    // the way forward (deactivate instead), and to make the rules
+    // testable without depending on Prisma's error text.
+    const directReportCount = await countDirectReports(id, companyId, tx);
+    if (directReportCount > 0) {
+      throw new UnsafeMutationError(
+        `${position.title} still has ${directReportCount} position${directReportCount === 1 ? "" : "s"} reporting to it, so it cannot be deleted. Move or delete those first, or deactivate this position instead.`
+      );
+    }
+
+    // Any assignment — current OR historical — pins the position, because
+    // assignment history is kept (PositionAssignment → Position is
+    // RESTRICT). A position someone has ever held is deactivated, not
+    // deleted, so that history stays resolvable.
+    const assignmentCount = await tx.positionAssignment.count({ where: { positionId: id } });
+    if (assignmentCount > 0) {
+      throw new UnsafeMutationError(
+        `${position.title} has employment history (someone is or was assigned to it), so it cannot be deleted. Deactivate this position instead.`
+      );
+    }
+
+    try {
+      await tx.position.delete({ where: { id } });
+    } catch (error) {
+      throw translateWriteError(error, position.positionCode, false);
+    }
+
+    await recordAuditEvent(
+      {
+        companyId,
+        actor,
+        action: "DELETED",
+        category: "POSITION",
+        entityType: "Position",
+        entityId: position.id,
+        entityDisplayReference: position.positionCode,
+        before: position,
+        // No `after`: the row is gone. The before-snapshot is the only
+        // remaining record of the deleted position, which is why it is
+        // written in the same transaction as the delete.
+      },
+      tx
     );
-  }
-
-  try {
-    await prisma.position.delete({ where: { id } });
-  } catch (error) {
-    throw translateWriteError(error, position.positionCode, false);
-  }
+  });
 }
 
 export async function getRootPosition(

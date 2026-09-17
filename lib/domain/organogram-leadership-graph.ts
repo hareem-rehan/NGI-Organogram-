@@ -41,6 +41,8 @@ export interface LeadershipSummary {
     vacant: number;
     ungraded: number;
     belowGrade: number;
+    /** Deactivated positions dropped from the chart. */
+    inactive: number;
     total: number;
   };
 }
@@ -226,7 +228,12 @@ export function projectLeadershipGraph(
         vacant: view.excluded.vacant,
         ungraded: view.excluded.ungraded,
         belowGrade: view.excluded.belowGrade,
-        total: view.excluded.vacant + view.excluded.ungraded + view.excluded.belowGrade,
+        inactive: view.excluded.inactive,
+        total:
+          view.excluded.vacant +
+          view.excluded.ungraded +
+          view.excluded.belowGrade +
+          view.excluded.inactive,
       },
     },
   };

@@ -300,6 +300,69 @@ describe("Position hierarchy", () => {
     const root = await makeRootPosition(company.id, dept.id);
     await makeChildPosition(company.id, dept.id, root.id, 1);
     await expect(deletePosition(root.id, company.id)).rejects.toBeInstanceOf(UnsafeMutationError);
+    // A refused delete changes nothing.
+    await expect(
+      testPrisma.position.findUnique({ where: { id: root.id } })
+    ).resolves.not.toBeNull();
+  });
+
+  it("blocks hard deletion of a position that has employment history", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const child = await makeChildPosition(company.id, dept.id, root.id, 1, {
+      positionCode: "POS-EMP",
+    });
+    const employee = await makeEmployee(company.id);
+    await testPrisma.positionAssignment.create({
+      data: {
+        companyId: company.id,
+        employeeId: employee.id,
+        positionId: child.id,
+        isPrimary: true,
+        startDate: new Date("2024-01-01"),
+        endDate: null,
+      },
+    });
+
+    await expect(deletePosition(child.id, company.id)).rejects.toBeInstanceOf(UnsafeMutationError);
+  });
+
+  it("deletes an empty leaf position and records what was removed, in the same transaction", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const leaf = await makeChildPosition(company.id, dept.id, root.id, 1, {
+      positionCode: "POS-DELETE-ME",
+      title: "Temporary Role",
+    });
+
+    await deletePosition(leaf.id, company.id, "SYSTEM");
+
+    await expect(testPrisma.position.findUnique({ where: { id: leaf.id } })).resolves.toBeNull();
+
+    const events = await testPrisma.auditEvent.findMany({
+      where: { companyId: company.id, action: "DELETED", entityType: "Position" },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.entityId).toBe(leaf.id);
+    expect(events[0]?.entityDisplayReference).toBe("POS-DELETE-ME");
+    expect(JSON.stringify(events[0]?.beforeData)).toContain("Temporary Role");
+    expect(events[0]?.afterData).toBeNull();
+  });
+
+  it("writes no audit event when a position delete is refused", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    await makeChildPosition(company.id, dept.id, root.id, 1);
+
+    await expect(deletePosition(root.id, company.id)).rejects.toBeInstanceOf(UnsafeMutationError);
+
+    const events = await testPrisma.auditEvent.findMany({
+      where: { companyId: company.id, action: "DELETED" },
+    });
+    expect(events).toEqual([]);
   });
 
   it("allows archiving a position that still has children (hierarchy stays structurally valid)", async () => {

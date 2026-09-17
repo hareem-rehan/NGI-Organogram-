@@ -9,12 +9,14 @@ const {
   listJobGradeOptionsActionMock,
   listAllPositionsActionMock,
   archivePositionActionMock,
+  deletePositionActionMock,
 } = vi.hoisted(() => ({
   listPositionsActionMock: vi.fn(),
   listDepartmentOptionsActionMock: vi.fn(),
   listJobGradeOptionsActionMock: vi.fn(),
   listAllPositionsActionMock: vi.fn(),
   archivePositionActionMock: vi.fn(),
+  deletePositionActionMock: vi.fn(),
 }));
 
 vi.mock("@/app/(app)/positions/actions", () => ({
@@ -24,6 +26,7 @@ vi.mock("@/app/(app)/positions/actions", () => ({
   listAllPositionsAction: listAllPositionsActionMock,
   activatePositionAction: vi.fn(),
   archivePositionAction: archivePositionActionMock,
+  deletePositionAction: deletePositionActionMock,
 }));
 
 // RTL's render() has no Next.js App Router context provider, which
@@ -130,6 +133,7 @@ describe("PositionsView", () => {
     await screen.findByText("Chief Executive Officer");
     expect(screen.queryByRole("button", { name: /add position/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /change reports-to/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^delete$/i })).not.toBeInTheDocument();
   });
 
   it("shows Add Position and row actions for HR_EDITOR/ADMIN (canManage=true)", async () => {
@@ -144,6 +148,7 @@ describe("PositionsView", () => {
     await screen.findByText("Chief Executive Officer");
     expect(screen.getByRole("button", { name: /add position/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /change reports-to/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^delete$/i })).toBeInTheDocument();
   });
 
   it("re-queries the server when the department filter changes", async () => {
@@ -234,5 +239,54 @@ describe("PositionsView", () => {
         positionId: "11111111-1111-4111-8111-111111111111",
       })
     );
+  });
+
+  it("confirms before deleting, then calls deletePositionAction", async () => {
+    mockDefaults();
+    listPositionsActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [makePosition()], totalCount: 1, occupiedPositionIds: [] },
+    });
+    deletePositionActionMock.mockResolvedValue({ ok: true, data: null });
+    const user = userEvent.setup();
+
+    render(<PositionsView canManage={true} />);
+    await screen.findByText("Chief Executive Officer");
+
+    // Never one click.
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(deletePositionActionMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: /delete position/i })).toBeInTheDocument();
+    expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(deletePositionActionMock).toHaveBeenCalledWith({
+        positionId: "11111111-1111-4111-8111-111111111111",
+      })
+    );
+  });
+
+  it("shows the server's reason verbatim when a delete is refused, and keeps the row", async () => {
+    mockDefaults();
+    listPositionsActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [makePosition()], totalCount: 1, occupiedPositionIds: [] },
+    });
+    deletePositionActionMock.mockResolvedValue({
+      ok: false,
+      error: "Chief Executive Officer has employment history, so it cannot be deleted.",
+    });
+    const user = userEvent.setup();
+
+    render(<PositionsView canManage={true} />);
+    await screen.findByText("Chief Executive Officer");
+
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(screen.getByText(/employment history/i)).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: /delete position/i })).toBeInTheDocument();
   });
 });

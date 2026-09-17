@@ -15,6 +15,7 @@ const {
     movePosition: vi.fn(),
     archivePosition: vi.fn(),
     activatePosition: vi.fn(),
+    deletePosition: vi.fn(),
   },
   positionRepoMocks: {
     searchPositions: vi.fn(),
@@ -39,6 +40,7 @@ import {
   activatePositionAction,
   archivePositionAction,
   createPositionAction,
+  deletePositionAction,
   getSubtreeSizeAction,
   listAllPositionsAction,
   listDepartmentOptionsAction,
@@ -201,5 +203,39 @@ describe("createPositionAction — level (jobGradeCode) resolution", () => {
 
     expect(jobGradeServiceMock.ensureJobGradeByCode).not.toHaveBeenCalled();
     expect(serviceMocks.createPosition.mock.calls[0]?.[0]?.jobGradeId).toBeNull();
+  });
+});
+
+describe("deletePositionAction — authorization and validation", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("requires positions:manage and passes the session company, never the payload's", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.deletePosition.mockResolvedValue(undefined);
+
+    await deletePositionAction({ positionId: VALID_UUID, companyId: "attacker-co" });
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    if (serviceMocks.deletePosition.mock.calls.length > 0) {
+      expect(serviceMocks.deletePosition.mock.calls[0]?.[1]).toBe(ADMIN_USER.companyId);
+    }
+  });
+
+  it("a VIEWER cannot delete — the service is never reached", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+
+    const result = await deletePositionAction({ positionId: VALID_UUID });
+
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.deletePosition).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed id before calling the service", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+
+    const result = await deletePositionAction({ positionId: "not-a-uuid" });
+
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.deletePosition).not.toHaveBeenCalled();
   });
 });

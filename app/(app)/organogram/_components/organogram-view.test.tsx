@@ -50,7 +50,7 @@ function makeData(overrides: Partial<OrganogramChartData> = {}): OrganogramChart
       departmentGroupCount: 0,
       shownPositionCount: 0,
       collapsedBelowThreshold: 0,
-      hidden: { vacant: 0, ungraded: 0, belowGrade: 0, total: 0 },
+      hidden: { vacant: 0, ungraded: 0, belowGrade: 0, inactive: 0, total: 0 },
     },
     ...overrides,
   };
