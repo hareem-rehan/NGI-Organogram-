@@ -30,6 +30,46 @@ interface PositionFormDialogProps {
 type FormValues = CreatePositionValues;
 
 /**
+ * The managers a new position may report to, scoped to its own department.
+ *
+ * A position reports within its own department, and a department's first
+ * or top role reports up to the ROOT (the CEO — the single position with
+ * no manager of its own). Everything else is noise in the picker: a
+ * brand-new "Client Delivery Services" role should see only the CEO, not
+ * every HR position. Passing an empty `departmentId` (no department chosen
+ * yet) applies no department scope. `query` filters by title or code.
+ *
+ * This is a relevance filter for the UI only — the server still
+ * re-validates the chosen manager on submit, so narrowing here can never
+ * be a security assumption.
+ */
+export function scopeReportsToOptions(
+  allPositions: readonly Position[],
+  departmentId: string,
+  query: string
+): ComboboxOption[] {
+  const q = query.trim().toLowerCase();
+  return allPositions
+    .filter((candidate) => {
+      const inScope =
+        departmentId === "" ||
+        candidate.departmentId === departmentId ||
+        candidate.primaryReportsToPositionId === null;
+      if (!inScope) return false;
+      return (
+        q === "" ||
+        candidate.title.toLowerCase().includes(q) ||
+        candidate.positionCode.toLowerCase().includes(q)
+      );
+    })
+    .map((candidate) => ({
+      value: candidate.id,
+      label: candidate.title,
+      description: `${candidate.positionCode} · Level ${candidate.organizationalLevel}`,
+    }));
+}
+
+/**
  * Create/edit dialog. When creating, the Reports-To combobox is part of
  * the same form (a brand-new leaf position has no descendants to
  * recalculate, so the lighter-weight inline picker is appropriate). When
@@ -177,19 +217,10 @@ export function PositionFormDialog({
     return [...byCode.values()];
   }, [jobGrades, deptGradeName, departmentId]);
 
-  const reportsToOptions: ComboboxOption[] = useMemo(() => {
-    const candidates = allPositions.filter(
-      (candidate) =>
-        reportsToQuery.trim() === "" ||
-        candidate.title.toLowerCase().includes(reportsToQuery.toLowerCase()) ||
-        candidate.positionCode.toLowerCase().includes(reportsToQuery.toLowerCase())
-    );
-    return candidates.map((candidate) => ({
-      value: candidate.id,
-      label: candidate.title,
-      description: `${candidate.positionCode} · Level ${candidate.organizationalLevel}`,
-    }));
-  }, [allPositions, reportsToQuery]);
+  const reportsToOptions: ComboboxOption[] = useMemo(
+    () => scopeReportsToOptions(allPositions, departmentId, reportsToQuery),
+    [allPositions, reportsToQuery, departmentId]
+  );
 
   async function onSubmit(values: FormValues) {
     setFormError(null);
@@ -257,6 +288,18 @@ export function PositionFormDialog({
                   // newly-selected department when a level is already chosen.
                   if (jobGradeCode) {
                     setValue("jobGradeName", defaultLevelName(newDept, jobGradeCode));
+                  }
+                  // The Reports-To picker is scoped to the department, so a
+                  // manager chosen for the old department may no longer be
+                  // offered. Clear it unless it is still in scope (same
+                  // department, or the root CEO which is always allowed).
+                  const chosen = allPositions.find((p) => p.id === primaryReportsToPositionId);
+                  if (
+                    chosen &&
+                    chosen.departmentId !== newDept &&
+                    chosen.primaryReportsToPositionId !== null
+                  ) {
+                    setValue("primaryReportsToPositionId", null);
                   }
                 }}
               >

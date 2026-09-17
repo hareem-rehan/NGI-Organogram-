@@ -13,7 +13,7 @@ vi.mock("@/app/(app)/positions/actions", () => ({
   updatePositionAction: updatePositionActionMock,
 }));
 
-import { PositionFormDialog } from "./position-form-dialog";
+import { PositionFormDialog, scopeReportsToOptions } from "./position-form-dialog";
 
 const DEPARTMENT_ID = "11111111-1111-4111-8111-111111111111";
 const JOB_GRADE_ID = "22222222-2222-4222-8222-222222222222";
@@ -273,5 +273,56 @@ describe("PositionFormDialog", () => {
     await waitFor(() => expect(updatePositionActionMock).toHaveBeenCalled());
     const payload = updatePositionActionMock.mock.calls[0]?.[0];
     expect(payload).not.toHaveProperty("primaryReportsToPositionId");
+  });
+});
+
+describe("scopeReportsToOptions", () => {
+  const ceo = makePosition({
+    id: "ceo",
+    title: "CEO",
+    positionCode: "POS-CEO",
+    departmentId: "exec-dept",
+    primaryReportsToPositionId: null,
+  });
+  const engManager = makePosition({
+    id: "eng1",
+    title: "CTO",
+    positionCode: "POS-ENG",
+    departmentId: DEPARTMENT_ID,
+    primaryReportsToPositionId: "ceo",
+  });
+  const hrManager = makePosition({
+    id: "hr1",
+    title: "VP HR",
+    positionCode: "POS-HR",
+    departmentId: "hr-dept",
+    primaryReportsToPositionId: "ceo",
+  });
+  const all = [ceo, engManager, hrManager];
+
+  it("offers same-department managers plus the root, hiding other departments", () => {
+    const ids = scopeReportsToOptions(all, DEPARTMENT_ID, "").map((o) => o.value);
+    expect(ids).toContain("eng1"); // same department
+    expect(ids).toContain("ceo"); // root, always allowed
+    expect(ids).not.toContain("hr1"); // different department — filtered out
+  });
+
+  it("offers only the root CEO for a department that has no positions yet", () => {
+    // Reproduces the reported case: a brand-new "Client Delivery Services"
+    // with no roles should surface the CEO alone, not every HR position.
+    const ids = scopeReportsToOptions(all, "client-delivery-dept", "").map((o) => o.value);
+    expect(ids).toEqual(["ceo"]);
+  });
+
+  it("applies no department scope when none is selected", () => {
+    const ids = scopeReportsToOptions(all, "", "").map((o) => o.value);
+    expect(ids).toEqual(["ceo", "eng1", "hr1"]);
+  });
+
+  it("filters the scoped set by title or code query", () => {
+    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "cto").map((o) => o.value)).toEqual(["eng1"]);
+    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-CEO").map((o) => o.value)).toEqual(["ceo"]);
+    // A same-scope query that matches nothing yields nothing.
+    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "zzz")).toHaveLength(0);
   });
 });
