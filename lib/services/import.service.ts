@@ -1089,9 +1089,7 @@ async function applyOrderedRows(
             .map((g) => [`${g.departmentId}:${normalizeCode(g.code)}`, g.id])
         ),
         jobGradeSharedByCode: new Map(
-          jobGrades
-            .filter((g) => g.departmentId == null)
-            .map((g) => [normalizeCode(g.code), g.id])
+          jobGrades.filter((g) => g.departmentId == null).map((g) => [normalizeCode(g.code), g.id])
         ),
         positionCodeToId: new Map(positions.map((p) => [normalizeCode(p.positionCode), p.id])),
         positionCodeToLevel: new Map(
