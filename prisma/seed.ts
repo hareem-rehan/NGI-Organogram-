@@ -214,6 +214,58 @@ export async function runSeed(db: PrismaClient) {
     return found;
   };
 
+  // --- Career framework (synthetic demo) -----------------------------
+  // The career framework is INDEPENDENT of reporting: IC and Manager are
+  // parallel ladders, so an IC L7 ("Principal Software Engineer") and a
+  // Manager L7 ("Tech Lead") coexist at the same level without either
+  // reporting to the other. Generic role nomenclature only — never real
+  // employee data (CLAUDE.md §1.11). Find-or-create so re-seeding is
+  // idempotent.
+  async function findOrCreateJobFamily(departmentId: string, code: string, name: string) {
+    const existing = await db.jobFamily.findFirst({ where: { companyId: company.id, code } });
+    return (
+      existing ??
+      (await db.jobFamily.create({ data: { companyId: company.id, departmentId, code, name } }))
+    );
+  }
+  async function findOrCreateTrack(jobFamilyId: string, kind: "IC" | "MANAGER", name: string) {
+    const existing = await db.careerTrack.findFirst({
+      where: { companyId: company.id, jobFamilyId, kind },
+    });
+    return (
+      existing ??
+      (await db.careerTrack.create({ data: { companyId: company.id, jobFamilyId, kind, name } }))
+    );
+  }
+  async function findOrCreateMapping(
+    jobFamilyId: string,
+    careerTrackId: string,
+    jobGradeId: string,
+    title: string
+  ) {
+    const existing = await db.levelMappingEntry.findFirst({
+      where: { companyId: company.id, jobFamilyId, careerTrackId, jobGradeId, title },
+    });
+    return (
+      existing ??
+      (await db.levelMappingEntry.create({
+        data: { companyId: company.id, jobFamilyId, careerTrackId, jobGradeId, title },
+      }))
+    );
+  }
+
+  const swFamily = await findOrCreateJobFamily(engDept.id, "SWE", "Software Engineering");
+  const swIC = await findOrCreateTrack(swFamily.id, "IC", "Individual Contributor");
+  const swMgr = await findOrCreateTrack(swFamily.id, "MANAGER", "Manager");
+  await findOrCreateMapping(swFamily.id, swIC.id, grade("L6").id, "Senior Software Engineer");
+  await findOrCreateMapping(swFamily.id, swIC.id, grade("L7").id, "Principal Software Engineer");
+  await findOrCreateMapping(swFamily.id, swMgr.id, grade("L6").id, "Associate Tech Lead");
+  await findOrCreateMapping(swFamily.id, swMgr.id, grade("L7").id, "Tech Lead");
+
+  const qaFamily = await findOrCreateJobFamily(engDept.id, "QA", "Quality Assurance");
+  const qaIC = await findOrCreateTrack(qaFamily.id, "IC", "Individual Contributor");
+  await findOrCreateMapping(qaFamily.id, qaIC.id, grade("L6").id, "Senior QA Engineer");
+
   // --- Positions -----------------------------------------------------
   const ceo = await upsertPosition({
     companyId: company.id,

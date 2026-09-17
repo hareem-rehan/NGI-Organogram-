@@ -56,6 +56,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     permission: "employees:view",
   },
   {
+    href: "/career-framework",
+    label: "Career Framework",
+    description:
+      "Career progression matrix: levels by job family and track — separate from the reporting hierarchy.",
+    plannedPhase: 14,
+    permission: "career:view",
+  },
+  {
     href: "/imports",
     label: "Imports",
     description: "Bulk-import organizational data from CSV, with validation and preview.",

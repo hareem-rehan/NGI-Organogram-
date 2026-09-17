@@ -15,6 +15,8 @@ export const PERMISSIONS = [
   "positions:manage",
   "employees:view",
   "employees:manage",
+  "career:view",
+  "career:manage",
   "imports:execute",
   "exports:execute",
   "audit:view",
@@ -41,6 +43,8 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "positions:manage",
     "employees:view",
     "employees:manage",
+    "career:view",
+    "career:manage",
     "imports:execute",
     "exports:execute",
     "audit:view",
@@ -51,6 +55,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "departments:view",
     "positions:view",
     "employees:view",
+    "career:view",
   ],
 };
 
