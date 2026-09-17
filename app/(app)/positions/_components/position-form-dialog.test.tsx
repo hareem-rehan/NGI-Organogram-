@@ -52,6 +52,8 @@ function makePosition(overrides: Partial<Position> = {}): Position {
     companyId: "company-1",
     departmentId: DEPARTMENT_ID,
     jobGradeId: null,
+    jobFamilyId: null,
+    careerTrackId: null,
     title: "Engineering Manager",
     positionCode: "POS-ENGMGR",
     description: null,

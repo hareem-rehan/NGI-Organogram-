@@ -46,6 +46,15 @@ enum DepartmentStatus {
   INACTIVE
 }
 
+/// A career track within a job family. IC (individual contributor) and
+/// MANAGER are PARALLEL ladders — an IC L7 and a Manager L7 are peers, not
+/// a reporting relationship (docs/DECISIONS.md). A job family may have one
+/// or both.
+enum CareerTrackKind {
+  IC
+  MANAGER
+}
+
 enum JobGradeStatus {
   ACTIVE
   INACTIVE
@@ -102,6 +111,10 @@ enum AuditCategory {
   EXPORT
   SECURITY
   SYSTEM
+  /// Career framework configuration: job families, career tracks, and
+  /// level-mapping entries (docs/DECISIONS.md — career framework is a
+  /// separate concept from the reporting hierarchy).
+  CAREER_FRAMEWORK
 }
 
 enum AuditAction {
@@ -188,6 +201,9 @@ model Company {
 
   departments         Department[]
   jobGrades           JobGrade[]
+  jobFamilies         JobFamily[]
+  careerTracks        CareerTrack[]
+  levelMappingEntries LevelMappingEntry[]
   positions           Position[]
   employees           Employee[]
   positionAssignments PositionAssignment[]
@@ -226,8 +242,9 @@ model Department {
   parentDepartment Department?  @relation("DepartmentParent", fields: [parentDepartmentId, companyId], references: [id, companyId], onDelete: Restrict)
   childDepartments Department[] @relation("DepartmentParent")
 
-  positions Position[]
-  jobGrades JobGrade[]
+  positions   Position[]
+  jobGrades   JobGrade[]
+  jobFamilies JobFamily[]
 
   @@unique([companyId, code])
   @@unique([id, companyId])
@@ -260,7 +277,8 @@ model JobGrade {
   company    Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
   department Department? @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Restrict)
 
-  positions Position[]
+  positions           Position[]
+  levelMappingEntries LevelMappingEntry[]
 
   /// Per-(department, code) uniqueness. NULL departmentId rows (shared
   /// grades) are treated as distinct by Postgres here, so a hand-authored
@@ -282,6 +300,13 @@ model Position {
   companyId                  String         @db.Uuid
   departmentId               String         @db.Uuid
   jobGradeId                 String?        @db.Uuid
+  /// Career framework classification (all optional, all PRESENTATIONAL to
+  /// the reporting tree — the organogram is built from
+  /// primaryReportsToPositionId ONLY, never from these). jobFamily is the
+  /// career roadmap/specialization (e.g. "Software Engineering"),
+  /// careerTrack the IC-vs-Manager ladder. See docs/DECISIONS.md.
+  jobFamilyId                String?        @db.Uuid
+  careerTrackId              String?        @db.Uuid
   title                      String
   positionCode               String
   description                String?
@@ -297,9 +322,11 @@ model Position {
   createdAt                  DateTime       @default(now())
   updatedAt                  DateTime       @updatedAt
 
-  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  department Department @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Restrict)
-  jobGrade   JobGrade?  @relation(fields: [jobGradeId, companyId], references: [id, companyId], onDelete: Restrict)
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  department  Department   @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Restrict)
+  jobGrade    JobGrade?    @relation(fields: [jobGradeId, companyId], references: [id, companyId], onDelete: Restrict)
+  jobFamily   JobFamily?   @relation(fields: [jobFamilyId, companyId], references: [id, companyId], onDelete: Restrict)
+  careerTrack CareerTrack? @relation(fields: [careerTrackId, companyId], references: [id, companyId], onDelete: Restrict)
 
   /// Self-relation scoped by company: a position can only report to a
   /// position in the SAME company (docs/DOMAIN_MODEL.md §1, principle 14).
@@ -316,9 +343,109 @@ model Position {
   @@index([companyId])
   @@index([departmentId])
   @@index([jobGradeId])
+  @@index([jobFamilyId])
+  @@index([careerTrackId])
   @@index([primaryReportsToPositionId])
   @@index([companyId, organizationalLevel])
   @@map("positions")
+}
+
+// ---------------------------------------------------------------------
+// Career framework — job families, career tracks, level mapping
+//
+// These model CAREER PROGRESSION, a concept entirely separate from the
+// reporting hierarchy (docs/DECISIONS.md). Nothing here feeds the
+// organogram: the org tree comes from Position.primaryReportsToPositionId
+// alone. A job family is a specialization/roadmap (e.g. "Software
+// Engineering", "QA") that lives under a Department; a career track is the
+// IC or Manager ladder within a family; a level-mapping entry names the
+// position title(s) valid at a given (family, track, level) cell of the
+// career matrix. Level is the existing JobGrade (L2–L18).
+// ---------------------------------------------------------------------
+
+model JobFamily {
+  id           String           @id @default(uuid()) @db.Uuid
+  companyId    String           @db.Uuid
+  departmentId String           @db.Uuid
+  name         String
+  code         String
+  description  String?
+  displayOrder Int?
+  status       DepartmentStatus @default(ACTIVE)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  /// Company-scoped composite FK: a family's department must be in the
+  /// same company. Restrict — a department with families can't be hard
+  /// deleted out from under them.
+  department Department @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Restrict)
+
+  careerTracks        CareerTrack[]
+  levelMappingEntries LevelMappingEntry[]
+  positions           Position[]
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@index([companyId])
+  @@index([departmentId])
+  @@map("job_families")
+}
+
+model CareerTrack {
+  id           String          @id @default(uuid()) @db.Uuid
+  companyId    String          @db.Uuid
+  jobFamilyId  String          @db.Uuid
+  kind         CareerTrackKind
+  /// Display name for the ladder, e.g. "Individual Contributor" or
+  /// "Manager". The KIND is the machine-meaningful value; the name is
+  /// editable label text.
+  name         String
+  displayOrder Int?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  jobFamily JobFamily @relation(fields: [jobFamilyId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  levelMappingEntries LevelMappingEntry[]
+  positions           Position[]
+
+  /// One track of each kind per family (a family has at most one IC ladder
+  /// and one Manager ladder).
+  @@unique([companyId, jobFamilyId, kind])
+  @@unique([id, companyId])
+  @@index([companyId])
+  @@index([jobFamilyId])
+  @@map("career_tracks")
+}
+
+model LevelMappingEntry {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @db.Uuid
+  jobFamilyId   String   @db.Uuid
+  careerTrackId String   @db.Uuid
+  jobGradeId    String   @db.Uuid
+  /// The position title valid at this (family, track, level) cell, e.g.
+  /// "Principal Software Engineer". A cell may hold several titles.
+  title         String
+  displayOrder  Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  jobFamily   JobFamily   @relation(fields: [jobFamilyId, companyId], references: [id, companyId], onDelete: Cascade)
+  careerTrack CareerTrack @relation(fields: [careerTrackId, companyId], references: [id, companyId], onDelete: Cascade)
+  jobGrade    JobGrade    @relation(fields: [jobGradeId, companyId], references: [id, companyId], onDelete: Restrict)
+
+  /// A title is unique within a matrix cell; the same title never repeats
+  /// for one (family, track, level).
+  @@unique([companyId, jobFamilyId, careerTrackId, jobGradeId, title])
+  @@index([companyId])
+  @@index([jobFamilyId])
+  @@index([careerTrackId])
+  @@index([jobGradeId])
+  @@map("level_mapping_entries")
 }
 
 // ---------------------------------------------------------------------

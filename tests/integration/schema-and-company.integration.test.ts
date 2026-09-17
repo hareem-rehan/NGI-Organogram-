@@ -14,6 +14,7 @@ describe("schema and migration constraints", () => {
     expect(names).toEqual([
       "accounts",
       "audit_events",
+      "career_tracks",
       "companies",
       "company_settings",
       "departments",
@@ -21,7 +22,9 @@ describe("schema and migration constraints", () => {
       "export_jobs",
       "import_jobs",
       "import_row_issues",
+      "job_families",
       "job_grades",
+      "level_mapping_entries",
       "position_assignments",
       "positions",
       "sessions",

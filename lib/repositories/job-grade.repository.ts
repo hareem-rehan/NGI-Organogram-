@@ -14,3 +14,11 @@ export async function listJobGradesForCompany(
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
   });
 }
+
+export async function findJobGradeById(
+  id: string,
+  companyId: string,
+  db: DbClient = prisma
+): Promise<JobGrade | null> {
+  return db.jobGrade.findFirst({ where: { id, companyId } });
+}
