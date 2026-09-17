@@ -55,6 +55,13 @@ export const createPositionSchema = z
     jobGradeCode: z.string().trim().min(1).max(16).nullable().optional(),
     /** Display name for the chosen level, scoped to the position's department. */
     jobGradeName: z.string().trim().max(80).nullable().optional(),
+    /**
+     * Career-framework classification (both optional). Presentational to
+     * the reporting tree — the organogram never reads them. See
+     * docs/DECISIONS.md.
+     */
+    jobFamilyId: z.string().uuid().nullable().optional(),
+    careerTrackId: z.string().uuid().nullable().optional(),
     description: descriptionSchema,
     location: locationSchema,
     primaryReportsToPositionId: z.string().uuid().nullable().optional(),
@@ -80,6 +87,9 @@ export const updatePositionSchema = z
     jobGradeCode: z.string().trim().min(1).max(16).nullable().optional(),
     /** Display name for the chosen level, scoped to the position's department. */
     jobGradeName: z.string().trim().max(80).nullable().optional(),
+    /** Career-framework classification (both optional; never affects reporting). */
+    jobFamilyId: z.string().uuid().nullable().optional(),
+    careerTrackId: z.string().uuid().nullable().optional(),
     description: descriptionSchema,
     location: locationSchema,
   })

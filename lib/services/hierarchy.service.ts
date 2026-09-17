@@ -33,6 +33,9 @@ export interface CreatePositionInput {
   actor?: AuditActor;
   departmentId: string;
   jobGradeId?: string | null;
+  /** Career-framework classification (optional; never affects the reporting tree). */
+  jobFamilyId?: string | null;
+  careerTrackId?: string | null;
   title: string;
   positionCode: string;
   description?: string | null;
@@ -97,6 +100,8 @@ export async function createPosition(
           companyId: input.companyId,
           departmentId: input.departmentId,
           jobGradeId: input.jobGradeId ?? null,
+          jobFamilyId: input.jobFamilyId ?? null,
+          careerTrackId: input.careerTrackId ?? null,
           title: input.title.trim(),
           positionCode,
           description: input.description?.trim() || null,
@@ -252,6 +257,8 @@ export interface UpdatePositionInput {
   location?: string | null;
   departmentId?: string;
   jobGradeId?: string | null;
+  jobFamilyId?: string | null;
+  careerTrackId?: string | null;
   displayOrder?: number | null;
 }
 
@@ -308,6 +315,8 @@ export async function updatePosition(
           ...(input.location !== undefined ? { location: input.location?.trim() || null } : {}),
           ...(input.departmentId !== undefined ? { departmentId: input.departmentId } : {}),
           ...(input.jobGradeId !== undefined ? { jobGradeId: input.jobGradeId } : {}),
+          ...(input.jobFamilyId !== undefined ? { jobFamilyId: input.jobFamilyId } : {}),
+          ...(input.careerTrackId !== undefined ? { careerTrackId: input.careerTrackId } : {}),
           ...(input.displayOrder !== undefined ? { displayOrder: input.displayOrder } : {}),
         },
       });

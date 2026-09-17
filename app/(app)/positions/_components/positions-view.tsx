@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
-import type { Department, JobGrade, Position } from "@prisma/client";
+import type {
+  CareerTrack,
+  Department,
+  JobFamily,
+  JobGrade,
+  LevelMappingEntry,
+  Position,
+} from "@prisma/client";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +30,7 @@ import {
   listAllPositionsAction,
   listDepartmentOptionsAction,
   listJobGradeOptionsAction,
+  listPositionCareerOptionsAction,
   listPositionsAction,
 } from "@/app/(app)/positions/actions";
 import { PositionFormDialog } from "@/app/(app)/positions/_components/position-form-dialog";
@@ -69,6 +77,9 @@ export function PositionsView({ canManage }: PositionsViewProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [jobGrades, setJobGrades] = useState<JobGrade[]>([]);
   const [allPositions, setAllPositions] = useState<Position[]>([]);
+  const [jobFamilies, setJobFamilies] = useState<JobFamily[]>([]);
+  const [careerTracks, setCareerTracks] = useState<CareerTrack[]>([]);
+  const [levelMappingEntries, setLevelMappingEntries] = useState<LevelMappingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -91,7 +102,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
     setLoading(true);
     setError(null);
     startTransition(async () => {
-      const [listResult, deptResult, gradeResult, allResult] = await Promise.all([
+      const [listResult, deptResult, gradeResult, allResult, careerResult] = await Promise.all([
         listPositionsAction({
           search: search || undefined,
           departmentId: departmentFilter || undefined,
@@ -103,6 +114,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
         listDepartmentOptionsAction(),
         listJobGradeOptionsAction(),
         listAllPositionsAction(),
+        listPositionCareerOptionsAction(),
       ]);
       setLoading(false);
       if (!listResult.ok) {
@@ -115,6 +127,11 @@ export function PositionsView({ canManage }: PositionsViewProps) {
       if (deptResult.ok) setDepartments(deptResult.data);
       if (gradeResult.ok) setJobGrades(gradeResult.data);
       if (allResult.ok) setAllPositions(allResult.data);
+      if (careerResult.ok) {
+        setJobFamilies(careerResult.data.jobFamilies);
+        setCareerTracks(careerResult.data.careerTracks);
+        setLevelMappingEntries(careerResult.data.levelMappingEntries);
+      }
     });
   }, [search, departmentFilter, status, occupancy, page]);
 
@@ -424,6 +441,9 @@ export function PositionsView({ canManage }: PositionsViewProps) {
             position={editingPosition}
             departments={departments}
             jobGrades={jobGrades}
+            jobFamilies={jobFamilies}
+            careerTracks={careerTracks}
+            levelMappingEntries={levelMappingEntries}
             allPositions={allPositions}
             onSaved={refresh}
           />

@@ -8,6 +8,7 @@ const {
   listDepartmentOptionsActionMock,
   listJobGradeOptionsActionMock,
   listAllPositionsActionMock,
+  listPositionCareerOptionsActionMock,
   archivePositionActionMock,
   deletePositionActionMock,
 } = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const {
   listDepartmentOptionsActionMock: vi.fn(),
   listJobGradeOptionsActionMock: vi.fn(),
   listAllPositionsActionMock: vi.fn(),
+  listPositionCareerOptionsActionMock: vi.fn(),
   archivePositionActionMock: vi.fn(),
   deletePositionActionMock: vi.fn(),
 }));
@@ -24,6 +26,7 @@ vi.mock("@/app/(app)/positions/actions", () => ({
   listDepartmentOptionsAction: listDepartmentOptionsActionMock,
   listJobGradeOptionsAction: listJobGradeOptionsActionMock,
   listAllPositionsAction: listAllPositionsActionMock,
+  listPositionCareerOptionsAction: listPositionCareerOptionsActionMock,
   activatePositionAction: vi.fn(),
   archivePositionAction: archivePositionActionMock,
   deletePositionAction: deletePositionActionMock,
@@ -66,6 +69,10 @@ function mockDefaults() {
   listDepartmentOptionsActionMock.mockResolvedValue({ ok: true, data: [] });
   listJobGradeOptionsActionMock.mockResolvedValue({ ok: true, data: [] });
   listAllPositionsActionMock.mockResolvedValue({ ok: true, data: [] });
+  listPositionCareerOptionsActionMock.mockResolvedValue({
+    ok: true,
+    data: { jobFamilies: [], careerTracks: [], levelMappingEntries: [] },
+  });
 }
 
 describe("PositionsView", () => {

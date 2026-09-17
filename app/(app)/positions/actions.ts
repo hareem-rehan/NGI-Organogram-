@@ -1,6 +1,13 @@
 "use server";
 
-import type { Department, JobGrade, Position } from "@prisma/client";
+import type {
+  CareerTrack,
+  Department,
+  JobFamily,
+  JobGrade,
+  LevelMappingEntry,
+  Position,
+} from "@prisma/client";
 
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
@@ -24,6 +31,11 @@ import {
 } from "@/lib/repositories/position.repository";
 import { listDepartmentsForCompany } from "@/lib/repositories/department.repository";
 import { listJobGradesForCompany } from "@/lib/repositories/job-grade.repository";
+import {
+  listCareerTracksForCompany,
+  listJobFamiliesForCompany,
+  listLevelMappingEntriesForCompany,
+} from "@/lib/repositories/career-framework.repository";
 import {
   createPositionSchema,
   listPositionsQuerySchema,
@@ -73,6 +85,27 @@ export async function listJobGradeOptionsAction(): Promise<ActionResult<JobGrade
   return runAction(async () => {
     const user = await requirePermission("positions:view");
     return listJobGradesForCompany(user.companyId);
+  });
+}
+
+export interface PositionCareerOptions {
+  jobFamilies: JobFamily[];
+  careerTracks: CareerTrack[];
+  levelMappingEntries: LevelMappingEntry[];
+}
+
+/** Career-framework options for the Position form's Job Family / Track dropdowns and title suggestions. Read-only, needs only positions:view. */
+export async function listPositionCareerOptionsAction(): Promise<
+  ActionResult<PositionCareerOptions>
+> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:view");
+    const [jobFamilies, careerTracks, levelMappingEntries] = await Promise.all([
+      listJobFamiliesForCompany(user.companyId),
+      listCareerTracksForCompany(user.companyId),
+      listLevelMappingEntriesForCompany(user.companyId),
+    ]);
+    return { jobFamilies, careerTracks, levelMappingEntries };
   });
 }
 
