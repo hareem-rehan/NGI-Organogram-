@@ -321,7 +321,9 @@ describe("scopeReportsToOptions", () => {
 
   it("filters the scoped set by title or code query", () => {
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "cto").map((o) => o.value)).toEqual(["eng1"]);
-    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-CEO").map((o) => o.value)).toEqual(["ceo"]);
+    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-CEO").map((o) => o.value)).toEqual([
+      "ceo",
+    ]);
     // A same-scope query that matches nothing yields nothing.
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "zzz")).toHaveLength(0);
   });

@@ -147,7 +147,10 @@ describe("projectLeadershipGraph — structure", () => {
     // Only the sub-department has a member/box; the parent department is
     // not on the chart, so the sub-department falls back to the root
     // rather than being orphaned.
-    const nodes = [ceo(), node({ positionId: "pm", departmentId: PROD, departmentName: "Product" })];
+    const nodes = [
+      ceo(),
+      node({ positionId: "pm", departmentId: PROD, departmentName: "Product" }),
+    ];
 
     const result = projectLeadershipGraph(nodes, DEFAULT_LEADERSHIP_VIEW_OPTIONS, [
       { id: PROD, name: "Product", code: "PROD", color: null, parentDepartmentId: CD },
