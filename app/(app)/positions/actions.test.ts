@@ -190,6 +190,19 @@ describe("createPositionAction — level (jobGradeCode) resolution", () => {
     expect(serviceMocks.createPosition.mock.calls[0]?.[0]?.jobGradeId).toBe("grade-l7");
   });
 
+  it("auto-generates a position code when the form sends none", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.createPosition.mockResolvedValue({});
+
+    await createPositionAction({
+      title: "Coordinator",
+      departmentId: VALID_UUID,
+    });
+
+    const passed = serviceMocks.createPosition.mock.calls[0]?.[0]?.positionCode;
+    expect(passed).toMatch(/^POS-[0-9A-F]+$/);
+  });
+
   it("passes no grade when no level is chosen, without touching the resolver", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
     serviceMocks.createPosition.mockResolvedValue({});

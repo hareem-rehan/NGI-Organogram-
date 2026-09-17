@@ -15,11 +15,8 @@ test.describe.configure({ mode: "serial" });
 test.describe("Position and hierarchy management (Phase 5)", () => {
   const suffix = Date.now().toString(36).toUpperCase();
   const rootTitle = `E2E Root ${suffix}`;
-  const rootCode = `E2E-ROOT-${suffix}`;
   const childTitle = `E2E Child ${suffix}`;
-  const childCode = `E2E-CHILD-${suffix}`;
   const altParentTitle = `E2E Alt Parent ${suffix}`;
-  const altParentCode = `E2E-ALT-${suffix}`;
 
   // Title/code fields are filled via their `name` attribute rather than
   // getByLabel — Playwright's getByLabel accessible-name resolution was
@@ -30,11 +27,7 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
   // isolated within the phase's time budget; name-attribute selectors are
   // a reliable, equally-explicit alternative — the department form
   // (e2e/departments.spec.ts) doesn't hit this and still uses getByLabel.
-  async function fillTitleAndCode(
-    dialog: import("@playwright/test").Locator,
-    title: string,
-    code: string
-  ) {
+  async function fillTitle(dialog: import("@playwright/test").Locator, title: string) {
     // The Department field's default value loads asynchronously after
     // the dialog opens — wait for it to settle before filling anything
     // else, matching how a real user would only start typing once the
@@ -43,7 +36,6 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     // docs/phase-reports/PHASE_05_POSITION_AND_HIERARCHY.md).
     await expect(dialog.getByRole("combobox", { name: "Department" })).not.toHaveValue("");
     await dialog.locator('input[name="title"]').fill(title);
-    await dialog.locator('input[name="positionCode"]').fill(code);
   }
 
   test("prerequisite: create a department for positions to belong to", async ({ page }) => {
@@ -64,7 +56,7 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
 
     await page.getByRole("button", { name: /add position/i }).click();
     const dialog = page.getByRole("dialog");
-    await fillTitleAndCode(dialog, rootTitle, rootCode);
+    await fillTitle(dialog, rootTitle);
     await expect(dialog.getByText(/root position/i)).toBeVisible();
     await dialog.getByRole("button", { name: /create position/i }).click();
 
@@ -84,7 +76,7 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
 
     await page.getByRole("button", { name: /add position/i }).click();
     const dialog = page.getByRole("dialog");
-    await fillTitleAndCode(dialog, "Should Not Become Root", `E2E-NOROOT-${suffix}`);
+    await fillTitle(dialog, "Should Not Become Root");
     await dialog.getByRole("button", { name: /create position/i }).click();
 
     await expect(dialog.getByText(/already has a root position/i)).toBeVisible();
@@ -97,7 +89,7 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
 
     await page.getByRole("button", { name: /add position/i }).click();
     const dialog = page.getByRole("dialog");
-    await fillTitleAndCode(dialog, childTitle, childCode);
+    await fillTitle(dialog, childTitle);
     await dialog.getByRole("combobox", { name: /reports to/i }).click();
     await dialog.getByRole("combobox", { name: /reports to/i }).fill(rootTitle);
     await page.getByRole("option", { name: new RegExp(rootTitle) }).click();
@@ -119,7 +111,7 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     // the root, since only one true root is allowed).
     await page.getByRole("button", { name: /add position/i }).click();
     let dialog = page.getByRole("dialog");
-    await fillTitleAndCode(dialog, altParentTitle, altParentCode);
+    await fillTitle(dialog, altParentTitle);
     await dialog.getByRole("combobox", { name: /reports to/i }).click();
     await dialog.getByRole("combobox", { name: /reports to/i }).fill(rootTitle);
     await page.getByRole("option", { name: new RegExp(rootTitle) }).click();
@@ -154,20 +146,27 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     await expect(page.getByRole("button", { name: /change reports-to/i })).toHaveCount(0);
   });
 
-  test("duplicate position code is rejected with a clear error, dialog stays open", async ({
-    page,
-  }) => {
+  // The position code is now auto-generated and hidden, so a user can no
+  // longer type a duplicate. This proves the generator does its job: two
+  // positions can share a TITLE and both save, each getting its own code.
+  test("two positions can share the same title (codes are auto-generated)", async ({ page }) => {
     await page.goto("/positions");
+    const sharedTitle = `E2E Shared Title ${suffix}`;
 
-    await page.getByRole("button", { name: /add position/i }).click();
-    const dialog = page.getByRole("dialog");
-    await fillTitleAndCode(dialog, "Duplicate Attempt", rootCode);
-    await dialog.getByRole("combobox", { name: /reports to/i }).click();
-    await dialog.getByRole("combobox", { name: /reports to/i }).fill(rootTitle);
-    await page.getByRole("option", { name: new RegExp(rootTitle) }).click();
-    await dialog.getByRole("button", { name: /create position/i }).click();
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: /add position/i }).click();
+      const dialog = page.getByRole("dialog");
+      await fillTitle(dialog, sharedTitle);
+      await dialog.getByRole("combobox", { name: /reports to/i }).click();
+      await dialog.getByRole("combobox", { name: /reports to/i }).fill(rootTitle);
+      await page
+        .getByRole("option", { name: new RegExp(rootTitle) })
+        .first()
+        .click();
+      await dialog.getByRole("button", { name: /create position/i }).click();
+      await expect(dialog).toBeHidden();
+    }
 
-    await expect(dialog.getByText(/already in use/i)).toBeVisible();
-    await expect(dialog).toBeVisible();
+    await expect(page.getByText(sharedTitle)).toHaveCount(2);
   });
 });

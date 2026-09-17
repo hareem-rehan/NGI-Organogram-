@@ -16,11 +16,8 @@ test.describe.configure({ mode: "serial" });
 
 test.describe("Organogram visual regression", () => {
   const rootTitle = "VR CEO";
-  const rootCode = "VR-CEO-FIXED";
   const childTitle = "VR VP Eng";
-  const childCode = "VR-VPE-FIXED";
   const salesTitle = "VR VP Sales";
-  const salesCode = "VR-VPS-FIXED";
   // Fixed, like every other value here — a baseline PNG must not change
   // just because the wall clock moved.
   const rootOccupant = { firstName: "Vera", lastName: "Root" };
@@ -70,7 +67,6 @@ test.describe("Organogram visual regression", () => {
     await expect(dialog.getByRole("combobox", { name: "Department" })).not.toHaveValue("");
     await dialog.getByRole("combobox", { name: "Department" }).selectOption({ label: "VR Dept" });
     await dialog.locator('input[name="title"]').fill(rootTitle);
-    await dialog.locator('input[name="positionCode"]').fill(rootCode);
     await dialog.getByRole("button", { name: /create position/i }).click();
     await expect(dialog).toBeHidden();
 
@@ -78,7 +74,6 @@ test.describe("Organogram visual regression", () => {
     dialog = page.getByRole("dialog");
     await dialog.getByRole("combobox", { name: "Department" }).selectOption({ label: "VR Dept" });
     await dialog.locator('input[name="title"]').fill(childTitle);
-    await dialog.locator('input[name="positionCode"]').fill(childCode);
     await dialog.getByRole("combobox", { name: /reports to/i }).click();
     await dialog.getByRole("combobox", { name: /reports to/i }).fill(rootTitle);
     await page
@@ -94,7 +89,6 @@ test.describe("Organogram visual regression", () => {
       .getByRole("combobox", { name: "Department" })
       .selectOption({ label: "VR Dept Sales" });
     await dialog.locator('input[name="title"]').fill(salesTitle);
-    await dialog.locator('input[name="positionCode"]').fill(salesCode);
     await dialog.getByRole("combobox", { name: /reports to/i }).click();
     await dialog.getByRole("combobox", { name: /reports to/i }).fill(rootTitle);
     await page
@@ -107,11 +101,11 @@ test.describe("Organogram visual regression", () => {
     // The chart draws only graded, occupied positions, so the baseline
     // fixture has to be one (docs/DECISIONS.md §2b).
     await seedJobGradeScale(companyId);
-    await gradePositions(companyId, "L18", [rootCode]);
-    await gradePositions(companyId, "L15", [childCode, salesCode]);
-    await occupyPosition(companyId, rootCode, rootOccupant);
-    await occupyPosition(companyId, childCode, childOccupant);
-    await occupyPosition(companyId, salesCode, salesOccupant);
+    await gradePositions(companyId, "L18", [rootTitle]);
+    await gradePositions(companyId, "L15", [childTitle, salesTitle]);
+    await occupyPosition(companyId, rootTitle, rootOccupant);
+    await occupyPosition(companyId, childTitle, childOccupant);
+    await occupyPosition(companyId, salesTitle, salesOccupant);
   });
 
   test("Visual View matches its baseline", async ({ page }) => {

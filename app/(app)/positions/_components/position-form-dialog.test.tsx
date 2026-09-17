@@ -115,7 +115,10 @@ describe("PositionFormDialog", () => {
       />
     );
     expect(screen.getByLabelText(/title/i)).toHaveValue("VP Engineering");
-    expect(screen.getByLabelText(/code/i)).toHaveValue("POS-VPENG");
+    // The Code field was removed — it is auto-generated and hidden.
+    expect(screen.queryByLabelText(/^code$/i)).not.toBeInTheDocument();
+    // Location was removed too.
+    expect(screen.queryByLabelText(/location/i)).not.toBeInTheDocument();
   });
 
   it("shows a validation error and never calls the server action for a missing title", async () => {
@@ -132,7 +135,6 @@ describe("PositionFormDialog", () => {
       />
     );
 
-    await user.type(screen.getByLabelText(/code/i), "POS-X");
     await user.click(screen.getByRole("button", { name: /create position/i }));
 
     expect(await screen.findByText(/title is required/i)).toBeInTheDocument();
@@ -157,24 +159,24 @@ describe("PositionFormDialog", () => {
     );
 
     await user.type(screen.getByLabelText(/title/i), "Engineering Manager");
-    await user.type(screen.getByLabelText(/code/i), "POS-ENGMGR");
     await user.click(screen.getByRole("button", { name: /create position/i }));
 
     await waitFor(() => expect(createPositionActionMock).toHaveBeenCalled());
+    // No positionCode from the form — the action generates one.
     expect(createPositionActionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Engineering Manager",
-        positionCode: "POS-ENGMGR",
         departmentId: DEPARTMENT_ID,
       })
     );
+    expect(createPositionActionMock.mock.calls[0]?.[0]).not.toHaveProperty("positionCode");
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  it("shows the server's duplicate-code error and keeps the dialog open", async () => {
+  it("shows a server error and keeps the dialog open", async () => {
     createPositionActionMock.mockResolvedValue({
       ok: false,
-      error: 'Position code "POS-ENGMGR" is already in use in this company.',
+      error: "Something went wrong. Please try again.",
     });
     const onOpenChange = vi.fn();
     const user = userEvent.setup();
@@ -192,10 +194,9 @@ describe("PositionFormDialog", () => {
     );
 
     await user.type(screen.getByLabelText(/title/i), "Engineering Manager");
-    await user.type(screen.getByLabelText(/code/i), "POS-ENGMGR");
     await user.click(screen.getByRole("button", { name: /create position/i }));
 
-    expect(await screen.findByText(/already in use/i)).toBeInTheDocument();
+    expect(await screen.findByText(/something went wrong/i)).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 

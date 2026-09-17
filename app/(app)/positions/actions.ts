@@ -5,6 +5,7 @@ import type { Department, JobGrade, Position } from "@prisma/client";
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
 import { ensureJobGradeByCode } from "@/lib/services/job-grade.service";
+import { randomBytes } from "node:crypto";
 import { toAuditActor } from "@/lib/server/audit-actor";
 import {
   archivePosition,
@@ -84,6 +85,19 @@ export async function getSubtreeSizeAction(positionId: string): Promise<ActionRe
   });
 }
 
+/**
+ * A short, unique-enough position code for a hand-created position. The
+ * field was removed from the form (it is an internal import key, of no
+ * use to a chart reader), so one is generated here. Uniqueness is
+ * ultimately enforced by the DB's @@unique([companyId, positionCode]);
+ * six random base36 characters make a collision astronomically unlikely,
+ * and a rare one surfaces as the same friendly ConflictError any
+ * duplicate would.
+ */
+function generatePositionCode(): string {
+  return `POS-${randomBytes(4).toString("hex").toUpperCase().slice(0, 6)}`;
+}
+
 export async function createPositionAction(input: unknown): Promise<ActionResult<Position>> {
   return runAction(async () => {
     const user = await requirePermission("positions:manage");
@@ -97,6 +111,7 @@ export async function createPositionAction(input: unknown): Promise<ActionResult
       companyId: user.companyId,
       actor: toAuditActor(user),
       ...values,
+      positionCode: values.positionCode ?? generatePositionCode(),
       jobGradeId,
     });
   });

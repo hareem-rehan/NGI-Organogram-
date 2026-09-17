@@ -25,18 +25,12 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
   const deptEngName = `E2E Search Dept Eng ${suffix}`;
   const deptSalesName = `E2E Search Dept Sales ${suffix}`;
   const ceoTitle = `E2E Search CEO ${suffix}`;
-  const ceoCode = `E2E-SEARCH-CEO-${suffix}`;
   const vpEngTitle = `E2E Search VP Eng ${suffix}`;
-  const vpEngCode = `E2E-SEARCH-VPE-${suffix}`;
   const vpSalesTitle = `E2E Search VP Sales ${suffix}`;
-  const vpSalesCode = `E2E-SEARCH-VPS-${suffix}`;
   const engManagerTitle = `E2E Search Eng Manager ${suffix}`;
-  const engManagerCode = `E2E-SEARCH-EM-${suffix}`;
   const engineerTitle = `E2E Search Engineer ${suffix}`;
-  const engineerCode = `E2E-SEARCH-ENG-${suffix}`;
   // Graded as leadership but never filled — the chart leaves it out.
   const vacantTitle = `E2E Search Vacant Lead ${suffix}`;
-  const vacantCode = `E2E-SEARCH-VAC-${suffix}`;
   const employeeFirstName = "Nadia";
   const employeeLastName = `Volkov${suffix}`;
   const employeeCode = `E2E-SEARCH-EMP-${suffix}`;
@@ -84,12 +78,7 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
       await expect(dialog).toBeHidden();
     }
 
-    async function createPosition(args: {
-      title: string;
-      code: string;
-      department: string;
-      reportsTo?: string;
-    }) {
+    async function createPosition(args: { title: string; department: string; reportsTo?: string }) {
       await page.goto("/positions");
       await page.getByRole("button", { name: /add position/i }).click();
       const dialog = page.getByRole("dialog");
@@ -98,7 +87,6 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
         .getByRole("combobox", { name: "Department" })
         .selectOption({ label: args.department });
       await dialog.locator('input[name="title"]').fill(args.title);
-      await dialog.locator('input[name="positionCode"]').fill(args.code);
       if (args.reportsTo) {
         await dialog.getByRole("combobox", { name: /reports to/i }).click();
         await dialog.getByRole("combobox", { name: /reports to/i }).fill(args.reportsTo);
@@ -112,34 +100,29 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
       await expect(page.getByText(args.title)).toBeVisible();
     }
 
-    await createPosition({ title: ceoTitle, code: ceoCode, department: deptEngName });
+    await createPosition({ title: ceoTitle, department: deptEngName });
     await createPosition({
       title: vpEngTitle,
-      code: vpEngCode,
       department: deptEngName,
       reportsTo: ceoTitle,
     });
     await createPosition({
       title: vpSalesTitle,
-      code: vpSalesCode,
       department: deptSalesName,
       reportsTo: ceoTitle,
     });
     await createPosition({
       title: engManagerTitle,
-      code: engManagerCode,
       department: deptEngName,
       reportsTo: vpEngTitle,
     });
     await createPosition({
       title: engineerTitle,
-      code: engineerCode,
       department: deptEngName,
       reportsTo: engManagerTitle,
     });
     await createPosition({
       title: vacantTitle,
-      code: vacantCode,
       department: deptSalesName,
       reportsTo: vpSalesTitle,
     });
@@ -171,20 +154,20 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     // the assignment UI itself is exercised above and in
     // employees.spec.ts; these tests are about search, filters and focus.
     await seedJobGradeScale(companyId);
-    await gradePositions(companyId, "L18", [ceoCode]);
-    await gradePositions(companyId, "L15", [vpEngCode, vpSalesCode]);
-    await gradePositions(companyId, "L10", [engManagerCode]);
-    await gradePositions(companyId, "L7", [engineerCode]);
-    await gradePositions(companyId, "L10", [vacantCode]);
+    await gradePositions(companyId, "L18", [ceoTitle]);
+    await gradePositions(companyId, "L15", [vpEngTitle, vpSalesTitle]);
+    await gradePositions(companyId, "L10", [engManagerTitle]);
+    await gradePositions(companyId, "L7", [engineerTitle]);
+    await gradePositions(companyId, "L10", [vacantTitle]);
 
-    for (const [code, name] of [
-      [ceoCode, ceoOccupant],
-      [vpSalesCode, vpSalesOccupant],
-      [engManagerCode, engManagerOccupant],
-      [engineerCode, engineerOccupant],
+    for (const [title, name] of [
+      [ceoTitle, ceoOccupant],
+      [vpSalesTitle, vpSalesOccupant],
+      [engManagerTitle, engManagerOccupant],
+      [engineerTitle, engineerOccupant],
     ] as const) {
       const [firstName = name, lastName = ""] = name.split(" ");
-      await occupyPosition(companyId, code, { firstName, lastName });
+      await occupyPosition(companyId, title, { firstName, lastName });
     }
   });
 
@@ -210,11 +193,12 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     await expect(page.getByRole("option", { name: new RegExp(vpSalesTitle) })).toBeVisible();
   });
 
-  test("search by position code", async ({ page }) => {
+  // Reworked 2026-09-17: position codes are auto-generated and hidden, so
+  // a user can no longer search by a code they typed. Search by DEPARTMENT
+  // name instead — still a non-title search dimension the box supports.
+  test("search by department name", async ({ page }) => {
     await page.goto("/organogram");
-    await page
-      .getByRole("combobox", { name: /search the organization chart/i })
-      .fill(engManagerCode);
+    await page.getByRole("combobox", { name: /search the organization chart/i }).fill(deptEngName);
     await expect(page.getByRole("option", { name: new RegExp(engManagerTitle) })).toBeVisible();
   });
 

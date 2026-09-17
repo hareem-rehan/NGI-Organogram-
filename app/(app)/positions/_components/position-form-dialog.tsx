@@ -64,11 +64,9 @@ export function PositionFormDialog({
     resolver: zodResolver(createPositionSchema),
     defaultValues: {
       title: "",
-      positionCode: "",
       departmentId: "",
       jobGradeCode: null,
       description: null,
-      location: null,
       primaryReportsToPositionId: null,
     },
   });
@@ -98,13 +96,11 @@ export function PositionFormDialog({
       setReportsToQuery("");
       reset({
         title: currentPosition?.title ?? "",
-        positionCode: currentPosition?.positionCode ?? "",
         departmentId: currentPosition?.departmentId ?? currentDepartments[0]?.id ?? "",
         jobGradeCode: currentPosition?.jobGradeId
           ? (jobGradesRef.current.find((g) => g.id === currentPosition.jobGradeId)?.code ?? null)
           : null,
         description: currentPosition?.description ?? null,
-        location: currentPosition?.location ?? null,
         primaryReportsToPositionId: null,
       });
     }
@@ -166,11 +162,9 @@ export function PositionFormDialog({
         ? await updatePositionAction({
             positionId: position.id,
             title: values.title,
-            positionCode: values.positionCode,
             departmentId: values.departmentId,
             jobGradeCode: values.jobGradeCode,
             description: values.description,
-            location: values.location,
           })
         : await createPositionAction(values);
 
@@ -214,15 +208,6 @@ export function PositionFormDialog({
             {(fieldProps) => <Input {...fieldProps} {...register("title")} autoFocus />}
           </Field>
 
-          <Field
-            label="Code"
-            required
-            error={errors.positionCode?.message}
-            hint="Trimmed and uppercased automatically."
-          >
-            {(fieldProps) => <Input {...fieldProps} {...register("positionCode")} />}
-          </Field>
-
           <Field label="Department" required error={errors.departmentId?.message}>
             {(fieldProps) => (
               <Select
@@ -262,10 +247,6 @@ export function PositionFormDialog({
                 ))}
               </Select>
             )}
-          </Field>
-
-          <Field label="Location" error={errors.location?.message}>
-            {(fieldProps) => <Input {...fieldProps} {...register("location")} />}
           </Field>
 
           <Field label="Description" error={errors.description?.message}>

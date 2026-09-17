@@ -21,9 +21,7 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
   const suffix = Date.now().toString(36).toUpperCase();
   const deptName = `E2E Employees Dept ${suffix}`;
   const positionATitle = `E2E Emp Position A ${suffix}`;
-  const positionACode = `E2E-EMPPOS-A-${suffix}`;
   const positionBTitle = `E2E Emp Position B ${suffix}`;
-  const positionBCode = `E2E-EMPPOS-B-${suffix}`;
   const emp1Code = `E2E-EMP1-${suffix}`;
   const emp2Code = `E2E-EMP2-${suffix}`;
 
@@ -67,7 +65,6 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     // departments against this same shared company.
     await dialog.getByRole("combobox", { name: "Department" }).selectOption({ label: deptName });
     await dialog.locator('input[name="title"]').fill(positionATitle);
-    await dialog.locator('input[name="positionCode"]').fill(positionACode);
     await dialog.getByRole("combobox", { name: /reports to/i }).click();
     await dialog.getByRole("combobox", { name: /reports to/i }).fill(existingParentName);
     await page
@@ -85,7 +82,6 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     await expect(dialog.getByRole("combobox", { name: "Department" })).not.toHaveValue("");
     await dialog.getByRole("combobox", { name: "Department" }).selectOption({ label: deptName });
     await dialog.locator('input[name="title"]').fill(positionBTitle);
-    await dialog.locator('input[name="positionCode"]').fill(positionBCode);
     await dialog.getByRole("combobox", { name: /reports to/i }).click();
     await dialog.getByRole("combobox", { name: /reports to/i }).fill(positionATitle);
     await page.getByRole("option", { name: new RegExp(positionATitle) }).click();

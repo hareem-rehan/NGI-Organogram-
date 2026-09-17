@@ -50,24 +50,18 @@ test.describe("Interactive organogram (Phase 8)", () => {
   const deptAName = `E2E Org Dept A ${suffix}`;
   const deptBName = `E2E Org Dept B ${suffix}`;
   const rootTitle = `E2E Org CEO ${suffix}`;
-  const rootCode = `E2E-ORG-CEO-${suffix}`;
   const vpEngTitle = `E2E Org VP Eng ${suffix}`;
-  const vpEngCode = `E2E-ORG-VPE-${suffix}`;
   const vpSalesTitle = `E2E Org VP Sales ${suffix}`;
-  const vpSalesCode = `E2E-ORG-VPS-${suffix}`;
   const engManagerTitle = `E2E Org Eng Manager ${suffix}`;
-  const engManagerCode = `E2E-ORG-EM-${suffix}`;
   // Below the leadership threshold — proves the chart leaves it out
   // without anything deleting it.
   const juniorTitle = `E2E Org Junior ${suffix}`;
-  const juniorCode = `E2E-ORG-JR-${suffix}`;
   // Graded high enough, but nobody in the seat — the other half of the
   // filter.
   // Deliberately does NOT contain the word "Vacant": the assertion below
   // is that the card carries no such label, and a title containing it
   // would make that assertion unfalsifiable.
   const vacantTitle = `E2E Org Unfilled Lead ${suffix}`;
-  const vacantCode = `E2E-ORG-VAC-${suffix}`;
 
   // The card is person-first, so every assertion below addresses a node
   // by who sits in it.
@@ -111,12 +105,7 @@ test.describe("Interactive organogram (Phase 8)", () => {
       await expect(dialog).toBeHidden();
     }
 
-    async function createPosition(args: {
-      title: string;
-      code: string;
-      department: string;
-      reportsTo?: string;
-    }) {
+    async function createPosition(args: { title: string; department: string; reportsTo?: string }) {
       await page.goto("/positions");
       await page.getByRole("button", { name: /add position/i }).click();
       const dialog = page.getByRole("dialog");
@@ -125,7 +114,6 @@ test.describe("Interactive organogram (Phase 8)", () => {
         .getByRole("combobox", { name: "Department" })
         .selectOption({ label: args.department });
       await dialog.locator('input[name="title"]').fill(args.title);
-      await dialog.locator('input[name="positionCode"]').fill(args.code);
       if (args.reportsTo) {
         await dialog.getByRole("combobox", { name: /reports to/i }).click();
         await dialog.getByRole("combobox", { name: /reports to/i }).fill(args.reportsTo);
@@ -139,34 +127,29 @@ test.describe("Interactive organogram (Phase 8)", () => {
       await expect(page.getByText(args.title)).toBeVisible();
     }
 
-    await createPosition({ title: rootTitle, code: rootCode, department: deptAName });
+    await createPosition({ title: rootTitle, department: deptAName });
     await createPosition({
       title: vpEngTitle,
-      code: vpEngCode,
       department: deptAName,
       reportsTo: rootTitle,
     });
     await createPosition({
       title: vpSalesTitle,
-      code: vpSalesCode,
       department: deptBName,
       reportsTo: rootTitle,
     });
     await createPosition({
       title: engManagerTitle,
-      code: engManagerCode,
       department: deptAName,
       reportsTo: vpEngTitle,
     });
     await createPosition({
       title: juniorTitle,
-      code: juniorCode,
       department: deptAName,
       reportsTo: engManagerTitle,
     });
     await createPosition({
       title: vacantTitle,
-      code: vacantCode,
       department: deptBName,
       reportsTo: vpSalesTitle,
     });
@@ -177,21 +160,21 @@ test.describe("Interactive organogram (Phase 8)", () => {
     // employees.spec.ts already cover those UIs end-to-end, and this file
     // is about the chart.
     await seedJobGradeScale(companyId);
-    await gradePositions(companyId, "L18", [rootCode]);
-    await gradePositions(companyId, "L15", [vpEngCode, vpSalesCode]);
-    await gradePositions(companyId, "L10", [engManagerCode, vacantCode]);
-    await gradePositions(companyId, "L4", [juniorCode]);
+    await gradePositions(companyId, "L18", [rootTitle]);
+    await gradePositions(companyId, "L15", [vpEngTitle, vpSalesTitle]);
+    await gradePositions(companyId, "L10", [engManagerTitle, vacantTitle]);
+    await gradePositions(companyId, "L4", [juniorTitle]);
 
-    for (const [code, name] of [
-      [rootCode, ceoOccupant],
-      [vpEngCode, vpEngOccupant],
-      [vpSalesCode, vpSalesOccupant],
-      [engManagerCode, engManagerOccupant],
-      [juniorCode, juniorOccupant],
+    for (const [title, name] of [
+      [rootTitle, ceoOccupant],
+      [vpEngTitle, vpEngOccupant],
+      [vpSalesTitle, vpSalesOccupant],
+      [engManagerTitle, engManagerOccupant],
+      [juniorTitle, juniorOccupant],
     ] as const) {
-      await occupyPosition(companyId, code, nameParts(name));
+      await occupyPosition(companyId, title, nameParts(name));
     }
-    // vacantCode deliberately gets no occupant.
+    // vacantTitle deliberately gets no occupant.
   });
 
   test("Visual View groups by department below the founder and opens at leadership level", async ({
@@ -286,7 +269,8 @@ test.describe("Interactive organogram (Phase 8)", () => {
     const panel = page.getByRole("complementary", { name: "Position details" });
     await expect(panel).toBeVisible();
     await expect(panel.getByRole("heading", { name: rootTitle })).toBeVisible();
-    await expect(panel.getByText(rootCode)).toBeVisible();
+    // The position code is auto-generated and no longer shown; the
+    // department remains a stable, known thing to assert on.
     await expect(panel.getByText(deptAName, { exact: false })).toBeVisible();
 
     await page.keyboard.press("Escape");

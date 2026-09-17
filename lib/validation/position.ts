@@ -39,7 +39,9 @@ const locationSchema = z
 export const createPositionSchema = z
   .object({
     title: titleSchema,
-    positionCode: positionCodeSchema,
+    // Optional from the form: it is auto-generated server-side when
+    // absent (the field was removed from the UI — see the position form).
+    positionCode: positionCodeSchema.optional(),
     departmentId: z.string().uuid(),
     jobGradeId: z.string().uuid().nullable().optional(),
     /**

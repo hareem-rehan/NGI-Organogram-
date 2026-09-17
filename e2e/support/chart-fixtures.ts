@@ -55,15 +55,17 @@ export async function seedJobGradeScale(companyId: string): Promise<void> {
 export async function gradePositions(
   companyId: string,
   gradeCode: string,
-  positionCodes: readonly string[]
+  positionTitles: readonly string[]
 ): Promise<void> {
   await withPrisma(async (prisma) => {
     const grade = await prisma.jobGrade.findUnique({
       where: { companyId_code: { companyId, code: gradeCode } },
     });
     if (!grade) throw new Error(`Grade ${gradeCode} does not exist for company ${companyId}.`);
+    // Matched by TITLE, not code: position codes are auto-generated and
+    // hidden now, so a test knows a position by the title it typed.
     await prisma.position.updateMany({
-      where: { companyId, positionCode: { in: [...positionCodes] } },
+      where: { companyId, title: { in: [...positionTitles] } },
       data: { jobGradeId: grade.id },
     });
   });
@@ -75,14 +77,14 @@ export async function gradePositions(
  */
 export async function occupyPosition(
   companyId: string,
-  positionCode: string,
+  positionTitle: string,
   occupant: { firstName: string; lastName: string }
 ): Promise<void> {
   await withPrisma(async (prisma) => {
-    const position = await prisma.position.findUnique({
-      where: { companyId_positionCode: { companyId, positionCode } },
+    const position = await prisma.position.findFirst({
+      where: { companyId, title: positionTitle },
     });
-    if (!position) throw new Error(`Position ${positionCode} does not exist.`);
+    if (!position) throw new Error(`Position "${positionTitle}" does not exist.`);
 
     const suffix = randomBytes(4).toString("hex");
     const employee = await prisma.employee.create({
