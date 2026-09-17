@@ -66,6 +66,7 @@ export function PositionFormDialog({
       title: "",
       departmentId: "",
       jobGradeCode: null,
+      jobGradeName: null,
       description: null,
       primaryReportsToPositionId: null,
     },
@@ -100,6 +101,9 @@ export function PositionFormDialog({
         jobGradeCode: currentPosition?.jobGradeId
           ? (jobGradesRef.current.find((g) => g.id === currentPosition.jobGradeId)?.code ?? null)
           : null,
+        jobGradeName: currentPosition?.jobGradeId
+          ? (jobGradesRef.current.find((g) => g.id === currentPosition.jobGradeId)?.name ?? null)
+          : null,
         description: currentPosition?.description ?? null,
         primaryReportsToPositionId: null,
       });
@@ -120,26 +124,58 @@ export function PositionFormDialog({
 
   const departmentId = watch("departmentId");
   const jobGradeCode = watch("jobGradeCode");
+  const jobGradeName = watch("jobGradeName");
   const primaryReportsToPositionId = watch("primaryReportsToPositionId");
 
   const hasRoot = allPositions.some((candidate) => candidate.primaryReportsToPositionId === null);
 
+  // Levels are per-department: the code and its numeric rank are
+  // universal, but the NAME belongs to a department (Engineering's L7 can
+  // be "Principal Engineer" while HR's L7 is "HR Lead"). This maps a
+  // (departmentId, code) to the name that department already uses, so the
+  // dropdown labels and the "Level name" field pre-fill with the selected
+  // department's own wording.
+  const deptGradeName = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const g of jobGrades) {
+      if (g.departmentId) byKey.set(`${g.departmentId}:${g.code}`, g.name);
+    }
+    return byKey;
+  }, [jobGrades]);
+
+  const scaleNameByCode = useMemo(
+    () => new Map(JOB_GRADE_SCALE.map((g) => [g.code, g.name] as const)),
+    []
+  );
+
+  // The name to seed the "Level name" field with when a level is picked
+  // for a department: the department's existing name for that level, else
+  // the standard scale default.
+  function defaultLevelName(deptId: string, code: string): string {
+    return deptGradeName.get(`${deptId}:${code}`) ?? scaleNameByCode.get(code) ?? "";
+  }
+
   // The level dropdown offers the whole standard L2–L18 scale (a
   // constant, so it works even on a company that has no grade rows yet),
-  // plus any grade already in the database whose code is not on that
-  // scale. Picking one and saving creates the matching grade on first use
-  // (see lib/services/job-grade.service.ts). Value is the code, so it is
+  // labeled with the SELECTED department's name for each level where it
+  // has defined one, plus any grade that department already has whose
+  // code is not on the scale. Picking one and saving creates/updates the
+  // matching grade for that department on first use (see
+  // lib/services/job-grade.service.ts). Value is the code, so it is
   // resolvable without a pre-existing id.
   const levelOptions = useMemo(() => {
     const byCode = new Map<string, { code: string; label: string }>();
     for (const g of JOB_GRADE_SCALE) {
-      byCode.set(g.code, { code: g.code, label: `${g.code} — ${g.name}` });
+      const name = deptGradeName.get(`${departmentId}:${g.code}`) ?? g.name;
+      byCode.set(g.code, { code: g.code, label: `${g.code} — ${name}` });
     }
     for (const g of jobGrades) {
-      if (!byCode.has(g.code)) byCode.set(g.code, { code: g.code, label: `${g.code} — ${g.name}` });
+      if (g.departmentId === departmentId && !byCode.has(g.code)) {
+        byCode.set(g.code, { code: g.code, label: `${g.code} — ${g.name}` });
+      }
     }
     return [...byCode.values()];
-  }, [jobGrades]);
+  }, [jobGrades, deptGradeName, departmentId]);
 
   const reportsToOptions: ComboboxOption[] = useMemo(() => {
     const candidates = allPositions.filter(
@@ -164,6 +200,7 @@ export function PositionFormDialog({
             title: values.title,
             departmentId: values.departmentId,
             jobGradeCode: values.jobGradeCode,
+            jobGradeName: values.jobGradeName,
             description: values.description,
           })
         : await createPositionAction(values);
@@ -213,9 +250,15 @@ export function PositionFormDialog({
               <Select
                 {...fieldProps}
                 value={departmentId}
-                onChange={(event) =>
-                  setValue("departmentId", event.target.value, { shouldValidate: true })
-                }
+                onChange={(event) => {
+                  const newDept = event.target.value;
+                  setValue("departmentId", newDept, { shouldValidate: true });
+                  // The level name is per-department, so re-seed it for the
+                  // newly-selected department when a level is already chosen.
+                  if (jobGradeCode) {
+                    setValue("jobGradeName", defaultLevelName(newDept, jobGradeCode));
+                  }
+                }}
               >
                 {departments.map((department) => (
                   <option key={department.id} value={department.id}>
@@ -235,9 +278,14 @@ export function PositionFormDialog({
               <Select
                 {...fieldProps}
                 value={jobGradeCode ?? ""}
-                onChange={(event) =>
-                  setValue("jobGradeCode", event.target.value || null, { shouldValidate: true })
-                }
+                onChange={(event) => {
+                  const code = event.target.value || null;
+                  setValue("jobGradeCode", code, { shouldValidate: true });
+                  // Seed the editable name with what this department already
+                  // calls the level (or the scale default) so the common
+                  // case needs no typing, while still allowing a rename.
+                  setValue("jobGradeName", code ? defaultLevelName(departmentId, code) : null);
+                }}
               >
                 <option value="">No level</option>
                 {levelOptions.map((option) => (
@@ -248,6 +296,21 @@ export function PositionFormDialog({
               </Select>
             )}
           </Field>
+
+          {jobGradeCode ? (
+            <Field
+              label="Level name"
+              hint="What this department calls this level. Saving updates the name for this department only."
+            >
+              {(fieldProps) => (
+                <Input
+                  {...fieldProps}
+                  value={jobGradeName ?? ""}
+                  onChange={(event) => setValue("jobGradeName", event.target.value || null)}
+                />
+              )}
+            </Field>
+          ) : null}
 
           <Field label="Description" error={errors.description?.message}>
             {(fieldProps) => <Textarea {...fieldProps} {...register("description")} rows={3} />}

@@ -14,27 +14,31 @@ export function normalizeGradeCode(code: string): string {
 }
 
 /**
- * Finds the company's job grade with this code, creating it from the
- * standard L2–L18 scale if it does not exist yet.
+ * Finds a DEPARTMENT's level for this code, creating it if it does not
+ * exist yet — and setting/updating its name.
  *
- * This is what lets a position's level be chosen at creation time on a
- * company that has no grades set up. The dropdown offers the standard
- * scale (a constant, so it works against an empty database), and the
- * first time a level is actually picked, this creates the matching grade
- * row — name and numeric rank taken from the scale, so a hand-created
- * grade is identical to a seeded or imported one.
+ * Levels are per-department (docs/DECISIONS.md): the code and its numeric
+ * rank (L7 = 7) are universal, but the NAME belongs to one department, so
+ * Engineering's L7 can be "Principal Engineer" and HR's L7 "HR Lead". A
+ * position picks a level for its own department, and the first time that
+ * department uses a level this creates it — named from the picker, or from
+ * the standard scale when the caller passes no name. Passing a name also
+ * updates it, so refining a department's level name while adding a
+ * position keeps that department's level in sync.
  *
  * Only codes on the known scale are accepted. An arbitrary string is
- * rejected rather than silently creating a junk grade that would then
- * pollute the dropdown and every level comparison.
+ * rejected rather than creating a junk level that would pollute the picker
+ * and every level comparison.
  *
- * `upsert` on the (companyId, code) unique key makes it race-safe and
- * idempotent: two positions created at once with the same new level do
- * not create two grades or collide.
+ * `upsert` on the (companyId, departmentId, code) unique key makes it
+ * race-safe: two positions created at once at the same new level for the
+ * same department do not create two grades.
  */
 export async function ensureJobGradeByCode(
   companyId: string,
+  departmentId: string,
   rawCode: string,
+  name: string | null | undefined,
   db: DbClient = prisma
 ): Promise<JobGrade> {
   const code = normalizeGradeCode(rawCode);
@@ -47,13 +51,19 @@ export async function ensureJobGradeByCode(
     );
   }
 
+  const trimmed = name?.trim();
+  const finalName = trimmed && trimmed.length > 0 ? trimmed : scale.name;
+
   return db.jobGrade.upsert({
-    where: { companyId_code: { companyId, code } },
-    update: {},
+    where: { companyId_departmentId_code: { companyId, departmentId, code } },
+    // A provided name keeps the department's level name current; without
+    // one, an existing level is left untouched.
+    update: trimmed && trimmed.length > 0 ? { name: finalName } : {},
     create: {
       companyId,
+      departmentId,
       code,
-      name: scale.name,
+      name: finalName,
       displayOrder: scale.level,
       status: "ACTIVE",
     },

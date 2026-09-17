@@ -36,17 +36,21 @@ async function withPrisma<T>(fn: (prisma: PrismaClient) => Promise<T>): Promise<
 export async function seedJobGradeScale(companyId: string): Promise<void> {
   await withPrisma(async (prisma) => {
     for (const grade of JOB_GRADE_SCALE) {
-      await prisma.jobGrade.upsert({
-        where: { companyId_code: { companyId, code: grade.code } },
-        update: {},
-        create: {
-          companyId,
-          code: grade.code,
-          name: grade.name,
-          displayOrder: grade.level,
-          status: "ACTIVE",
-        },
+      const existing = await prisma.jobGrade.findFirst({
+        where: { companyId, code: grade.code, departmentId: null },
       });
+      if (!existing) {
+        await prisma.jobGrade.create({
+          data: {
+            companyId,
+            departmentId: null,
+            code: grade.code,
+            name: grade.name,
+            displayOrder: grade.level,
+            status: "ACTIVE",
+          },
+        });
+      }
     }
   });
 }
@@ -58,8 +62,8 @@ export async function gradePositions(
   positionTitles: readonly string[]
 ): Promise<void> {
   await withPrisma(async (prisma) => {
-    const grade = await prisma.jobGrade.findUnique({
-      where: { companyId_code: { companyId, code: gradeCode } },
+    const grade = await prisma.jobGrade.findFirst({
+      where: { companyId, code: gradeCode, departmentId: null },
     });
     if (!grade) throw new Error(`Grade ${gradeCode} does not exist for company ${companyId}.`);
     // Matched by TITLE, not code: position codes are auto-generated and

@@ -36,6 +36,7 @@ const DEPARTMENT: Department = {
 const JOB_GRADE: JobGrade = {
   id: JOB_GRADE_ID,
   companyId: "company-1",
+  departmentId: null,
   name: "L5",
   code: "L5",
   description: null,
@@ -170,6 +171,56 @@ describe("PositionFormDialog", () => {
       })
     );
     expect(createPositionActionMock.mock.calls[0]?.[0]).not.toHaveProperty("positionCode");
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("pre-fills the Level name with the department's existing name and submits it", async () => {
+    createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
+    const onSaved = vi.fn();
+    const user = userEvent.setup();
+
+    // A level this department already defines under a bespoke name.
+    const deptGrade: JobGrade = {
+      ...JOB_GRADE,
+      id: "44444444-4444-4444-8444-444444444444",
+      departmentId: DEPARTMENT_ID,
+      code: "L7",
+      name: "Principal Engineer",
+    };
+
+    render(
+      <PositionFormDialog
+        open
+        onOpenChange={() => {}}
+        position={null}
+        departments={[DEPARTMENT]}
+        jobGrades={[deptGrade]}
+        allPositions={[]}
+        onSaved={onSaved}
+      />
+    );
+
+    await user.type(screen.getByLabelText(/title/i), "Staff Engineer");
+    // The Level name field appears only once a level is chosen.
+    expect(screen.queryByLabelText(/level name/i)).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText(/^level$/i), "L7");
+
+    const levelName = screen.getByLabelText(/level name/i);
+    expect(levelName).toHaveValue("Principal Engineer");
+
+    await user.clear(levelName);
+    await user.type(levelName, "Staff Engineer");
+    await user.click(screen.getByRole("button", { name: /create position/i }));
+
+    await waitFor(() => expect(createPositionActionMock).toHaveBeenCalled());
+    expect(createPositionActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Staff Engineer",
+        departmentId: DEPARTMENT_ID,
+        jobGradeCode: "L7",
+        jobGradeName: "Staff Engineer",
+      })
+    );
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 

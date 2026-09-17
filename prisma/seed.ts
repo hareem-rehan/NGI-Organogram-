@@ -74,11 +74,18 @@ export async function runSeed(db: PrismaClient) {
     code: string,
     data: { name: string; displayOrder: number }
   ) {
-    return db.jobGrade.upsert({
-      where: { companyId_code: { companyId, code } },
-      update: {},
-      create: {
+    // Company-wide (departmentId: null) reference grade. find-or-create
+    // rather than upsert, because the compound unique key now includes
+    // departmentId and Prisma's unique lookup does not match NULL the way
+    // an equality would — the partial unique index keeps these unique.
+    const existing = await db.jobGrade.findFirst({
+      where: { companyId, code, departmentId: null },
+    });
+    if (existing) return existing;
+    return db.jobGrade.create({
+      data: {
         companyId,
+        departmentId: null,
         code,
         name: data.name,
         displayOrder: data.displayOrder,

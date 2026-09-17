@@ -101,11 +101,19 @@ function generatePositionCode(): string {
 export async function createPositionAction(input: unknown): Promise<ActionResult<Position>> {
   return runAction(async () => {
     const user = await requirePermission("positions:manage");
-    const { jobGradeCode, ...values } = createPositionSchema.parse(input);
-    // A level chosen in the form (e.g. "L7") is resolved to a grade id
-    // here, creating the grade from the standard scale on first use.
+    const { jobGradeCode, jobGradeName, ...values } = createPositionSchema.parse(input);
+    // A level chosen in the form (e.g. "L7") is resolved to the grade for
+    // THIS position's department, creating it — with its per-department
+    // name — on first use.
     const jobGradeId = jobGradeCode
-      ? (await ensureJobGradeByCode(user.companyId, jobGradeCode)).id
+      ? (
+          await ensureJobGradeByCode(
+            user.companyId,
+            values.departmentId,
+            jobGradeCode,
+            jobGradeName
+          )
+        ).id
       : (values.jobGradeId ?? null);
     return createPosition({
       companyId: user.companyId,
@@ -120,13 +128,21 @@ export async function createPositionAction(input: unknown): Promise<ActionResult
 export async function updatePositionAction(input: unknown): Promise<ActionResult<Position>> {
   return runAction(async () => {
     const user = await requirePermission("positions:manage");
-    const { jobGradeCode, ...values } = updatePositionSchema.parse(input);
-    const jobGradeId =
-      jobGradeCode === undefined
-        ? values.jobGradeId
-        : jobGradeCode === null
-          ? null
-          : (await ensureJobGradeByCode(user.companyId, jobGradeCode)).id;
+    const { jobGradeCode, jobGradeName, ...values } = updatePositionSchema.parse(input);
+    let jobGradeId = values.jobGradeId;
+    if (jobGradeCode === null) {
+      jobGradeId = null;
+    } else if (jobGradeCode !== undefined) {
+      // Resolve the level for the position's department. The edit form
+      // always sends departmentId; without it we cannot scope the level,
+      // so the grade is left unchanged.
+      const departmentId = values.departmentId;
+      if (departmentId) {
+        jobGradeId = (
+          await ensureJobGradeByCode(user.companyId, departmentId, jobGradeCode, jobGradeName)
+        ).id;
+      }
+    }
     return updatePosition({
       companyId: user.companyId,
       actor: toAuditActor(user),

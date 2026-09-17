@@ -742,7 +742,10 @@ async function applyPositionCreatesBulk(
   createRows: readonly RowPlanEntry<NormalizedPositionRow>[],
   context: {
     departmentCodeToId: Map<string, string>;
-    jobGradeCodeToId: Map<string, string>;
+    /** (departmentId, normalized code) -> grade id, for a level scoped to that department. */
+    jobGradeByDeptCode: Map<string, string>;
+    /** normalized code -> company-wide (department-less) grade id, the fallback. */
+    jobGradeSharedByCode: Map<string, string>;
     positionCodeToId: Map<string, string>;
     positionCodeToLevel: Map<string, number>;
   },
@@ -766,9 +769,15 @@ async function applyPositionCreatesBulk(
         const departmentId = context.departmentCodeToId.get(n.departmentCode);
         if (!departmentId) throw new NotFoundError("Department", n.departmentCode);
 
+        // A level is resolved for the row's OWN department first, then the
+        // company-wide (department-less) grade as a fallback — so an import
+        // against seeded shared grades keeps working, and one against
+        // per-department levels picks the right one.
         const jobGradeId =
           n.jobGradeCode.kind === "value"
-            ? (context.jobGradeCodeToId.get(n.jobGradeCode.value) ?? null)
+            ? (context.jobGradeByDeptCode.get(`${departmentId}:${n.jobGradeCode.value}`) ??
+              context.jobGradeSharedByCode.get(n.jobGradeCode.value) ??
+              null)
             : null;
 
         const reportsToCode = n.reportsToCode.kind === "value" ? n.reportsToCode.value : null;
@@ -1074,7 +1083,16 @@ async function applyOrderedRows(
       createRows as RowPlanEntry<NormalizedPositionRow>[],
       {
         departmentCodeToId: new Map(departments.map((d) => [normalizeCode(d.code), d.id])),
-        jobGradeCodeToId: new Map(jobGrades.map((g) => [normalizeCode(g.code), g.id])),
+        jobGradeByDeptCode: new Map(
+          jobGrades
+            .filter((g) => g.departmentId != null)
+            .map((g) => [`${g.departmentId}:${normalizeCode(g.code)}`, g.id])
+        ),
+        jobGradeSharedByCode: new Map(
+          jobGrades
+            .filter((g) => g.departmentId == null)
+            .map((g) => [normalizeCode(g.code), g.id])
+        ),
         positionCodeToId: new Map(positions.map((p) => [normalizeCode(p.positionCode), p.id])),
         positionCodeToLevel: new Map(
           positions.map((p) => [normalizeCode(p.positionCode), p.organizationalLevel])
@@ -1204,11 +1222,17 @@ async function findPositionIdByCode(
 
 async function findJobGradeIdByCode(
   companyId: string,
+  departmentId: string,
   code: string,
   tx: DbClient
 ): Promise<string | null> {
-  const grade = await tx.jobGrade.findFirst({ where: { companyId, code } });
-  return grade?.id ?? null;
+  // Prefer the department's own level, fall back to the company-wide one.
+  const scoped = await tx.jobGrade.findFirst({ where: { companyId, departmentId, code } });
+  if (scoped) return scoped.id;
+  const shared = await tx.jobGrade.findFirst({
+    where: { companyId, departmentId: null, code },
+  });
+  return shared?.id ?? null;
 }
 
 async function applyPositionRow(
@@ -1225,7 +1249,7 @@ async function applyPositionRow(
   if (row.action === "CREATE") {
     const jobGradeId =
       n.jobGradeCode.kind === "value"
-        ? await findJobGradeIdByCode(companyId, n.jobGradeCode.value, tx)
+        ? await findJobGradeIdByCode(companyId, departmentId, n.jobGradeCode.value, tx)
         : null;
     const reportsToId =
       n.reportsToCode.kind === "value"
@@ -1262,7 +1286,7 @@ async function applyPositionRow(
         n.jobGradeCode.kind === "value"
           ? {
               kind: "value",
-              value: await findJobGradeIdByCode(companyId, n.jobGradeCode.value, tx),
+              value: await findJobGradeIdByCode(companyId, departmentId, n.jobGradeCode.value, tx),
             }
           : n.jobGradeCode,
         existing.jobGradeId

@@ -159,11 +159,14 @@ export async function runUatSeed(db: PrismaClient) {
     // and no page/action manages it), so — exactly like
     // prisma/seed.ts's own upsertJobGrade — this writes directly via
     // Prisma, matching what the real application can actually do.
-    return db.jobGrade.upsert({
-      where: { companyId_code: { companyId: company.id, code } },
-      update: {},
-      create: {
+    const existing = await db.jobGrade.findFirst({
+      where: { companyId: company.id, code, departmentId: null },
+    });
+    if (existing) return existing;
+    return db.jobGrade.create({
+      data: {
         companyId: company.id,
+        departmentId: null,
         code,
         name: data.name,
         displayOrder: data.displayOrder,

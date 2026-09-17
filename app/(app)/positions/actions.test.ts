@@ -181,13 +181,39 @@ describe("createPositionAction — level (jobGradeCode) resolution", () => {
     });
 
     // The form's level code is resolved with the SESSION's company, never
-    // anything from the payload.
+    // anything from the payload, and scoped to the position's department
+    // (levels are per-department). No custom name was sent here, so the
+    // name argument is undefined and the standard scale default is used.
     expect(jobGradeServiceMock.ensureJobGradeByCode).toHaveBeenCalledWith(
       ADMIN_USER.companyId,
-      "L7"
+      VALID_UUID,
+      "L7",
+      undefined
     );
     // The service is handed the resolved id, not the code.
     expect(serviceMocks.createPosition.mock.calls[0]?.[0]?.jobGradeId).toBe("grade-l7");
+  });
+
+  it("passes a per-department level name through to the grade service", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    jobGradeServiceMock.ensureJobGradeByCode.mockResolvedValue({ id: "grade-l7" });
+    serviceMocks.createPosition.mockResolvedValue({});
+
+    await createPositionAction({
+      title: "Principal Engineer",
+      departmentId: VALID_UUID,
+      jobGradeCode: "L7",
+      jobGradeName: "Principal Engineer",
+    });
+
+    // The department's chosen name for this level is forwarded so the
+    // grade is created/renamed for that department only.
+    expect(jobGradeServiceMock.ensureJobGradeByCode).toHaveBeenCalledWith(
+      ADMIN_USER.companyId,
+      VALID_UUID,
+      "L7",
+      "Principal Engineer"
+    );
   });
 
   it("auto-generates a position code when the form sends none", async () => {

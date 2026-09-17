@@ -17,13 +17,13 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   /// What the running app connects through. On Supabase this is the
   /// POOLED connection (port 6543, PgBouncer in transaction mode) — a
   /// serverless deployment opens far more short-lived connections than a
   /// Postgres instance will accept directly. Locally it is just the
   /// Docker container, which needs no pooler.
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
   /// What `prisma migrate` connects through. Migrations issue statements
   /// (advisory locks, DDL in an explicit transaction) that PgBouncer's
   /// transaction mode cannot carry, so they must bypass the pooler — on
@@ -227,6 +227,7 @@ model Department {
   childDepartments Department[] @relation("DepartmentParent")
 
   positions Position[]
+  jobGrades JobGrade[]
 
   @@unique([companyId, code])
   @@unique([id, companyId])
@@ -242,6 +243,12 @@ model Department {
 model JobGrade {
   id           String         @id @default(uuid()) @db.Uuid
   companyId    String         @db.Uuid
+  /// The department this level belongs to. NULL means company-wide/shared
+  /// (the legacy scope, and how imports and the seed create grades). A set
+  /// value scopes the level to one department, so "L7" can carry a
+  /// different NAME per department while its numeric rank (displayOrder)
+  /// stays universal — see docs/DECISIONS.md.
+  departmentId String?        @db.Uuid
   name         String
   code         String
   description  String?
@@ -250,13 +257,19 @@ model JobGrade {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  department Department? @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Restrict)
 
   positions Position[]
 
-  @@unique([companyId, code])
+  /// Per-(department, code) uniqueness. NULL departmentId rows (shared
+  /// grades) are treated as distinct by Postgres here, so a hand-authored
+  /// partial unique index (job_grades_companyId_code_shared_key, in the
+  /// migration) keeps THOSE unique per [companyId, code].
+  @@unique([companyId, departmentId, code])
   @@unique([id, companyId])
   @@index([companyId])
+  @@index([departmentId])
   @@map("job_grades")
 }
 
@@ -491,9 +504,9 @@ enum ExportJobStatus {
 }
 
 model ExportJob {
-  id                String           @id @default(uuid()) @db.Uuid
-  companyId         String           @db.Uuid
-  requestedByUserId String           @db.Uuid
+  id                String          @id @default(uuid()) @db.Uuid
+  companyId         String          @db.Uuid
+  requestedByUserId String          @db.Uuid
   format            ExportFormat
   scope             ExportScope
   /// The fully-resolved ResolvedExportOptions this job was rendered
@@ -503,8 +516,8 @@ model ExportJob {
   /// Human-readable scope/focus summary shown in the download filename
   /// and job list — e.g. "Full Company", "Engineering — Department Focus".
   scopeLabel        String
-  nodeCount         Int              @default(0)
-  status            ExportJobStatus  @default(QUEUED)
+  nodeCount         Int             @default(0)
+  status            ExportJobStatus @default(QUEUED)
   /// Nulled out once the job leaves the retention window or is cancelled.
   generatedFile     Bytes?
   generatedFilename String?
@@ -514,11 +527,11 @@ model ExportJob {
   errorMessage      String?
   completedAt       DateTime?
   expiresAt         DateTime
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
-  company         Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  requestedByUser User    @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requestedByUser User         @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
   auditEvents     AuditEvent[]
 
   @@index([companyId, createdAt])
@@ -554,7 +567,7 @@ model User {
   image         String?
 
   // --- Application fields (Phase 3) ---
-  companyId String     @db.Uuid
+  companyId        String     @db.Uuid
   /// Optional link to the Employee record — never auto-populated by
   /// sign-in/provisioning, and never mutated by any Employee/Assignment
   /// operation (Phase 12's `user-admin.service.ts` is the only writer).
@@ -570,7 +583,7 @@ model User {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
   /// Company-scoped composite FK (same T13 pattern as
   /// Position.departmentId+companyId) — a User can only link to an
   /// Employee in its OWN company, enforced by the database, not only by
@@ -648,7 +661,7 @@ model VerificationToken {
 // ---------------------------------------------------------------------
 
 model AuditEvent {
-  id       String @id @default(uuid()) @db.Uuid
+  id        String @id @default(uuid()) @db.Uuid
   companyId String @db.Uuid
 
   /// Null only for a SYSTEM-actor event (e.g. a scheduled/automated
@@ -743,14 +756,14 @@ model CompanySettings {
   /// Export defaults — stored, validated, and audited this phase; NOT
   /// YET read by export.service.ts's own resolution logic (same A50
   /// scope boundary as the organogram defaults above).
-  defaultPdfPageSize                  String  @default("A3")
-  defaultPdfLayoutMode                String  @default("AUTO")
-  defaultPngScale                     Int     @default(2)
-  includeLegendByDefault              Boolean @default(true)
+  defaultPdfPageSize                   String  @default("A3")
+  defaultPdfLayoutMode                 String  @default("AUTO")
+  defaultPngScale                      Int     @default(2)
+  includeLegendByDefault               Boolean @default(true)
   includeConfidentialityLabelByDefault Boolean @default(true)
   /// Bounded 1–30 at the service layer — never an unbounded value that
   /// could keep generated files around indefinitely.
-  exportRetentionDays                 Int     @default(7)
+  exportRetentionDays                  Int     @default(7)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

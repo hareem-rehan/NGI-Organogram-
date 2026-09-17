@@ -53,6 +53,8 @@ export const createPositionSchema = z
      * already hold a resolved id.
      */
     jobGradeCode: z.string().trim().min(1).max(16).nullable().optional(),
+    /** Display name for the chosen level, scoped to the position's department. */
+    jobGradeName: z.string().trim().max(80).nullable().optional(),
     description: descriptionSchema,
     location: locationSchema,
     primaryReportsToPositionId: z.string().uuid().nullable().optional(),
@@ -76,6 +78,8 @@ export const updatePositionSchema = z
      * already hold a resolved id.
      */
     jobGradeCode: z.string().trim().min(1).max(16).nullable().optional(),
+    /** Display name for the chosen level, scoped to the position's department. */
+    jobGradeName: z.string().trim().max(80).nullable().optional(),
     description: descriptionSchema,
     location: locationSchema,
   })
