@@ -215,4 +215,29 @@ describe("OrganogramOutlineView", () => {
     await user.click(screen.getByRole("button", { name: /^VP Eng/ }));
     expect(onSelect).toHaveBeenCalledWith("child");
   });
+
+  it("shows a department's full member total, not just its direct children", () => {
+    // Same fix as the visual chart: the heading counts every role in the
+    // department, not the one role that hangs directly off the box.
+    renderOutline({
+      nodes: [
+        makeNode({
+          positionId: "dept:dept-1",
+          kind: "department",
+          title: "Human Resources",
+          hasChildren: true,
+          directReportCount: 1,
+          departmentMemberCount: 23,
+        }),
+        makeNode({
+          positionId: "child",
+          title: "CHO",
+          primaryReportsToPositionId: "dept:dept-1",
+        }),
+      ],
+    });
+
+    expect(screen.getByText("23 roles")).toBeInTheDocument();
+    expect(screen.queryByText("1 role")).not.toBeInTheDocument();
+  });
 });

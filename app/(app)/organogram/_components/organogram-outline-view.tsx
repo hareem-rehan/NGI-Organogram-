@@ -76,7 +76,13 @@ function OutlineNodeRow({
           <p className="text-foreground flex-1 px-1 text-sm font-bold tracking-wide uppercase">
             {node.departmentName}
             <span className="text-muted-foreground ml-2 text-xs font-normal normal-case">
-              {children.length} role{children.length === 1 ? "" : "s"}
+              {/* The department's TOTAL role count (every role nested under
+                  the heading), matching the visual chart's card — not just
+                  the one or two roles that hang directly off it. */}
+              {(() => {
+                const count = node.departmentMemberCount ?? children.length;
+                return `${count} role${count === 1 ? "" : "s"}`;
+              })()}
             </span>
           </p>
         ) : (
