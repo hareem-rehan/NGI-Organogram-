@@ -1,0 +1,3 @@
+employeeCode,firstName,lastName,preferredName,workEmail,employmentStatus,joiningDate,leavingDate
+UAT-EMP-9001,Priyasha,Konde,,priyasha.konde@northwind-example.test,ACTIVE,2026-01-12,
+UAT-EMP-9002,Baldur,Eriksson,,baldur.eriksson@northwind-example.test,ACTIVE,2026-01-12,
