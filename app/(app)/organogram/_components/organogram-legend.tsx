@@ -70,13 +70,6 @@ export function OrganogramLegend({
         <li className="flex items-center gap-2">
           <span
             aria-hidden="true"
-            className="bg-status-vacant inline-block size-2.5 rounded-full"
-          />
-          Vacant
-        </li>
-        <li className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
             className="border-status-planned inline-block size-2.5 rounded-full border-2"
           />
           Planned position

@@ -160,7 +160,7 @@ describe("renderOrganogramSvg", () => {
     expect(result.svg).toContain(EXPORT_COLORS.border);
   });
 
-  it("shows 'Vacant' for an unoccupied position and the occupant name for an occupied one", () => {
+  it("never writes 'Vacant' for an unoccupied position, but shows the occupant name for an occupied one", () => {
     const positions = new Map([
       ["vacantPos", { x: 0, y: 0 }],
       ["occupiedPos", { x: 300, y: 0 }],
@@ -179,7 +179,9 @@ describe("renderOrganogramSvg", () => {
       METADATA,
       BASE_OPTIONS
     );
-    expect(result.svg).toContain("Vacant");
+    // Stakeholder Demo-1: the chart must not surface vacancies — a vacant
+    // role shows no name and no "Vacant" wording anywhere (card or legend).
+    expect(result.svg).not.toContain("Vacant");
     expect(result.svg).toContain("Nadia Volkov");
   });
 
@@ -325,7 +327,7 @@ describe("renderOrganogramSvg", () => {
     expect(result.svg).toContain('font-family="Helvetica, Arial, sans-serif"');
   });
 
-  it("draws the occupancy dot the Occupied/Vacant legend rows are a key to", () => {
+  it("draws an occupancy dot only for occupied cards, never a vacant dot", () => {
     const positions = new Map([
       ["vacantPos", { x: 0, y: 0 }],
       ["occupiedPos", { x: 300, y: 0 }],
@@ -344,10 +346,11 @@ describe("renderOrganogramSvg", () => {
       METADATA,
       BASE_OPTIONS
     );
-    // The legend previously advertised an "Occupied" green swatch that
-    // matched no mark anywhere on the page.
+    // The occupied card carries the green dot (keyed by the "Occupied"
+    // legend row); the vacant card carries no dot at all — vacancy is
+    // conveyed only by the absent name, exactly as on screen.
     expect(result.svg).toContain(`r="4" fill="${EXPORT_COLORS.statusFilled}"`);
-    expect(result.svg).toContain(`r="4" fill="${EXPORT_COLORS.statusVacant}"`);
+    expect(result.svg).not.toContain(`fill="${EXPORT_COLORS.statusVacant}"`);
   });
 
   it("lists a status legend row only when a node actually carries that state", () => {
@@ -359,10 +362,11 @@ describe("renderOrganogramSvg", () => {
       METADATA,
       BASE_OPTIONS
     );
-    // Occupancy applies to every card, so its rows are unconditional...
+    // The occupied dot always has its key; "Vacant" is never listed
+    // (vacancies are not surfaced on the chart)...
     expect(plainChart.svg).toContain("Occupied");
-    expect(plainChart.svg).toContain("Vacant");
-    // ...but these describe marks that appear nowhere on this chart.
+    expect(plainChart.svg).not.toContain("Vacant");
+    // ...and these describe marks that appear nowhere on this chart.
     expect(plainChart.svg).not.toContain("Planned position");
     expect(plainChart.svg).not.toContain("Inactive position");
     expect(plainChart.svg).not.toContain(">Match<");

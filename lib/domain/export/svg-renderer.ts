@@ -111,19 +111,18 @@ interface StatusLegendEntry {
  * Every row here must correspond to something a reader can actually SEE
  * on this export, otherwise the legend is a key to nothing. It previously
  * listed all seven signals unconditionally while the cards rendered only
- * two of them as color (the "Vacant" occupant text and the connector
- * stroke) — an "Occupied" green swatch, in particular, matched no mark
- * anywhere on the page. Cards now carry a real occupancy dot
- * (`renderNodeCard`) and status-colored badges, and the transient
- * search states are listed only when a node actually carries them.
+ * some of them. Occupied cards now carry a real green occupancy dot
+ * (`renderNodeCard`); a vacant card carries no dot and no "Vacant"
+ * wording (Demo-1: vacancies are not surfaced), so the key lists
+ * "Occupied" alone. Status-colored badges and the transient search
+ * states are listed only when a node actually carries them.
  */
 function statusLegendEntriesFor(nodes: readonly SvgRenderNode[]): StatusLegendEntry[] {
-  // Both occupancy states stay unconditional: every card carries the dot,
-  // so a reader needs the key for it even on an all-occupied chart.
-  const entries: StatusLegendEntry[] = [
-    { label: "Occupied", color: EXPORT_COLORS.statusFilled },
-    { label: "Vacant", color: EXPORT_COLORS.statusVacant },
-  ];
+  // Only occupied cards carry a dot (a vacant role shows no dot and no
+  // "Vacant" wording — stakeholder Demo-1 feedback: the chart must not
+  // surface vacancies). So the key lists "Occupied" alone; vacancy is
+  // conveyed, as on screen, by the absence of a name on the card.
+  const entries: StatusLegendEntry[] = [{ label: "Occupied", color: EXPORT_COLORS.statusFilled }];
   if (nodes.some((node) => node.positionStatus === "PLANNED")) {
     entries.push({ label: "Planned position", color: EXPORT_COLORS.statusPlanned });
   }
@@ -215,11 +214,9 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
   // renderer draws its own copy of the card, so the two silently diverge
   // unless changed together.
   const titleLines = wrapText(node.title, 30, 2);
-  const occupantName =
-    node.occupancyStatus === "vacant" ? null : (node.occupantDisplayName ?? null);
+  const isOccupied = node.occupancyStatus === "occupied";
+  const occupantName = isOccupied ? (node.occupantDisplayName ?? null) : null;
   const badge = nodeBadge(node);
-  const statusDotColor =
-    node.occupancyStatus === "vacant" ? EXPORT_COLORS.statusVacant : EXPORT_COLORS.statusFilled;
 
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="${opacity}">`);
@@ -234,15 +231,19 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
     );
   }
 
-  // Row 1 — the role, wrapped to at most two lines. The occupancy dot
-  // still rides alongside it, because a printed chart has no hover or
-  // detail panel to fall back on, and colour is never the only signal
-  // (docs/PROJECT_SPEC.md §12) — the presence or absence of the name on
-  // row 2 carries the same information.
-  parts.push(`<circle cx="22" cy="22" r="4" fill="${statusDotColor}" />`);
+  // Row 1 — the role, wrapped to at most two lines. An OCCUPIED card
+  // carries a green occupancy dot (colour is never the only signal — the
+  // name on row 2 says the same thing); a vacant card shows no dot and no
+  // "Vacant" wording, conveying the empty seat by the absent name alone,
+  // exactly like position-node.tsx on screen. Title starts flush-left when
+  // there is no dot so the text is not indented into empty space.
+  const titleX = isOccupied ? 34 : 16;
+  if (isOccupied) {
+    parts.push(`<circle cx="22" cy="22" r="4" fill="${EXPORT_COLORS.statusFilled}" />`);
+  }
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="34" y="${26 + index * 15}" font-size="13" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
+      `<text x="${titleX}" y="${26 + index * 15}" font-size="13" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
     );
   });
 
