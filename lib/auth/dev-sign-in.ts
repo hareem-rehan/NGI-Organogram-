@@ -22,7 +22,12 @@ import { isDevSignInEnabled } from "@/lib/auth/dev-sign-in-flag";
  */
 export { isDevSignInEnabled } from "@/lib/auth/dev-sign-in-flag";
 
-const DEV_COMPANY_CODE = "DEV-LOCAL";
+// The company the dev sign-in attaches to. Defaults to the stable
+// "DEV-LOCAL" company; a local `.env.local` can point it at another
+// company (by code) to explore a different dataset in dev — e.g. the
+// seeded "NORTHWIND-EXAMPLE" sample — without a company-switcher in the
+// app. Dev-only: this path never runs in production (isDevSignInEnabled).
+const DEV_COMPANY_CODE = process.env.DEV_COMPANY_CODE?.trim() || "DEV-LOCAL";
 const SESSION_MAX_AGE_SECONDS = 12 * 60 * 60; // matches lib/auth/config.ts's real session maxAge
 
 export interface DevSignInResult {
@@ -58,9 +63,16 @@ export async function createDevSession(role: UserRole): Promise<DevSignInResult>
   });
 
   if (!user) {
+    // User email is globally unique, so the dev user's address must carry
+    // the company code — otherwise pointing dev sign-in at a second
+    // company (DEV_COMPANY_CODE override) collides with the first
+    // company's dev user of the same role. The default DEV-LOCAL user is
+    // still found by (company, role) above, so its pre-existing address is
+    // untouched; only a brand-new company's dev user gets this form.
+    const emailSlug = DEV_COMPANY_CODE.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     user = await prisma.user.create({
       data: {
-        email: `dev-${role.toLowerCase()}@dev-local.invalid`,
+        email: `dev-${role.toLowerCase()}-${emailSlug}@dev-local.invalid`,
         name: `Dev ${role}`,
         companyId: company.id,
         role,
