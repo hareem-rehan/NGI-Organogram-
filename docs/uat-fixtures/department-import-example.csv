@@ -1,0 +1,2 @@
+departmentCode,departmentName,description,parentDepartmentCode,color,status
+UAT-INNOV,Innovation Lab,Cross-functional incubation team for new product bets.,UAT-PRODUCT,#f97316,ACTIVE

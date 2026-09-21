@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (docs/IMPLEMENTATION_PLAN.md Phase 1, Step 4.12).
+ * Tailwind v4's CSS-first theme: each --color-* variable below
+ * automatically becomes utility classes (bg-*, text-*, border-*, ring-*).
+ *
+ * Status and department colors are semantic tokens for LATER phases
+ * (Position status, Department grouping) — nothing consumes them yet in
+ * Phase 1, but per docs/PROJECT_SPEC.md §12, color must never be the
+ * only signal once they are used: always pair with a text label or icon
+ * (see components/patterns/placeholder-module.tsx's Badge for the
+ * pattern: colored background AND a text label, never color alone).
+ */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /*
+   * DotZero brand palette (docs/BRANDING.md documents the source and the
+   * exact contrast math below) — Velocity Red #EF323F is the brand's own
+   * "Primary" color, Dark Slate #2D2D2D/#212121/#161616 is "Primary Dark",
+   * Ash Gray #5D5B5B/Soft Silver #D3D3D3 are the brand's neutrals, and
+   * White/Soft White/Almond are the brand's light surfaces.
+   */
+
+  /* Base surface / text */
+  --color-background: #ffffff;
+  --color-foreground: #2d2d2d; /* Dark Slate — 13.77:1 on white, comfortably passes AAA */
+
+  /* Muted (secondary text, subtle backgrounds). */
+  --color-muted: #f7f7f7; /* Soft White */
+  --color-muted-foreground: #5d5b5b; /* Ash Gray — 6.75:1 on white, 6.30:1 on Soft White, both comfortably pass AA */
+
+  /* Structural */
+  --color-border: #d3d3d3; /* Soft Silver */
+  --color-input: #d3d3d3;
+  --color-ring: #ef323f; /* Velocity Red — a focus ring is a non-text UI indicator (WCAG 1.4.11's 3:1 threshold, not the 4.5:1 text threshold), so the exact brand red is safe to use here unmodified. */
+
+  /* Primary action. Velocity Red (#EF323F) itself is the brand's own
+     "Primary" color, but white text directly on it measures only 4.04:1
+     — under WCAG AA's 4.5:1 minimum for normal-size text (this app's
+     buttons use text-sm/font-medium, which does not qualify as WCAG
+     "large text"). #D72D39 is a ~10%-darkened shade of the exact same
+     hue/brand red that measures 4.86:1 with white text — visually
+     unmistakably "the brand red," but text-safe. See docs/BRANDING.md
+     for the full contrast calculation and the exact same reasoning
+     already established in this file for --color-status-filled/
+     --color-status-vacant below. */
+  --color-primary: #d72d39;
+  --color-primary-foreground: #ffffff;
+
+  /* Secondary action */
+  --color-secondary: #f7f7f7; /* Soft White */
+  --color-secondary-foreground: #2d2d2d; /* Dark Slate */
+
+  /* Accent (hover/active surfaces, e.g. nav items) */
+  --color-accent: #f3f0e8; /* Almond */
+  --color-accent-foreground: #2d2d2d; /* Dark Slate */
+
+  /* Destructive / error. A further-darkened brand red (#BA2731, 6.14:1
+     with white text) — deliberately darker than --color-primary so a
+     "Delete"/"Archive" action remains visually distinguishable from a
+     primary "Save"/"Create" action at a glance, even though both are
+     brand-red-family (this app's destructive actions already require an
+     explicit confirmation dialog — components/patterns/confirm-dialog.tsx
+     — as the real safety mechanism, per docs/PROJECT_SPEC.md §12's "color
+     is never the only signal" rule; this is a legibility/distinction
+     choice on top of that, not the primary safety net). */
+  --color-destructive: #ba2731;
+  --color-destructive-foreground: #ffffff;
+
+  /* Position status (reserved for Phase 5/8) */
+  /* #166534 (not the lighter #16a34a) — the lighter shade measured
+     2.78:1 as text against the Badge "success" variant's own
+     bg-status-filled/15 background (and 3.30:1 against plain white),
+     below the 4.5:1 WCAG AA minimum for normal-sized text; caught by
+     e2e/accessibility.spec.ts's departments-list scan (a pre-existing
+     Phase 4/5 token, only actually rendered as badge text and scanned
+     with real data present under Phase 8's larger, more concurrent E2E
+     suite — same discovery mechanism as A20's --color-muted-foreground
+     fix in Phase 7). */
+  --color-status-filled: #166534;
+  --color-status-filled-foreground: #ffffff;
+  /* #b45309 (not the lighter #d97706) — the lighter shade measured
+     3.18:1 against white as plain text (Vacant label, Phase 8's
+     organogram), below the 4.5:1 WCAG AA minimum for normal-sized text;
+     caught by e2e/accessibility.spec.ts's organogram Outline View scan. */
+  --color-status-vacant: #b45309;
+  --color-status-vacant-foreground: #ffffff;
+  --color-status-planned: #2563eb;
+  --color-status-planned-foreground: #1e3a8a;
+  --color-status-inactive: #64748b;
+  --color-status-inactive-foreground: #ffffff;
+
+  /* Department categorical palette (reserved for Phase 8) — a generic,
+     swappable placeholder set; not tied to any real department yet. */
+  --color-dept-1: #2563eb;
+  --color-dept-2: #16a34a;
+  --color-dept-3: #d97706;
+  --color-dept-4: #dc2626;
+  --color-dept-5: #7c3aed;
+  --color-dept-6: #0891b2;
+  --color-dept-7: #db2777;
+  --color-dept-8: #65a30d;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+}
