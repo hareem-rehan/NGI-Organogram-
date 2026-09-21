@@ -1,6 +1,6 @@
 "use server";
 
-import type { CareerTrack, JobFamily, LevelMappingEntry } from "@prisma/client";
+import type { CareerTrack, JobFamily, JobGrade, LevelMappingEntry } from "@prisma/client";
 
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
@@ -14,11 +14,13 @@ import {
   deleteLevelMappingEntry,
   updateJobFamily,
 } from "@/lib/services/career-framework.service";
+import { provisionStandardLevels } from "@/lib/services/job-grade.service";
 import {
   listCareerTracksForCompany,
   listJobFamiliesForCompany,
   listLevelMappingEntriesForCompany,
 } from "@/lib/repositories/career-framework.repository";
+import { listJobGradesForCompany } from "@/lib/repositories/job-grade.repository";
 import {
   createCareerTrackSchema,
   createJobFamilySchema,
@@ -33,18 +35,20 @@ export interface CareerFrameworkData {
   jobFamilies: JobFamily[];
   careerTracks: CareerTrack[];
   levelMappingEntries: LevelMappingEntry[];
+  jobGrades: JobGrade[];
 }
 
 /** Reloads the whole framework for the matrix after any mutation. Reads require only :view. */
 export async function getCareerFrameworkAction(): Promise<ActionResult<CareerFrameworkData>> {
   return runAction(async () => {
     const user = await requirePermission("career:view");
-    const [jobFamilies, careerTracks, levelMappingEntries] = await Promise.all([
+    const [jobFamilies, careerTracks, levelMappingEntries, jobGrades] = await Promise.all([
       listJobFamiliesForCompany(user.companyId),
       listCareerTracksForCompany(user.companyId),
       listLevelMappingEntriesForCompany(user.companyId),
+      listJobGradesForCompany(user.companyId),
     ]);
-    return { jobFamilies, careerTracks, levelMappingEntries };
+    return { jobFamilies, careerTracks, levelMappingEntries, jobGrades };
   });
 }
 
@@ -124,5 +128,21 @@ export async function deleteLevelMappingEntryAction(input: unknown): Promise<Act
       levelMappingEntryId,
     });
     return null;
+  });
+}
+
+// ── Levels (job grades) ───────────────────────────────────────────────
+
+/**
+ * One-click provisioning of the standard L2–L18 level scale for the
+ * company. Surfaced on the Career Framework screen when no levels exist
+ * yet, so a fresh company can fill its Level picker without depending on
+ * the seed. :manage only — creating reference data is an admin action.
+ */
+export async function provisionStandardLevelsAction(): Promise<ActionResult<{ created: number }>> {
+  return runAction(async () => {
+    const user = await requirePermission("career:manage");
+    const { created } = await provisionStandardLevels(user.companyId, toAuditActor(user));
+    return { created: created.length };
   });
 }

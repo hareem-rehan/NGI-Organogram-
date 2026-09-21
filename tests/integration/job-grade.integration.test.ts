@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { ensureJobGradeByCode, normalizeGradeCode } from "@/lib/services/job-grade.service";
+import {
+  ensureJobGradeByCode,
+  normalizeGradeCode,
+  provisionStandardLevels,
+} from "@/lib/services/job-grade.service";
+import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
 import { DomainValidationError } from "@/lib/domain/errors";
 import { testPrisma } from "./setup";
 import { makeCompany, makeDepartment } from "./fixtures";
@@ -93,5 +98,87 @@ describe("ensureJobGradeByCode — per-department levels", () => {
       ensureJobGradeByCode(company.id, dept.id, "PLATINUM", null, testPrisma)
     ).rejects.toBeInstanceOf(DomainValidationError);
     expect(await testPrisma.jobGrade.count({ where: { companyId: company.id } })).toBe(0);
+  });
+});
+
+describe("provisionStandardLevels — one-click level scale", () => {
+  it("creates the full standard scale as company-wide levels", async () => {
+    const company = await makeCompany();
+
+    const { created, alreadyExisted } = await provisionStandardLevels(
+      company.id,
+      "SYSTEM",
+      testPrisma
+    );
+
+    expect(created).toHaveLength(JOB_GRADE_SCALE.length);
+    expect(alreadyExisted).toBe(0);
+
+    const grades = await testPrisma.jobGrade.findMany({
+      where: { companyId: company.id },
+      orderBy: { displayOrder: "asc" },
+    });
+    expect(grades).toHaveLength(JOB_GRADE_SCALE.length);
+    // Company-wide (shared) scope, matching how the seed provisions them.
+    expect(grades.every((g) => g.departmentId === null)).toBe(true);
+    expect(grades.map((g) => g.code)).toEqual(JOB_GRADE_SCALE.map((s) => s.code));
+    expect(grades.map((g) => g.name)).toEqual(JOB_GRADE_SCALE.map((s) => s.name));
+    expect(grades.map((g) => g.displayOrder)).toEqual(JOB_GRADE_SCALE.map((s) => s.level));
+  });
+
+  it("is idempotent — a second run creates nothing and leaves one set", async () => {
+    const company = await makeCompany();
+
+    await provisionStandardLevels(company.id, "SYSTEM", testPrisma);
+    const second = await provisionStandardLevels(company.id, "SYSTEM", testPrisma);
+
+    expect(second.created).toHaveLength(0);
+    expect(second.alreadyExisted).toBe(JOB_GRADE_SCALE.length);
+    expect(await testPrisma.jobGrade.count({ where: { companyId: company.id } })).toBe(
+      JOB_GRADE_SCALE.length
+    );
+  });
+
+  it("only tops up the codes that are missing", async () => {
+    const company = await makeCompany();
+    // Pre-create one shared grade by hand; provisioning should add the rest.
+    await testPrisma.jobGrade.create({
+      data: {
+        companyId: company.id,
+        departmentId: null,
+        code: "L7",
+        name: "Custom Lead",
+        displayOrder: 7,
+        status: "ACTIVE",
+      },
+    });
+
+    const { created, alreadyExisted } = await provisionStandardLevels(
+      company.id,
+      "SYSTEM",
+      testPrisma
+    );
+
+    expect(alreadyExisted).toBe(1);
+    expect(created).toHaveLength(JOB_GRADE_SCALE.length - 1);
+    expect(created.some((g) => g.code === "L7")).toBe(false);
+    // The pre-existing L7 keeps its custom name — provisioning never overwrites.
+    const l7 = await testPrisma.jobGrade.findFirstOrThrow({
+      where: { companyId: company.id, code: "L7", departmentId: null },
+    });
+    expect(l7.name).toBe("Custom Lead");
+  });
+
+  it("writes a single audit event describing the provisioning", async () => {
+    const company = await makeCompany();
+
+    await provisionStandardLevels(company.id, "SYSTEM", testPrisma);
+
+    const events = await testPrisma.auditEvent.findMany({
+      where: { companyId: company.id, entityType: "JobGrade" },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.category).toBe("COMPANY_SETTINGS");
+    expect(events[0]!.action).toBe("CREATED");
   });
 });

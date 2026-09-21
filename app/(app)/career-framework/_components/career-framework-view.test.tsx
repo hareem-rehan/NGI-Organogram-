@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type {
   CareerTrack,
   Department,
@@ -17,9 +18,14 @@ vi.mock("@/app/(app)/career-framework/actions", () => ({
   createJobFamilyAction: vi.fn(),
   updateJobFamilyAction: vi.fn(),
   createLevelMappingEntryAction: vi.fn(),
+  provisionStandardLevelsAction: vi.fn(),
 }));
 
 import { CareerFrameworkView } from "./career-framework-view";
+import {
+  getCareerFrameworkAction,
+  provisionStandardLevelsAction,
+} from "@/app/(app)/career-framework/actions";
 
 const DEPT: Department = {
   id: "dept-1",
@@ -164,5 +170,53 @@ describe("CareerFrameworkView", () => {
     expect(screen.queryByRole("button", { name: /add mapping/i })).not.toBeInTheDocument();
     // The titles are still readable.
     expect(screen.getByText("Principal Software Engineer")).toBeInTheDocument();
+  });
+
+  it("offers a one-click 'set up standard levels' action when no levels exist yet", () => {
+    renderView({ jobGrades: [] });
+    expect(screen.getByText(/no levels set up yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /set up standard levels/i })
+    ).toBeInTheDocument();
+  });
+
+  it("does not show the levels setup prompt once levels exist", () => {
+    renderView({ jobGrades: [L7] });
+    expect(screen.queryByText(/no levels set up yet/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /set up standard levels/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the levels setup action in read-only mode even with no levels", () => {
+    renderView({ jobGrades: [], canManage: false });
+    // The explanatory prompt still shows, but a viewer gets no action.
+    expect(screen.getByText(/no levels set up yet/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /set up standard levels/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("provisions the scale and refreshes the levels from the server on click", async () => {
+    const user = userEvent.setup();
+    vi.mocked(provisionStandardLevelsAction).mockResolvedValue({ ok: true, data: { created: 17 } });
+    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
+      ok: true,
+      data: {
+        jobFamilies: [FAMILY],
+        careerTracks: [IC, MGR],
+        levelMappingEntries: [],
+        jobGrades: [L7],
+      },
+    });
+
+    renderView({ jobGrades: [], initialLevelMappingEntries: [] });
+    await user.click(screen.getByRole("button", { name: /set up standard levels/i }));
+
+    expect(provisionStandardLevelsAction).toHaveBeenCalledTimes(1);
+    // After the refetch the prompt is gone, because the server now reports levels.
+    await waitFor(() =>
+      expect(screen.queryByText(/no levels set up yet/i)).not.toBeInTheDocument()
+    );
   });
 });

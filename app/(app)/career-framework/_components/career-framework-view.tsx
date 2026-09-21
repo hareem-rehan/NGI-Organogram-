@@ -18,6 +18,7 @@ import {
   deleteJobFamilyAction,
   deleteLevelMappingEntryAction,
   getCareerFrameworkAction,
+  provisionStandardLevelsAction,
 } from "@/app/(app)/career-framework/actions";
 import { JobFamilyDialog } from "./job-family-dialog";
 import { LevelMappingDialog } from "./level-mapping-dialog";
@@ -44,15 +45,16 @@ export function CareerFrameworkView({
   const [jobFamilies, setJobFamilies] = useState(initialJobFamilies);
   const [careerTracks, setCareerTracks] = useState(initialCareerTracks);
   const [entries, setEntries] = useState(initialLevelMappingEntries);
+  const [levels, setLevels] = useState(jobGrades);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
 
   const [familyDialogOpen, setFamilyDialogOpen] = useState(false);
   const [editingFamily, setEditingFamily] = useState<JobFamily | null>(null);
   const [mappingForFamily, setMappingForFamily] = useState<JobFamily | null>(null);
 
   const departmentsById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
-  const gradesById = useMemo(() => new Map(jobGrades.map((g) => [g.id, g])), [jobGrades]);
+  const gradesById = useMemo(() => new Map(levels.map((g) => [g.id, g])), [levels]);
 
   function refetch() {
     startTransition(async () => {
@@ -61,6 +63,7 @@ export function CareerFrameworkView({
         setJobFamilies(result.data.jobFamilies);
         setCareerTracks(result.data.careerTracks);
         setEntries(result.data.levelMappingEntries);
+        setLevels(result.data.jobGrades);
       }
     });
   }
@@ -124,6 +127,28 @@ export function CareerFrameworkView({
         <p role="alert" className="text-destructive text-sm font-medium">
           {actionError}
         </p>
+      ) : null}
+
+      {levels.length === 0 ? (
+        <div className="border-border bg-muted/30 flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-foreground text-sm font-medium">No levels set up yet</p>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              Levels (L2–L18) are the rows of the career matrix and the seniority you pick for a
+              position. Add the standard scale to get started — you can rename or remove levels
+              afterwards.
+            </p>
+          </div>
+          {canManage ? (
+            <Button
+              className="shrink-0"
+              disabled={pending}
+              onClick={() => runManage(() => provisionStandardLevelsAction())}
+            >
+              <Plus aria-hidden="true" className="size-4" /> Set up standard levels
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       {jobFamilies.length === 0 ? (
@@ -325,7 +350,7 @@ export function CareerFrameworkView({
             }}
             jobFamilyId={mappingForFamily?.id ?? ""}
             tracks={mappingForFamily ? (tracksByFamily.get(mappingForFamily.id) ?? []) : []}
-            jobGrades={jobGrades}
+            jobGrades={levels}
             onSaved={refetch}
           />
         </>
