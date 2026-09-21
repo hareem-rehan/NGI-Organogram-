@@ -175,9 +175,7 @@ describe("CareerFrameworkView", () => {
   it("offers a one-click 'set up standard levels' action when no levels exist yet", () => {
     renderView({ jobGrades: [] });
     expect(screen.getByText(/no levels set up yet/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /set up standard levels/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /set up standard levels/i })).toBeInTheDocument();
   });
 
   it("does not show the levels setup prompt once levels exist", () => {

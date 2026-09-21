@@ -53,3 +53,4 @@ npm-debug.log*
 
 # Local staging deploy secrets (never commit)
 .env.staging
+.env*
