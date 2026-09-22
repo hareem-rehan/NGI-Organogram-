@@ -37,6 +37,7 @@ export const requestExportSchema = z
     includeLegend: z.boolean().optional(),
     includeMetadata: z.boolean().optional(),
     includeConfidentialityLabel: z.boolean().optional(),
+    colorMode: z.enum(["department", "family"]).optional(),
   })
   .strict();
 

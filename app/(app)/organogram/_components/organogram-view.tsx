@@ -663,6 +663,7 @@ export function OrganogramView({
           onOpenChange={setExportDialogOpen}
           nodes={positionNodes}
           departmentEntries={departmentLegendEntries}
+          currentColorMode={colorMode}
           currentContext={{
             view: urlState.view,
             positionId: urlState.positionId,

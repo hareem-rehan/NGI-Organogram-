@@ -88,6 +88,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );
@@ -101,6 +102,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={{ ...FULL_COMPANY_CONTEXT, view: "position", positionId: "root" }}
       />
     );
@@ -115,6 +117,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );
@@ -134,6 +137,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );
@@ -166,6 +170,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );
@@ -197,6 +202,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );
@@ -226,6 +232,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={manyNodes}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );
@@ -253,6 +260,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );
@@ -278,6 +286,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );
@@ -287,6 +296,7 @@ describe("OrganogramExportDialog", () => {
         onOpenChange={vi.fn()}
         nodes={NODES}
         departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
         currentContext={FULL_COMPANY_CONTEXT}
       />
     );

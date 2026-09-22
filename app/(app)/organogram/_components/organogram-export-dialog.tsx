@@ -17,6 +17,7 @@ import type { OrganogramNode } from "@/lib/domain/organogram";
 import type { DescendantDepth } from "@/lib/domain/organogram-focus";
 import {
   estimatePngSafeNodeCount,
+  type ExportColorMode,
   type ExportFilterState,
   type ExportFormat,
   type ExportScope,
@@ -30,6 +31,8 @@ interface OrganogramExportDialogProps {
   onOpenChange: (open: boolean) => void;
   nodes: OrganogramNode[];
   departmentEntries: { id: string; name: string }[];
+  /** The chart's current colour dimension — the export defaults to matching it. */
+  currentColorMode: ExportColorMode;
   currentContext: {
     view: "full" | "position" | "department";
     positionId: string | null;
@@ -97,9 +100,11 @@ export function OrganogramExportDialog({
   onOpenChange,
   nodes,
   departmentEntries,
+  currentColorMode,
   currentContext,
 }: OrganogramExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>("PDF");
+  const [colorMode, setColorMode] = useState<ExportColorMode>(currentColorMode);
   const [scope, setScope] = useState<ExportScope>("FULL_COMPANY");
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null);
@@ -133,7 +138,8 @@ export function OrganogramExportDialog({
     setSelectedDepartmentId(currentContext.departmentId);
     setDescendantDepth(currentContext.depth);
     setIncludePlanned(currentContext.showPlanned);
-  }, [open, currentContext]);
+    setColorMode(currentColorMode);
+  }, [open, currentContext, currentColorMode]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const sortedPositions = useMemo(
@@ -180,6 +186,7 @@ export function OrganogramExportDialog({
       includeLegend,
       includeMetadata,
       includeConfidentialityLabel,
+      colorMode,
     });
     if (!result.ok) {
       setErrorMessage(result.error);
@@ -416,6 +423,17 @@ export function OrganogramExportDialog({
             )}
 
             <div className="flex flex-col gap-2">
+              <label className="flex flex-col gap-1 text-sm">
+                <span>Colour cards by</span>
+                <select
+                  value={colorMode}
+                  onChange={(e) => setColorMode(e.target.value as ExportColorMode)}
+                  className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
+                >
+                  <option value="department">Department</option>
+                  <option value="family">Job family</option>
+                </select>
+              </label>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"

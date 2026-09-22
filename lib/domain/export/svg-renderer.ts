@@ -1,7 +1,9 @@
 import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
+import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 import { EXPORT_COLORS, resolveDepartmentColor } from "./colors";
 import { escapeXmlText, wrapText } from "./svg-text";
+import type { ExportColorMode } from "./types";
 
 /**
  * Server-side SVG generator for organogram export
@@ -27,6 +29,9 @@ export interface SvgRenderNode {
   jobGradeName: string | null;
   /** e.g. "L7" — what the compact card shows in place of the old department/level/grade line. */
   jobGradeCode: string | null;
+  /** Career family — shown beside the grade and, in "family" colour mode, colours the card. */
+  jobFamilyId: string | null;
+  jobFamilyName: string | null;
   occupancyStatus: "occupied" | "vacant";
   occupantDisplayName: string | null;
   positionStatus: "PLANNED" | "ACTIVE" | "INACTIVE";
@@ -64,11 +69,24 @@ export interface SvgLegendDepartment {
   color: string | null;
 }
 
+export interface SvgLegendFamily {
+  id: string;
+  name: string;
+  /** Resolved accent colour for the swatch. */
+  color: string;
+}
+
 export interface SvgRenderOptions {
   includeLegend: boolean;
   includeMetadata: boolean;
   includeConfidentialityLabel: boolean;
   departments: readonly SvgLegendDepartment[];
+  /** Which dimension colours the cards; defaults to "department". */
+  colorMode?: ExportColorMode;
+  /** Per-family colours, used only in "family" mode. */
+  familyColorById?: ReadonlyMap<string, FamilyColor>;
+  /** Job families for the legend in "family" mode. */
+  families?: readonly SvgLegendFamily[];
 }
 
 export interface SvgRenderResult {
@@ -199,8 +217,32 @@ function renderDepartmentCard(
   return parts.join("");
 }
 
-function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): string {
-  const accentColor = resolveDepartmentColor(node.departmentColor);
+/**
+ * A card's body fill and left-edge accent. In "family" colour mode a
+ * classified position takes its family's fill + accent (mirroring the
+ * interactive chart); otherwise the card keeps the neutral background and a
+ * department-coloured edge. Department heading cards always use the
+ * department colour — they are not positions and carry no family.
+ */
+function cardColorsFor(
+  node: SvgRenderNode,
+  colorMode: ExportColorMode,
+  familyColorById: ReadonlyMap<string, FamilyColor> | undefined
+): { fill: string; accent: string } {
+  if (colorMode === "family" && node.kind !== "department" && node.jobFamilyId) {
+    const fc = familyColorById?.get(node.jobFamilyId);
+    if (fc) return { fill: fc.fill, accent: fc.accent };
+  }
+  return { fill: EXPORT_COLORS.background, accent: resolveDepartmentColor(node.departmentColor) };
+}
+
+function renderNodeCard(
+  node: SvgRenderNode,
+  position: SvgLayoutPosition,
+  colorMode: ExportColorMode,
+  familyColorById: ReadonlyMap<string, FamilyColor> | undefined
+): string {
+  const { fill: bodyFill, accent: accentColor } = cardColorsFor(node, colorMode, familyColorById);
   const isMatch = node.matchState === "match";
   const isContext = node.matchState === "context";
   const strokeColor = isMatch ? EXPORT_COLORS.primary : EXPORT_COLORS.border;
@@ -221,7 +263,7 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="${opacity}">`);
   parts.push(
-    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${EXPORT_COLORS.background}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`
+    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${bodyFill}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`
   );
   parts.push(`<rect x="0" y="0" width="6" height="${NODE_HEIGHT}" fill="${accentColor}" />`);
 
@@ -257,9 +299,12 @@ function renderNodeCard(node: SvgRenderNode, position: SvgLayoutPosition): strin
     );
     y += 14;
   }
-  if (node.jobGradeCode) {
+  // Grade and family share the compact card's last line, mirroring
+  // position-node.tsx ("L7 · Software Engineering").
+  const gradeFamilyLine = [node.jobGradeCode, node.jobFamilyName].filter(Boolean).join(" · ");
+  if (gradeFamilyLine) {
     parts.push(
-      `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(node.jobGradeCode)}</text>`
+      `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(gradeFamilyLine)}</text>`
     );
   }
 
@@ -317,11 +362,15 @@ function renderFooter(
 function renderLegend(
   departments: readonly SvgLegendDepartment[],
   statusEntries: readonly StatusLegendEntry[],
-  y: number
+  y: number,
+  colorMode: ExportColorMode,
+  families: readonly SvgLegendFamily[]
 ): { svg: string; height: number } {
-  const statusRows = statusEntries.length;
-  const deptRows = departments.length;
-  const rows = Math.max(statusRows, deptRows);
+  // In family mode the second column keys the family colours; otherwise it
+  // keys the departments — matching whichever dimension coloured the cards.
+  const showFamilies = colorMode === "family";
+  const secondColumnRows = showFamilies ? families.length : departments.length;
+  const rows = Math.max(statusEntries.length, secondColumnRows);
   const height = rows * LEGEND_ROW_HEIGHT + 24;
 
   const parts: string[] = [];
@@ -337,18 +386,31 @@ function renderLegend(
     );
   });
 
-  if (departments.length > 0) {
-    const deptX = PADDING + LEGEND_COLUMN_WIDTH;
+  const columnX = PADDING + LEGEND_COLUMN_WIDTH;
+  if (showFamilies && families.length > 0) {
     parts.push(
-      `<text x="${deptX}" y="${y + 14}" font-size="11" font-weight="700" fill="${EXPORT_COLORS.foreground}">Departments</text>`
+      `<text x="${columnX}" y="${y + 14}" font-size="11" font-weight="700" fill="${EXPORT_COLORS.foreground}">Job families</text>`
+    );
+    families.forEach((family, index) => {
+      const rowY = y + 32 + index * LEGEND_ROW_HEIGHT;
+      parts.push(
+        `<circle cx="${columnX + 4}" cy="${rowY - 4}" r="4" fill="${family.color}" stroke="${EXPORT_COLORS.border}" />`
+      );
+      parts.push(
+        `<text x="${columnX + 14}" y="${rowY}" font-size="10" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(family.name)}</text>`
+      );
+    });
+  } else if (!showFamilies && departments.length > 0) {
+    parts.push(
+      `<text x="${columnX}" y="${y + 14}" font-size="11" font-weight="700" fill="${EXPORT_COLORS.foreground}">Departments</text>`
     );
     departments.forEach((dept, index) => {
       const rowY = y + 32 + index * LEGEND_ROW_HEIGHT;
       parts.push(
-        `<circle cx="${deptX + 4}" cy="${rowY - 4}" r="4" fill="${resolveDepartmentColor(dept.color)}" stroke="${EXPORT_COLORS.border}" />`
+        `<circle cx="${columnX + 4}" cy="${rowY - 4}" r="4" fill="${resolveDepartmentColor(dept.color)}" stroke="${EXPORT_COLORS.border}" />`
       );
       parts.push(
-        `<text x="${deptX + 14}" y="${rowY}" font-size="10" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(dept.name)}</text>`
+        `<text x="${columnX + 14}" y="${rowY}" font-size="10" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(dept.name)}</text>`
       );
     });
   }
@@ -432,7 +494,7 @@ export function renderOrganogramSvg(
       const at = { x: pos.x - minX, y: pos.y - minY };
       return node.kind === "department"
         ? renderDepartmentCard(node, at, childCountByParent.get(node.positionId) ?? 0)
-        : renderNodeCard(node, at);
+        : renderNodeCard(node, at, options.colorMode ?? "department", options.familyColorById);
     })
     .join("");
 
@@ -461,7 +523,13 @@ export function renderOrganogramSvg(
   let legendSvg = "";
   let legendHeight = 0;
   if (options.includeLegend) {
-    const legend = renderLegend(options.departments, statusLegendEntriesFor(nodes), cursorY);
+    const legend = renderLegend(
+      options.departments,
+      statusLegendEntriesFor(nodes),
+      cursorY,
+      options.colorMode ?? "department",
+      options.families ?? []
+    );
     legendSvg = legend.svg;
     legendHeight = legend.height;
     cursorY += legendHeight + PADDING;

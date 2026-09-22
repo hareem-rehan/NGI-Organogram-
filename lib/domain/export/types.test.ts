@@ -19,6 +19,7 @@ describe("resolveExportOptions", () => {
       includeLegend: true,
       includeMetadata: true,
       includeConfidentialityLabel: true,
+      colorMode: "department",
     });
   });
 
