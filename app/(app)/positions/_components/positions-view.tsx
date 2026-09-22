@@ -209,6 +209,9 @@ export function PositionsView({ canManage }: PositionsViewProps) {
     return jobFamilies.find((f) => f.id === jobFamilyId)?.name ?? "—";
   }
 
+  // Family id → name, for the Change Reports-To picker's option lines.
+  const jobFamilyNameById = new Map(jobFamilies.map((f) => [f.id, f.name]));
+
   function jobGradeCode(jobGradeId: string | null): string {
     if (!jobGradeId) return "—";
     return jobGrades.find((g) => g.id === jobGradeId)?.code ?? "—";
@@ -478,6 +481,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
             onOpenChange={setMoveDialogOpen}
             position={movingPosition}
             allPositions={allPositions}
+            jobFamilyNameById={jobFamilyNameById}
             onMoved={refresh}
           />
         </>
