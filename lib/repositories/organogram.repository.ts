@@ -17,6 +17,8 @@ export interface OrganogramRawData {
   jobGradeNamesById: Map<string, string>;
   /** Grade code + numeric rank, for the leadership view's L7+ threshold. */
   jobGradesById: Map<string, { code: string; level: number | null }>;
+  /** Family name per id, for the card/details/colour dimension. */
+  jobFamilyNamesById: Map<string, string>;
   occupantNamesByPositionId: Map<string, string>;
   occupantEmployeeIdsByPositionId: Map<string, string>;
 }
@@ -38,7 +40,7 @@ export async function getOrganogramRawData(
   onDate: Date,
   db: DbClient = prisma
 ): Promise<OrganogramRawData> {
-  const [positions, departments, jobGrades, occupantRows] = await Promise.all([
+  const [positions, departments, jobGrades, jobFamilies, occupantRows] = await Promise.all([
     db.position.findMany({
       where: { companyId },
       select: {
@@ -47,6 +49,7 @@ export async function getOrganogramRawData(
         title: true,
         departmentId: true,
         jobGradeId: true,
+        jobFamilyId: true,
         organizationalLevel: true,
         status: true,
         primaryReportsToPositionId: true,
@@ -60,6 +63,10 @@ export async function getOrganogramRawData(
     db.jobGrade.findMany({
       where: { companyId },
       select: { id: true, name: true, code: true, displayOrder: true },
+    }),
+    db.jobFamily.findMany({
+      where: { companyId },
+      select: { id: true, name: true },
     }),
     db.positionAssignment.findMany({
       where: { companyId, ...CURRENT_ASSIGNMENT_DATE_FILTER(onDate) },
@@ -77,6 +84,7 @@ export async function getOrganogramRawData(
     departments,
     jobGradeNamesById: new Map(jobGrades.map((g) => [g.id, g.name])),
     jobGradesById: new Map(jobGrades.map((g) => [g.id, { code: g.code, level: g.displayOrder }])),
+    jobFamilyNamesById: new Map(jobFamilies.map((f) => [f.id, f.name])),
     occupantNamesByPositionId: new Map(
       occupantRows.map((row) => [row.positionId, formatEmployeeDisplayName(row.employee)])
     ),

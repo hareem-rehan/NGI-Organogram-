@@ -70,6 +70,7 @@ export interface OrganogramPositionInput {
   title: string;
   departmentId: string;
   jobGradeId: string | null;
+  jobFamilyId: string | null;
   organizationalLevel: number;
   status: PositionStatus;
   primaryReportsToPositionId: string | null;
@@ -103,6 +104,13 @@ export interface OrganogramNode {
   jobGradeCode: string | null;
   /** Numeric seniority rank behind `jobGradeCode` (the grade's displayOrder), for threshold comparisons. Null when the position has no grade. */
   jobGradeLevel: number | null;
+  /**
+   * The position's job family — career classification, wholly independent of
+   * the reporting tree (docs/DECISIONS.md). Surfaced on the card, the details
+   * panel, and as an optional colour dimension. Null when unclassified.
+   */
+  jobFamilyId: string | null;
+  jobFamilyName: string | null;
   /**
    * Distinguishes a real Position card from the SYNTHETIC department
    * grouping card the leadership view inserts below the root
@@ -177,6 +185,8 @@ export function buildOrganogramGraph(args: {
    * unchanged — a position simply has no grade level when it is absent.
    */
   jobGradesById?: ReadonlyMap<string, { code: string; level: number | null }>;
+  /** Family name per id, for the card/details/colour dimension. Optional so existing callers and fixtures keep working (a position simply has no family name when absent). */
+  jobFamilyNamesById?: ReadonlyMap<string, string>;
   occupantNamesByPositionId: ReadonlyMap<string, string>;
   occupantEmployeeIdsByPositionId: ReadonlyMap<string, string>;
 }): { nodes: OrganogramNode[]; edges: OrganogramEdge[] } {
@@ -186,6 +196,7 @@ export function buildOrganogramGraph(args: {
     departmentsById,
     jobGradeNamesById,
     jobGradesById,
+    jobFamilyNamesById,
     occupantNamesByPositionId,
     occupantEmployeeIdsByPositionId,
   } = args;
@@ -226,6 +237,8 @@ export function buildOrganogramGraph(args: {
         jobGradeName: p.jobGradeId ? (jobGradeNamesById.get(p.jobGradeId) ?? null) : null,
         jobGradeCode: p.jobGradeId ? (jobGradesById?.get(p.jobGradeId)?.code ?? null) : null,
         jobGradeLevel: p.jobGradeId ? (jobGradesById?.get(p.jobGradeId)?.level ?? null) : null,
+        jobFamilyId: p.jobFamilyId,
+        jobFamilyName: p.jobFamilyId ? (jobFamilyNamesById?.get(p.jobFamilyId) ?? null) : null,
         organizationalLevel: p.organizationalLevel,
         positionStatus: p.status,
         occupancyStatus: occupantDisplayName ? "occupied" : "vacant",

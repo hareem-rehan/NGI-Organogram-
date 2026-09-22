@@ -204,6 +204,16 @@ export function PositionsView({ canManage }: PositionsViewProps) {
     return departments.find((d) => d.id === departmentId)?.name ?? "—";
   }
 
+  function jobFamilyName(jobFamilyId: string | null): string {
+    if (!jobFamilyId) return "—";
+    return jobFamilies.find((f) => f.id === jobFamilyId)?.name ?? "—";
+  }
+
+  function jobGradeCode(jobGradeId: string | null): string {
+    if (!jobGradeId) return "—";
+    return jobGrades.find((g) => g.id === jobGradeId)?.code ?? "—";
+  }
+
   function reportsToTitle(position: Position): string {
     if (!position.primaryReportsToPositionId) return "— (root)";
     return (
@@ -338,10 +348,24 @@ export function PositionsView({ canManage }: PositionsViewProps) {
                   Department
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
-                  Reports to
+                  Job Family
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
-                  Level
+                  Reports to
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 py-2 text-left font-medium"
+                  title="Career grade (L2–L18)"
+                >
+                  Grade
+                </th>
+                <th
+                  scope="col"
+                  className="px-4 py-2 text-left font-medium"
+                  title="Depth in the reporting tree (root = 1)"
+                >
+                  Depth
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
                   Status
@@ -362,7 +386,9 @@ export function PositionsView({ canManage }: PositionsViewProps) {
                   <td className="px-4 py-2 font-medium">{position.title}</td>
                   <td className="px-4 py-2">{position.positionCode}</td>
                   <td className="px-4 py-2">{departmentName(position.departmentId)}</td>
+                  <td className="px-4 py-2">{jobFamilyName(position.jobFamilyId)}</td>
                   <td className="px-4 py-2">{reportsToTitle(position)}</td>
+                  <td className="px-4 py-2">{jobGradeCode(position.jobGradeId)}</td>
                   <td className="px-4 py-2">{position.organizationalLevel}</td>
                   <td className="px-4 py-2">
                     <Badge variant={STATUS_BADGE_VARIANT[position.status]}>

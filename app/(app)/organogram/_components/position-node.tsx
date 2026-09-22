@@ -197,9 +197,11 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         {occupantName ? (
           <p className="text-foreground/80 mt-1 truncate text-xs">{occupantName}</p>
         ) : null}
-        {node.jobGradeCode ? (
-          <p className="text-muted-foreground mt-0.5 truncate text-xs font-medium">
-            {node.jobGradeCode}
+        {node.jobGradeCode || node.jobFamilyName ? (
+          <p className="text-muted-foreground mt-0.5 truncate text-xs">
+            {node.jobGradeCode ? <span className="font-medium">{node.jobGradeCode}</span> : null}
+            {node.jobGradeCode && node.jobFamilyName ? " · " : null}
+            {node.jobFamilyName ?? null}
           </p>
         ) : null}
       </button>

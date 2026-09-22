@@ -19,6 +19,8 @@ function makeNode(overrides: Partial<OrganogramNode> = {}): OrganogramNode {
     jobGradeName: null,
     jobGradeCode: null,
     jobGradeLevel: null,
+    jobFamilyId: null,
+    jobFamilyName: null,
     organizationalLevel: 2,
     positionStatus: "ACTIVE",
     occupancyStatus: "vacant",
@@ -80,6 +82,8 @@ describe("PositionNode", () => {
         title: "Tech Lead",
         jobGradeCode: "L7",
         jobGradeLevel: 7,
+        jobFamilyId: null,
+        jobFamilyName: null,
       }),
     });
     expect(screen.getByText("John Doe")).toBeInTheDocument();
@@ -94,6 +98,8 @@ describe("PositionNode", () => {
         occupantDisplayName: "John Doe",
         jobGradeCode: "L7",
         jobGradeLevel: 7,
+        jobFamilyId: null,
+        jobFamilyName: null,
       }),
     });
     // Internal identifier — of no use to a chart reader.
@@ -110,6 +116,8 @@ describe("PositionNode", () => {
         occupantDisplayName: "John Doe",
         jobGradeCode: null,
         jobGradeLevel: null,
+        jobFamilyId: null,
+        jobFamilyName: null,
       }),
     });
     expect(screen.getByText("John Doe")).toBeInTheDocument();

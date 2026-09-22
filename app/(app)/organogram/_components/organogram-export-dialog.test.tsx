@@ -28,6 +28,8 @@ function makeNode(overrides: Partial<OrganogramNode> & { positionId: string }): 
     jobGradeName: null,
     jobGradeCode: null,
     jobGradeLevel: null,
+    jobFamilyId: null,
+    jobFamilyName: null,
     organizationalLevel: 1,
     positionStatus: "ACTIVE",
     occupancyStatus: "vacant",

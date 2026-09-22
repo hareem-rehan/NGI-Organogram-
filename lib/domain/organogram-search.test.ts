@@ -21,6 +21,8 @@ function node(overrides: Partial<OrganogramNode> & { positionId: string }): Orga
     jobGradeName: null,
     jobGradeCode: null,
     jobGradeLevel: null,
+    jobFamilyId: null,
+    jobFamilyName: null,
     organizationalLevel: 1,
     positionStatus: "ACTIVE",
     occupancyStatus: "vacant",
