@@ -65,12 +65,19 @@ export function LevelMappingDialog({
   const careerTrackId = watch("careerTrackId");
   const jobGradeId = watch("jobGradeId");
 
+  // Single-ladder families run one ladder, so there is no ladder to pick:
+  // hide the picker and let the server use the family's default ladder.
+  // Only a family with a parallel Manager ladder shows the choice.
+  const hasManagerLadder = tracks.some((t) => t.kind === "MANAGER");
+
   function onSubmit(values: FormValues) {
     setFormError(null);
     startTransition(async () => {
       const result = await createLevelMappingEntryAction({
         jobFamilyId,
-        careerTrackId: values.careerTrackId,
+        // Omit the ladder in single mode; the server materialises/uses the
+        // family's default (IC) ladder.
+        ...(hasManagerLadder ? { careerTrackId: values.careerTrackId } : {}),
         jobGradeId: values.jobGradeId,
         title: values.title,
       });
@@ -86,8 +93,8 @@ export function LevelMappingDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title="Add level mapping"
-        description="Name the position title valid at this career track and level. This configures career progression only — it does not set any reporting relationship."
+        title="Add title"
+        description="Name the position title valid at this level. This configures career progression only — it does not set any reporting relationship."
       >
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
           {formError ? (
@@ -96,21 +103,23 @@ export function LevelMappingDialog({
             </p>
           ) : null}
 
-          <Field label="Career track" required error={errors.careerTrackId?.message}>
-            {(fieldProps) => (
-              <Select
-                {...fieldProps}
-                value={careerTrackId}
-                onChange={(event) => setValue("careerTrackId", event.target.value)}
-              >
-                {tracks.map((track) => (
-                  <option key={track.id} value={track.id}>
-                    {track.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+          {hasManagerLadder ? (
+            <Field label="Ladder" required error={errors.careerTrackId?.message}>
+              {(fieldProps) => (
+                <Select
+                  {...fieldProps}
+                  value={careerTrackId}
+                  onChange={(event) => setValue("careerTrackId", event.target.value)}
+                >
+                  {tracks.map((track) => (
+                    <option key={track.id} value={track.id}>
+                      {track.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
 
           <Field label="Level" required error={errors.jobGradeId?.message}>
             {(fieldProps) => (
@@ -143,8 +152,8 @@ export function LevelMappingDialog({
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending || tracks.length === 0}>
-              Add mapping
+            <Button type="submit" disabled={pending || jobGrades.length === 0}>
+              Add title
             </Button>
           </DialogFooter>
         </form>

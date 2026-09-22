@@ -199,6 +199,22 @@ export function PositionFormDialog({
     () => careerTracks.filter((t) => t.jobFamilyId === jobFamilyId),
     [careerTracks, jobFamilyId]
   );
+  // Only families that run a parallel Manager ladder need a ladder choice.
+  // A single-ladder family (the common case) hides the picker and classifies
+  // the position onto its base (IC) ladder automatically.
+  const hasManagerLadder = useMemo(
+    () => trackOptions.some((t) => t.kind === "MANAGER"),
+    [trackOptions]
+  );
+  useEffect(() => {
+    if (!jobFamilyId) return;
+    if (!hasManagerLadder) {
+      // Single ladder: pin to the family's base (IC) ladder if it exists,
+      // otherwise leave unset — the family classification is what matters.
+      const base = trackOptions.find((t) => t.kind === "IC");
+      setValue("careerTrackId", base?.id ?? null);
+    }
+  }, [jobFamilyId, hasManagerLadder, trackOptions, setValue]);
 
   // Titles configured for the chosen (family, track, level) cell of the
   // career matrix — offered as suggestions, never enforced.
@@ -337,23 +353,24 @@ export function PositionFormDialog({
             )}
           </Field>
 
-          <Field label="Career track" hint="IC or Manager ladder (optional).">
-            {(fieldProps) => (
-              <Select
-                {...fieldProps}
-                value={careerTrackId ?? ""}
-                disabled={!jobFamilyId}
-                onChange={(event) => setValue("careerTrackId", event.target.value || null)}
-              >
-                <option value="">{jobFamilyId ? "None" : "Select a job family first"}</option>
-                {trackOptions.map((track) => (
-                  <option key={track.id} value={track.id}>
-                    {track.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+          {hasManagerLadder ? (
+            <Field label="Career track" hint="IC or Manager ladder (optional).">
+              {(fieldProps) => (
+                <Select
+                  {...fieldProps}
+                  value={careerTrackId ?? ""}
+                  onChange={(event) => setValue("careerTrackId", event.target.value || null)}
+                >
+                  <option value="">None</option>
+                  {trackOptions.map((track) => (
+                    <option key={track.id} value={track.id}>
+                      {track.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
 
           <Field
             label="Level"

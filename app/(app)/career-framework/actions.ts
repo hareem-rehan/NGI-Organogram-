@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
 import { toAuditActor } from "@/lib/server/audit-actor";
 import {
+  addManagerLadder,
   createCareerTrack,
   createJobFamily,
   createLevelMappingEntry,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/repositories/career-framework.repository";
 import { listJobGradesForCompany } from "@/lib/repositories/job-grade.repository";
 import {
+  addManagerLadderSchema,
   createCareerTrackSchema,
   createJobFamilySchema,
   createLevelMappingEntrySchema,
@@ -99,6 +101,18 @@ export async function deleteCareerTrackAction(input: unknown): Promise<ActionRes
       careerTrackId,
     });
     return null;
+  });
+}
+
+/**
+ * Turns a single-ladder family into the two-column IC/Manager form by
+ * adding a parallel Manager ladder (the base IC ladder is ensured too).
+ */
+export async function addManagerLadderAction(input: unknown): Promise<ActionResult<CareerTrack>> {
+  return runAction(async () => {
+    const user = await requirePermission("career:manage");
+    const { jobFamilyId } = addManagerLadderSchema.parse(input);
+    return addManagerLadder({ companyId: user.companyId, actor: toAuditActor(user), jobFamilyId });
   });
 }
 
