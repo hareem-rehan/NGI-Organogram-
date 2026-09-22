@@ -161,6 +161,52 @@ describe("PositionNode", () => {
     expect(lines.indexOf("Hammad Hussain")).toBeLessThan(lines.indexOf("L10"));
   });
 
+  it("shows the job family alongside the grade under the title", () => {
+    renderNode({
+      node: makeNode({
+        title: "Principal Engineer",
+        jobGradeCode: "L7",
+        jobFamilyId: "fam-swe",
+        jobFamilyName: "Software Engineering",
+      }),
+    });
+    expect(screen.getByText("L7")).toBeInTheDocument();
+    // Grade + family share one line ("L7 · Software Engineering").
+    expect(screen.getByText(/Software Engineering/)).toBeInTheDocument();
+  });
+
+  it("colours a card by its family fill and accent in family mode", () => {
+    renderNode({
+      colorMode: "family",
+      familyColor: { fill: "#cbf2b1", accent: "#6fbf3f" },
+      node: makeNode({
+        title: "Principal Engineer",
+        jobFamilyId: "fam-swe",
+        jobFamilyName: "Software Engineering",
+      }),
+    });
+    const card = screen
+      .getByText("Principal Engineer")
+      .closest('div[style*="border-left-color"]') as HTMLElement;
+    expect(card.style.backgroundColor).toBe("rgb(203, 242, 177)"); // #cbf2b1
+    expect(card.style.borderLeftColor).toBe("rgb(111, 191, 63)"); // #6fbf3f
+  });
+
+  it("in department mode ignores any family colour and keeps the department edge", () => {
+    renderNode({
+      colorMode: "department",
+      familyColor: { fill: "#cbf2b1", accent: "#6fbf3f" },
+      node: makeNode({ title: "Principal Engineer", departmentColor: "#16a34a" }),
+    });
+    const card = screen
+      .getByText("Principal Engineer")
+      .closest('div[style*="border-left-color"]') as HTMLElement;
+    // No family fill applied…
+    expect(card.style.backgroundColor).toBe("");
+    // …and the left edge stays the department colour (#16a34a).
+    expect(card.style.borderLeftColor).toBe("rgb(22, 163, 74)");
+  });
+
   it("shows the occupant's display name for an occupied position, never a raw employee id", () => {
     renderNode({
       node: makeNode({

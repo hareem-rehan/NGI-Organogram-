@@ -20,7 +20,11 @@ import {
   OrganogramToolbar,
   type OrganogramViewMode,
 } from "@/app/(app)/organogram/_components/organogram-toolbar";
-import type { PositionNodeMatchState } from "@/app/(app)/organogram/_components/position-node";
+import type {
+  OrganogramColorMode,
+  PositionNodeMatchState,
+} from "@/app/(app)/organogram/_components/position-node";
+import { buildFamilyColorMap } from "@/lib/domain/organogram-family-colors";
 import {
   computeVisiblePositionIds,
   countHiddenDescendants,
@@ -119,6 +123,10 @@ export function OrganogramView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fitViewSignal, setFitViewSignal] = useState(0);
   const [centerOnNodeId, setCenterOnNodeId] = useState<string | null>(null);
+  // Ephemeral view state (not part of the shareable URL contract). Cards
+  // colour by department by default; "family" switches to the job-family
+  // palette.
+  const [colorMode, setColorMode] = useState<OrganogramColorMode>("department");
 
   // Shallow-routing via the native History API — NOT `router.push`/
   // `router.replace`, which re-invoke the server component tree (a real
@@ -280,6 +288,36 @@ export function OrganogramView({
     }
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
+
+  // Every job family present on the chart, ordered by name so colour
+  // assignment is stable and reproducible, then mapped to the palette.
+  const familiesInOrder = useMemo(() => {
+    if (!data) return [] as { id: string; name: string }[];
+    const seen = new Map<string, string>();
+    for (const node of data.nodes) {
+      if (node.jobFamilyId && node.jobFamilyName && !seen.has(node.jobFamilyId)) {
+        seen.set(node.jobFamilyId, node.jobFamilyName);
+      }
+    }
+    return [...seen.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [data]);
+
+  const familyColorById = useMemo(
+    () => buildFamilyColorMap(familiesInOrder.map((f) => f.id)),
+    [familiesInOrder]
+  );
+
+  const familyLegendEntries = useMemo(
+    () =>
+      familiesInOrder.map((f) => ({
+        id: f.id,
+        name: f.name,
+        color: familyColorById.get(f.id)?.accent ?? "transparent",
+      })),
+    [familiesInOrder, familyColorById]
+  );
 
   const selectedNode = useMemo(
     () => (selectedId ? (positionNodes.find((n) => n.positionId === selectedId) ?? null) : null),
@@ -486,6 +524,8 @@ export function OrganogramView({
       <OrganogramToolbar
         viewMode={layoutFailed ? "outline" : (urlState.display as OrganogramViewMode)}
         onViewModeChange={(mode) => updateUrl({ display: mode }, { push: true })}
+        colorMode={colorMode}
+        onColorModeChange={setColorMode}
         showPlanned={urlState.planned}
         onShowPlannedChange={(planned) => updateUrl({ planned }, { push: false })}
         onExpandAll={handleExpandAll}
@@ -583,6 +623,9 @@ export function OrganogramView({
                 onLayoutError={() => setLayoutFailed(true)}
                 fitViewSignal={fitViewSignal}
                 departmentLegendEntries={departmentLegendEntries}
+                colorMode={colorMode}
+                familyColorById={familyColorById}
+                familyLegendEntries={familyLegendEntries}
                 matchStateById={matchStateById}
                 centerOnNodeId={centerOnNodeId}
               />

@@ -8,6 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
 import type { OrganogramNode } from "@/lib/domain/organogram";
+import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
+
+/** Which dimension drives a card's colour. Department is the default. */
+export type OrganogramColorMode = "department" | "family";
 
 /** Phase 9: how this node relates to the active search/filter/focus criteria — "none" (the Phase 8 default, no search/filter/focus active) never renders a Match/Context badge and never dims. */
 export type PositionNodeMatchState = "none" | "match" | "context";
@@ -20,6 +24,10 @@ export interface PositionNodeData extends Record<string, unknown> {
   onToggleCollapse: (positionId: string) => void;
   onSelect: (positionId: string) => void;
   matchState?: PositionNodeMatchState;
+  /** Colour dimension; defaults to "department" when omitted. */
+  colorMode?: OrganogramColorMode;
+  /** The position's family colour, when known — used only in "family" mode. */
+  familyColor?: FamilyColor | null;
 }
 
 /**
@@ -104,9 +112,20 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
     onToggleCollapse,
     onSelect,
     matchState = "none",
+    colorMode = "department",
+    familyColor = null,
   } = data;
 
   if (node.kind === "department") return <DepartmentNodeCard data={data} />;
+
+  // In family mode a classified card takes its family's fill + edge; an
+  // unclassified position (no family) falls back to the neutral card. In
+  // department mode only the left edge is coloured (the Phase 8 look).
+  const familyStyled = colorMode === "family" && familyColor !== null;
+  const cardBackground = familyStyled ? familyColor!.fill : undefined;
+  const leftEdgeColor = familyStyled
+    ? familyColor!.accent
+    : (node.departmentColor ?? "var(--color-border)");
 
   // The card leads with the ROLE and adds the person underneath, matching
   // the company's own chart: most approved roles have nobody in them yet,
@@ -138,7 +157,9 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // inherited value at this element so the buttons below actually
         // receive events — see e2e/organogram.spec.ts, which caught this
         // as a real click-through-to-the-pane failure before this fix.
-        "bg-background pointer-events-auto flex flex-col overflow-hidden rounded-lg border-2 border-l-[6px] shadow-sm transition-colors",
+        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border-2 border-l-[6px] shadow-sm transition-colors",
+        // Neutral card background unless a family fill is applied below.
+        !familyStyled && "bg-background",
         isSelected
           ? "border-primary"
           : matchState === "match"
@@ -155,7 +176,8 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
       style={{
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
-        borderLeftColor: node.departmentColor ?? "var(--color-border)",
+        borderLeftColor: leftEdgeColor,
+        backgroundColor: cardBackground,
       }}
     >
       <Handle type="target" position={Position.Top} className="!bg-border !border-none" />

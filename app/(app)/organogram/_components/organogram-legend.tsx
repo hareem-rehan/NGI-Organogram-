@@ -11,6 +11,15 @@ interface DepartmentLegendEntry {
   color: string | null;
 }
 
+export interface FamilyLegendEntry {
+  id: string;
+  name: string;
+  /** The family's accent colour (the card edge / swatch). */
+  color: string;
+}
+
+type OrganogramColorMode = "department" | "family";
+
 /**
  * Collapsed by default (a small toggle button) rather than an
  * always-open overlay — an always-open legend was found (via
@@ -22,8 +31,12 @@ interface DepartmentLegendEntry {
  */
 export function OrganogramLegend({
   departments,
+  colorMode = "department",
+  families = [],
 }: {
   departments: readonly DepartmentLegendEntry[];
+  colorMode?: OrganogramColorMode;
+  families?: readonly FamilyLegendEntry[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -107,7 +120,25 @@ export function OrganogramLegend({
           Context — shown to preserve the real reporting path, not itself a match
         </li>
       </ul>
-      {departments.length > 0 ? (
+      {colorMode === "family" ? (
+        families.length > 0 ? (
+          <>
+            <p className="text-foreground mt-3 mb-1 font-semibold">Job families</p>
+            <ul className="flex max-h-32 flex-col gap-1.5 overflow-y-auto">
+              {families.map((family) => (
+                <li key={family.id} className="flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="border-border inline-block size-2.5 shrink-0 rounded-full border"
+                    style={{ backgroundColor: family.color }}
+                  />
+                  <span className="truncate">{family.name}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null
+      ) : departments.length > 0 ? (
         <>
           <p className="text-foreground mt-3 mb-1 font-semibold">Departments</p>
           <ul className="flex max-h-32 flex-col gap-1.5 overflow-y-auto">
