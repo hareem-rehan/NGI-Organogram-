@@ -13,7 +13,7 @@ import { Plus, Trash2, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  createCareerTrackAction,
+  addManagerLadderAction,
   deleteCareerTrackAction,
   deleteJobFamilyAction,
   deleteLevelMappingEntryAction,
@@ -160,12 +160,39 @@ export function CareerFrameworkView({
           const familyTracks = tracksByFamily.get(family.id) ?? [];
           const familyEntries = entriesByFamily.get(family.id) ?? [];
           const department = departmentsById.get(family.departmentId);
-          const missingKinds = (["IC", "MANAGER"] as const).filter(
-            (kind) => !familyTracks.some((t) => t.kind === kind)
-          );
+          const icTrack = familyTracks.find((t) => t.kind === "IC");
+          const managerTrack = familyTracks.find((t) => t.kind === "MANAGER");
+          // Single-ladder unless a parallel Manager ladder has been added.
+          const isSingleLadder = !managerTrack;
+
+          // Matrix columns. A single-ladder family shows one neutral "Title"
+          // column; a family that runs both ladders shows the two named
+          // columns, and only the Manager column can be removed (deleting it
+          // collapses the family back to a single ladder).
+          const columns: {
+            key: string;
+            label: string;
+            trackId: string | undefined;
+            deletableTrack: CareerTrack | null;
+          }[] = isSingleLadder
+            ? [{ key: "single", label: "Title", trackId: icTrack?.id, deletableTrack: null }]
+            : [
+                {
+                  key: icTrack!.id,
+                  label: icTrack!.name,
+                  trackId: icTrack!.id,
+                  deletableTrack: null,
+                },
+                {
+                  key: managerTrack!.id,
+                  label: managerTrack!.name,
+                  trackId: managerTrack!.id,
+                  deletableTrack: managerTrack!,
+                },
+              ];
 
           // Rows = levels that appear in this family's entries, sorted by
-          // the grade's own rank (displayOrder). Columns = the family's tracks.
+          // the grade's own rank (displayOrder).
           const gradeIds = [...new Set(familyEntries.map((e) => e.jobGradeId))];
           const rows = gradeIds
             .map((id) => gradesById.get(id))
@@ -190,26 +217,25 @@ export function CareerFrameworkView({
                 </div>
                 {canManage ? (
                   <div className="flex flex-wrap items-center gap-2">
-                    {missingKinds.map((kind) => (
+                    {isSingleLadder ? (
                       <Button
-                        key={kind}
                         size="sm"
-                        variant="secondary"
+                        variant="ghost"
                         onClick={() =>
-                          runManage(() => createCareerTrackAction({ jobFamilyId: family.id, kind }))
+                          runManage(() => addManagerLadderAction({ jobFamilyId: family.id }))
                         }
+                        title="Add a parallel manager ladder for roles that have separate IC and manager titles at the same level"
                       >
-                        <Plus aria-hidden="true" className="size-4" /> Add{" "}
-                        {kind === "IC" ? "IC" : "Manager"} track
+                        <Plus aria-hidden="true" className="size-4" /> Add manager ladder
                       </Button>
-                    ))}
+                    ) : null}
                     <Button
                       size="sm"
                       variant="secondary"
                       onClick={() => setMappingForFamily(family)}
-                      disabled={familyTracks.length === 0}
+                      disabled={levels.length === 0}
                     >
-                      <Plus aria-hidden="true" className="size-4" /> Add mapping
+                      <Plus aria-hidden="true" className="size-4" /> Add title
                     </Button>
                     <Button
                       size="sm"
@@ -236,99 +262,94 @@ export function CareerFrameworkView({
                 ) : null}
               </div>
 
-              {familyTracks.length === 0 ? (
-                <p className="text-muted-foreground mt-3 text-sm">
-                  No tracks yet. {canManage ? "Add an IC or Manager track to begin." : ""}
-                </p>
-              ) : (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full min-w-[32rem] border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b text-left">
-                        <th className="text-muted-foreground w-20 py-2 pr-2 font-medium">Level</th>
-                        {familyTracks.map((track) => (
-                          <th key={track.id} className="py-2 pr-2 font-medium">
-                            <span className="flex items-center gap-2">
-                              {track.name}
-                              {canManage ? (
-                                <button
-                                  type="button"
-                                  aria-label={`Delete ${track.name} track`}
-                                  className="text-muted-foreground hover:text-destructive"
-                                  onClick={() =>
-                                    runManage(() =>
-                                      deleteCareerTrackAction({ careerTrackId: track.id })
-                                    )
-                                  }
-                                >
-                                  <Trash2 aria-hidden="true" className="size-3.5" />
-                                </button>
-                              ) : null}
-                            </span>
-                          </th>
-                        ))}
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[32rem] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="text-muted-foreground w-20 py-2 pr-2 font-medium">Level</th>
+                      {columns.map((col) => (
+                        <th key={col.key} className="py-2 pr-2 font-medium">
+                          <span className="flex items-center gap-2">
+                            {col.label}
+                            {canManage && col.deletableTrack ? (
+                              <button
+                                type="button"
+                                aria-label="Remove manager ladder"
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={() =>
+                                  runManage(() =>
+                                    deleteCareerTrackAction({
+                                      careerTrackId: col.deletableTrack!.id,
+                                    })
+                                  )
+                                }
+                              >
+                                <Trash2 aria-hidden="true" className="size-3.5" />
+                              </button>
+                            ) : null}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={columns.length + 1} className="text-muted-foreground py-3">
+                          {levels.length === 0
+                            ? "Set up levels first, then add titles."
+                            : "No titles yet."}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {rows.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={familyTracks.length + 1}
-                            className="text-muted-foreground py-3"
-                          >
-                            No level mappings yet.
-                          </td>
+                    ) : (
+                      rows.map((grade) => (
+                        <tr key={grade.id} className="border-b align-top">
+                          <td className="py-2 pr-2 font-medium">{grade.code}</td>
+                          {columns.map((col) => {
+                            const cell = familyEntries.filter(
+                              (e) => e.careerTrackId === col.trackId && e.jobGradeId === grade.id
+                            );
+                            return (
+                              <td key={col.key} className="py-2 pr-2">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {cell.map((entry) => (
+                                    <Badge
+                                      key={entry.id}
+                                      variant="secondary"
+                                      className="flex items-center gap-1"
+                                    >
+                                      {entry.title}
+                                      {canManage ? (
+                                        <button
+                                          type="button"
+                                          aria-label={`Remove ${entry.title}`}
+                                          className="hover:text-destructive"
+                                          onClick={() =>
+                                            runManage(() =>
+                                              deleteLevelMappingEntryAction({
+                                                levelMappingEntryId: entry.id,
+                                              })
+                                            )
+                                          }
+                                        >
+                                          ×
+                                        </button>
+                                      ) : null}
+                                    </Badge>
+                                  ))}
+                                  {cell.length === 0 ? (
+                                    <span className="text-muted-foreground">—</span>
+                                  ) : null}
+                                </div>
+                              </td>
+                            );
+                          })}
                         </tr>
-                      ) : (
-                        rows.map((grade) => (
-                          <tr key={grade.id} className="border-b align-top">
-                            <td className="py-2 pr-2 font-medium">{grade.code}</td>
-                            {familyTracks.map((track) => {
-                              const cell = familyEntries.filter(
-                                (e) => e.careerTrackId === track.id && e.jobGradeId === grade.id
-                              );
-                              return (
-                                <td key={track.id} className="py-2 pr-2">
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {cell.map((entry) => (
-                                      <Badge
-                                        key={entry.id}
-                                        variant="secondary"
-                                        className="flex items-center gap-1"
-                                      >
-                                        {entry.title}
-                                        {canManage ? (
-                                          <button
-                                            type="button"
-                                            aria-label={`Remove ${entry.title}`}
-                                            className="hover:text-destructive"
-                                            onClick={() =>
-                                              runManage(() =>
-                                                deleteLevelMappingEntryAction({
-                                                  levelMappingEntryId: entry.id,
-                                                })
-                                              )
-                                            }
-                                          >
-                                            ×
-                                          </button>
-                                        ) : null}
-                                      </Badge>
-                                    ))}
-                                    {cell.length === 0 ? (
-                                      <span className="text-muted-foreground">—</span>
-                                    ) : null}
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </section>
           );
         })

@@ -99,6 +99,8 @@ export function OrganogramDetailsPanel({
         </dd>
         <dt className="text-muted-foreground">Organizational level</dt>
         <dd>{node.organizationalLevel}</dd>
+        <dt className="text-muted-foreground">Job family</dt>
+        <dd>{node.jobFamilyName ?? "—"}</dd>
         <dt className="text-muted-foreground">Job grade</dt>
         <dd>{node.jobGradeName ?? "—"}</dd>
         <dt className="text-muted-foreground">Position code</dt>

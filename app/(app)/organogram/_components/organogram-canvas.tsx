@@ -22,11 +22,16 @@ import {
 } from "@/app/(app)/organogram/_lib/elk-layout";
 import {
   NODE_TYPES,
+  type OrganogramColorMode,
   type PositionNodeData,
   type PositionNodeMatchState,
 } from "@/app/(app)/organogram/_components/position-node";
-import { OrganogramLegend } from "@/app/(app)/organogram/_components/organogram-legend";
+import {
+  OrganogramLegend,
+  type FamilyLegendEntry,
+} from "@/app/(app)/organogram/_components/organogram-legend";
 import type { OrganogramEdge, OrganogramNode } from "@/lib/domain/organogram";
+import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 interface DepartmentLegendEntry {
   id: string;
@@ -46,6 +51,10 @@ interface OrganogramCanvasProps {
   /** Bumped by the parent's Reset/Fit toolbar actions to trigger an imperative fitView(). */
   fitViewSignal: number;
   departmentLegendEntries: readonly DepartmentLegendEntry[];
+  /** Which dimension colours the cards, and (in family mode) the per-family colours + legend. */
+  colorMode: OrganogramColorMode;
+  familyColorById: ReadonlyMap<string, FamilyColor>;
+  familyLegendEntries: readonly FamilyLegendEntry[];
   /** Phase 9: Match/Context styling per node — omitted or "none" renders exactly like Phase 8. */
   matchStateById?: ReadonlyMap<string, PositionNodeMatchState>;
   /**
@@ -72,6 +81,9 @@ function CanvasInner({
   onLayoutError,
   fitViewSignal,
   departmentLegendEntries,
+  colorMode,
+  familyColorById,
+  familyLegendEntries,
   matchStateById,
   centerOnNodeId,
 }: OrganogramCanvasProps) {
@@ -143,6 +155,8 @@ function CanvasInner({
             hiddenDescendantCount: hiddenDescendantCounts.get(node.positionId) ?? 0,
             isSelected: selectedId === node.positionId,
             matchState: matchStateById?.get(node.positionId) ?? "none",
+            colorMode,
+            familyColor: node.jobFamilyId ? (familyColorById.get(node.jobFamilyId) ?? null) : null,
             onToggleCollapse,
             onSelect,
           } satisfies PositionNodeData,
@@ -154,6 +168,8 @@ function CanvasInner({
       hiddenDescendantCounts,
       selectedId,
       matchStateById,
+      colorMode,
+      familyColorById,
       onToggleCollapse,
       onSelect,
     ]
@@ -217,7 +233,11 @@ function CanvasInner({
         </div>
       </Panel>
       <Panel position="bottom-left">
-        <OrganogramLegend departments={departmentLegendEntries} />
+        <OrganogramLegend
+          departments={departmentLegendEntries}
+          colorMode={colorMode}
+          families={familyLegendEntries}
+        />
       </Panel>
     </ReactFlow>
   );

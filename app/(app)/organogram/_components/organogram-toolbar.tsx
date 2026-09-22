@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type OrganogramViewMode = "visual" | "outline";
+export type OrganogramColorMode = "department" | "family";
 
 interface OrganogramToolbarProps {
   viewMode: OrganogramViewMode;
   onViewModeChange: (mode: OrganogramViewMode) => void;
+  colorMode: OrganogramColorMode;
+  onColorModeChange: (mode: OrganogramColorMode) => void;
   showPlanned: boolean;
   onShowPlannedChange: (value: boolean) => void;
   onExpandAll: () => void;
@@ -21,6 +24,8 @@ interface OrganogramToolbarProps {
 export function OrganogramToolbar({
   viewMode,
   onViewModeChange,
+  colorMode,
+  onColorModeChange,
   showPlanned,
   onShowPlannedChange,
   onExpandAll,
@@ -76,6 +81,36 @@ export function OrganogramToolbar({
             <RefreshCw aria-hidden="true" className="size-4" />
             Reset View
           </Button>
+
+          <div className="bg-border mx-1 h-6 w-px" aria-hidden="true" />
+
+          <div
+            role="group"
+            aria-label="Colour by"
+            className="border-border flex items-center rounded-md border p-0.5"
+          >
+            <span className="text-muted-foreground px-2 text-xs">Colour by</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-pressed={colorMode === "department"}
+              className={cn(colorMode === "department" && "bg-accent")}
+              onClick={() => onColorModeChange("department")}
+            >
+              Department
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-pressed={colorMode === "family"}
+              className={cn(colorMode === "family" && "bg-accent")}
+              onClick={() => onColorModeChange("family")}
+            >
+              Job family
+            </Button>
+          </div>
         </>
       ) : null}
 

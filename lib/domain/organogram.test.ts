@@ -24,6 +24,7 @@ function pos(
     title: `Title ${overrides.id}`,
     departmentId: DEPT.id,
     jobGradeId: null,
+    jobFamilyId: null,
     organizationalLevel: 1,
     status: "ACTIVE",
     primaryReportsToPositionId: null,

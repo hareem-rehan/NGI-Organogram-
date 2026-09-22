@@ -83,13 +83,18 @@ export const deleteCareerTrackSchema = z.object({ careerTrackId: z.string().uuid
 export const createLevelMappingEntrySchema = z
   .object({
     jobFamilyId: z.string().uuid(),
-    careerTrackId: z.string().uuid(),
+    // Optional: omitted in single-ladder mode, where the family's default
+    // (IC) ladder is used. Provided only to target a specific ladder.
+    careerTrackId: z.string().uuid().optional(),
     jobGradeId: z.string().uuid(),
     title: titleSchema,
     displayOrder: z.number().int().nullable().optional(),
   })
   .strict();
 export type CreateLevelMappingEntryValues = z.infer<typeof createLevelMappingEntrySchema>;
+
+export const addManagerLadderSchema = z.object({ jobFamilyId: z.string().uuid() }).strict();
+export type AddManagerLadderValues = z.infer<typeof addManagerLadderSchema>;
 
 export const deleteLevelMappingEntrySchema = z
   .object({ levelMappingEntryId: z.string().uuid() })

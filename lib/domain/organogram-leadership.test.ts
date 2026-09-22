@@ -26,6 +26,8 @@ function node(overrides: Partial<OrganogramNode> & { positionId: string }): Orga
     jobGradeName: "Leadership",
     jobGradeCode: "L9",
     jobGradeLevel: 9,
+    jobFamilyId: null,
+    jobFamilyName: null,
     organizationalLevel: 2,
     positionStatus: "ACTIVE",
     occupancyStatus: "occupied",
@@ -50,6 +52,8 @@ function ceo(): OrganogramNode {
     primaryReportsToPositionId: null,
     jobGradeCode: "L18",
     jobGradeLevel: 18,
+    jobFamilyId: null,
+    jobFamilyName: null,
   });
 }
 
@@ -112,6 +116,8 @@ describe("buildLeadershipView — department-first shape", () => {
       primaryReportsToPositionId: "vp",
       jobGradeCode: "L7",
       jobGradeLevel: 7,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([ceo(), cto, vp, lead], opts());
@@ -166,6 +172,8 @@ describe("buildLeadershipView — the L7 threshold", () => {
       title: "Tech Lead",
       jobGradeCode: "L4",
       jobGradeLevel: 4,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([ceo(), impostor], hidingOpts());
@@ -190,6 +198,8 @@ describe("buildLeadershipView — the L7 threshold", () => {
       organizationalLevel: 9,
       jobGradeCode: "L12",
       jobGradeLevel: 12,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
     // Shallow (organizationalLevel 2) but junior grade: must not.
     const shallowJunior = node({
@@ -197,6 +207,8 @@ describe("buildLeadershipView — the L7 threshold", () => {
       organizationalLevel: 2,
       jobGradeCode: "L3",
       jobGradeLevel: 3,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([ceo(), deepLeader, shallowJunior], hidingOpts());
@@ -231,6 +243,8 @@ describe("buildLeadershipView — exclusions", () => {
       jobGradeName: null,
       jobGradeCode: null,
       jobGradeLevel: null,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([ceo(), ungraded], opts());
@@ -246,6 +260,8 @@ describe("buildLeadershipView — exclusions", () => {
       jobGradeName: null,
       jobGradeCode: null,
       jobGradeLevel: null,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([ceo(), ungraded], opts({ hideUngraded: true }));
@@ -264,6 +280,8 @@ describe("buildLeadershipView — exclusions", () => {
       occupantDisplayName: null,
       jobGradeId: null,
       jobGradeLevel: null,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([vacantRoot], opts());
@@ -286,6 +304,8 @@ describe("buildLeadershipView — exclusions", () => {
       primaryReportsToPositionId: "vacant-mgr",
       jobGradeCode: "L7",
       jobGradeLevel: 7,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([ceo(), cto, vacantManager, lead], hidingOpts());
@@ -303,6 +323,8 @@ describe("buildLeadershipView — exclusions", () => {
       occupantDisplayName: null,
       jobGradeCode: "L2",
       jobGradeLevel: 2,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([ceo(), vacantAndJunior], hidingOpts());
@@ -321,6 +343,8 @@ describe("buildLeadershipView — below the threshold, by default, is folded not
       primaryReportsToPositionId: "principal",
       jobGradeCode: "L6",
       jobGradeLevel: 6,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([ceo(), principal, senior], opts());
@@ -369,6 +393,8 @@ describe("buildLeadershipView — below the threshold, by default, is folded not
       primaryReportsToPositionId: null,
       jobGradeCode: "L2",
       jobGradeLevel: 2,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const view = buildLeadershipView([junyorRoot], opts());

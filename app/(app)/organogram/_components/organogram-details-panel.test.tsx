@@ -18,6 +18,8 @@ function makeNode(overrides: Partial<OrganogramNode> = {}): OrganogramNode {
     jobGradeName: "Director",
     jobGradeCode: null,
     jobGradeLevel: null,
+    jobFamilyId: null,
+    jobFamilyName: null,
     organizationalLevel: 2,
     positionStatus: "ACTIVE",
     occupancyStatus: "vacant",
@@ -92,14 +94,28 @@ describe("OrganogramDetailsPanel", () => {
   it("shows a dash for a missing job grade", () => {
     render(
       <OrganogramDetailsPanel
-        node={makeNode({ jobGradeName: null })}
+        node={makeNode({ jobGradeName: null, jobFamilyName: "Software Engineering" })}
         canViewEmployeeDetails={true}
         onClose={vi.fn()}
         onFocusPosition={vi.fn()}
         onFocusDepartment={vi.fn()}
       />
     );
+    // The Job grade value renders as a dash (job family is set, so only one).
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("shows the job family when set", () => {
+    render(
+      <OrganogramDetailsPanel
+        node={makeNode({ jobFamilyName: "Software Engineering" })}
+        canViewEmployeeDetails={true}
+        onClose={vi.fn()}
+        onFocusPosition={vi.fn()}
+        onFocusDepartment={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Software Engineering")).toBeInTheDocument();
   });
 
   it("links to the filtered Positions list using the position code", () => {

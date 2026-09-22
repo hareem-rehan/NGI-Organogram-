@@ -11,7 +11,7 @@ import type {
 
 vi.mock("@/app/(app)/career-framework/actions", () => ({
   getCareerFrameworkAction: vi.fn(),
-  createCareerTrackAction: vi.fn(),
+  addManagerLadderAction: vi.fn(),
   deleteCareerTrackAction: vi.fn(),
   deleteJobFamilyAction: vi.fn(),
   deleteLevelMappingEntryAction: vi.fn(),
@@ -23,6 +23,7 @@ vi.mock("@/app/(app)/career-framework/actions", () => ({
 
 import { CareerFrameworkView } from "./career-framework-view";
 import {
+  addManagerLadderAction,
   getCareerFrameworkAction,
   provisionStandardLevelsAction,
 } from "@/app/(app)/career-framework/actions";
@@ -167,9 +168,53 @@ describe("CareerFrameworkView", () => {
     expect(
       screen.queryByRole("button", { name: /delete software engineering/i })
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /add mapping/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add title/i })).not.toBeInTheDocument();
     // The titles are still readable.
     expect(screen.getByText("Principal Software Engineer")).toBeInTheDocument();
+  });
+
+  it("single-ladder family: one neutral Title column, no IC/Manager framing", () => {
+    renderView({
+      initialCareerTracks: [IC],
+      initialLevelMappingEntries: [entry("e-ic", IC.id, L7.id, "Principal Software Engineer")],
+    });
+    // A single, neutrally-labelled column — no "Individual Contributor" or
+    // "Manager" column headers forced on the user.
+    expect(screen.getByRole("columnheader", { name: /^title$/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: /individual contributor/i })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /^manager$/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Principal Software Engineer")).toBeInTheDocument();
+    // Offers the optional escalation to a parallel manager ladder.
+    expect(screen.getByRole("button", { name: /add manager ladder/i })).toBeInTheDocument();
+  });
+
+  it("adding a manager ladder calls the action", async () => {
+    const user = userEvent.setup();
+    vi.mocked(addManagerLadderAction).mockResolvedValue({
+      ok: true,
+      data: { id: "t-new" } as never,
+    });
+    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
+      ok: true,
+      data: {
+        jobFamilies: [FAMILY],
+        careerTracks: [IC, MGR],
+        levelMappingEntries: [],
+        jobGrades: [L7],
+      },
+    });
+    renderView({ initialCareerTracks: [IC], initialLevelMappingEntries: [] });
+
+    await user.click(screen.getByRole("button", { name: /add manager ladder/i }));
+    expect(addManagerLadderAction).toHaveBeenCalledWith({ jobFamilyId: FAMILY.id });
+  });
+
+  it("dual-ladder family: no 'add manager ladder' button; the manager column is removable", () => {
+    renderView(); // default has IC + MGR
+    expect(screen.queryByRole("button", { name: /add manager ladder/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /remove manager ladder/i })).toBeInTheDocument();
   });
 
   it("offers a one-click 'set up standard levels' action when no levels exist yet", () => {

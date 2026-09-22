@@ -258,6 +258,56 @@ export async function createCareerTrack(
   });
 }
 
+/**
+ * The base "single ladder" of a family. Every family has one implicit
+ * career ladder; we model it as its IC track. Most orgs never need the
+ * IC-vs-Manager distinction, so the framework does not force it: a family
+ * starts with no track rows, and the first title added materialises this
+ * default ladder. Only a family that genuinely runs parallel IC and
+ * manager ladders adds a second (Manager) track — see `addManagerLadder`.
+ *
+ * Idempotent: returns the existing IC track when one is already present.
+ */
+export async function ensureDefaultTrack(
+  companyId: string,
+  jobFamilyId: string,
+  actor: AuditActor | undefined,
+  db: DbClient = prisma
+): Promise<CareerTrack> {
+  return withTransaction(db, async (tx) => {
+    const existing = await tx.careerTrack.findFirst({
+      where: { companyId, jobFamilyId, kind: "IC" },
+    });
+    if (existing) return existing;
+    return createCareerTrack({ companyId, actor, jobFamilyId, kind: "IC" }, tx);
+  });
+}
+
+/**
+ * Adds a parallel Manager ladder to a family, turning its single-ladder
+ * matrix into the two-column IC/Manager form. The base (IC) ladder is
+ * ensured first so the two columns always coexist. No-ops sensibly if a
+ * Manager ladder already exists (the unique (company, family, kind) makes
+ * the create a friendly conflict).
+ */
+export async function addManagerLadder(
+  input: { companyId: string; actor?: AuditActor; jobFamilyId: string },
+  db: DbClient = prisma
+): Promise<CareerTrack> {
+  return withTransaction(db, async (tx) => {
+    await ensureDefaultTrack(input.companyId, input.jobFamilyId, input.actor, tx);
+    return createCareerTrack(
+      {
+        companyId: input.companyId,
+        actor: input.actor,
+        jobFamilyId: input.jobFamilyId,
+        kind: "MANAGER",
+      },
+      tx
+    );
+  });
+}
+
 export async function deleteCareerTrack(
   input: { companyId: string; actor?: AuditActor; careerTrackId: string },
   db: DbClient = prisma
@@ -265,6 +315,21 @@ export async function deleteCareerTrack(
   return withTransaction(db, async (tx) => {
     const existing = await findCareerTrackById(input.careerTrackId, input.companyId, tx);
     if (!existing) throw new NotFoundError("CareerTrack", input.careerTrackId);
+
+    // The IC track is the family's base ladder. While a parallel Manager
+    // ladder exists it cannot be removed on its own (that would leave the
+    // manager ladder orphaned as the base) — remove the manager ladder
+    // first. Deleting the manager ladder, or the sole IC ladder, is fine.
+    if (existing.kind === "IC") {
+      const managerTrack = await tx.careerTrack.findFirst({
+        where: { companyId: input.companyId, jobFamilyId: existing.jobFamilyId, kind: "MANAGER" },
+      });
+      if (managerTrack) {
+        throw new ConflictError(
+          "Remove the manager ladder before removing this family's base ladder."
+        );
+      }
+    }
 
     const positionCount = await countPositionsInCareerTrack(
       input.careerTrackId,
@@ -305,7 +370,13 @@ export interface CreateLevelMappingEntryInput {
   companyId: string;
   actor?: AuditActor;
   jobFamilyId: string;
-  careerTrackId: string;
+  /**
+   * The ladder this title belongs to. Optional: omit it in single-ladder
+   * mode and the family's default (IC) ladder is materialised and used.
+   * Provide it only to target a specific ladder (e.g. the Manager ladder
+   * of a family that runs both).
+   */
+  careerTrackId?: string | null;
   jobGradeId: string;
   title: string;
   displayOrder?: number | null;
@@ -325,15 +396,25 @@ export async function createLevelMappingEntry(
         `Job family ${input.jobFamilyId} does not exist in this company.`
       );
     }
-    const track = await findCareerTrackById(input.careerTrackId, input.companyId, tx);
-    if (!track) {
-      throw new CrossCompanyError(
-        `Career track ${input.careerTrackId} does not exist in this company.`
-      );
+
+    // Single-ladder mode: no track was chosen, so materialise/reuse the
+    // family's default (IC) ladder. Otherwise validate the chosen track.
+    let track: CareerTrack;
+    if (!input.careerTrackId) {
+      track = await ensureDefaultTrack(input.companyId, input.jobFamilyId, input.actor, tx);
+    } else {
+      const chosen = await findCareerTrackById(input.careerTrackId, input.companyId, tx);
+      if (!chosen) {
+        throw new CrossCompanyError(
+          `Career track ${input.careerTrackId} does not exist in this company.`
+        );
+      }
+      if (chosen.jobFamilyId !== input.jobFamilyId) {
+        throw new ConflictError("The career track does not belong to the chosen job family.");
+      }
+      track = chosen;
     }
-    if (track.jobFamilyId !== input.jobFamilyId) {
-      throw new ConflictError("The career track does not belong to the chosen job family.");
-    }
+
     const grade = await findJobGradeById(input.jobGradeId, input.companyId, tx);
     if (!grade) {
       throw new CrossCompanyError(`Level ${input.jobGradeId} does not exist in this company.`);
@@ -345,7 +426,7 @@ export async function createLevelMappingEntry(
         data: {
           companyId: input.companyId,
           jobFamilyId: input.jobFamilyId,
-          careerTrackId: input.careerTrackId,
+          careerTrackId: track.id,
           jobGradeId: input.jobGradeId,
           title: input.title.trim(),
           displayOrder: input.displayOrder ?? null,

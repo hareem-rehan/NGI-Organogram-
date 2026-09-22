@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addManagerLadder,
   createCareerTrack,
   createJobFamily,
   createLevelMappingEntry,
   deleteCareerTrack,
   deleteJobFamily,
   deleteLevelMappingEntry,
+  ensureDefaultTrack,
   updateJobFamily,
 } from "@/lib/services/career-framework.service";
 import { ConflictError, CrossCompanyError, NotFoundError } from "@/lib/domain/errors";
@@ -354,5 +356,107 @@ describe("career-framework.service — level mapping", () => {
     await expect(
       updateJobFamily({ companyId: b.id, jobFamilyId: familyA.id, name: "hijack" })
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("career-framework.service — single ladder by default", () => {
+  it("createLevelMappingEntry with no track materialises the family's default (IC) ladder", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const grade = await makeJobGrade(company.id, { code: "L7", displayOrder: 7 });
+    const family = await createJobFamily({
+      companyId: company.id,
+      departmentId: dept.id,
+      name: "SWE",
+      code: "SWE",
+    });
+
+    // No careerTrackId supplied — the family has no tracks yet.
+    const entry = await createLevelMappingEntry({
+      companyId: company.id,
+      jobFamilyId: family.id,
+      jobGradeId: grade.id,
+      title: "Principal Software Engineer",
+    });
+
+    const tracks = await testPrisma.careerTrack.findMany({ where: { jobFamilyId: family.id } });
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0]!.kind).toBe("IC");
+    expect(entry.careerTrackId).toBe(tracks[0]!.id);
+  });
+
+  it("ensureDefaultTrack is idempotent — reuses the existing IC ladder", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const family = await createJobFamily({
+      companyId: company.id,
+      departmentId: dept.id,
+      name: "SWE",
+      code: "SWE",
+    });
+
+    const first = await ensureDefaultTrack(company.id, family.id, undefined);
+    const second = await ensureDefaultTrack(company.id, family.id, undefined);
+
+    expect(second.id).toBe(first.id);
+    expect(await testPrisma.careerTrack.count({ where: { jobFamilyId: family.id } })).toBe(1);
+  });
+
+  it("addManagerLadder ensures the base IC ladder and adds the Manager ladder", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const family = await createJobFamily({
+      companyId: company.id,
+      departmentId: dept.id,
+      name: "SWE",
+      code: "SWE",
+    });
+
+    const manager = await addManagerLadder({ companyId: company.id, jobFamilyId: family.id });
+
+    expect(manager.kind).toBe("MANAGER");
+    const kinds = (await testPrisma.careerTrack.findMany({ where: { jobFamilyId: family.id } }))
+      .map((t) => t.kind)
+      .sort();
+    expect(kinds).toEqual(["IC", "MANAGER"]);
+  });
+
+  it("refuses to delete the base IC ladder while a Manager ladder exists", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const family = await createJobFamily({
+      companyId: company.id,
+      departmentId: dept.id,
+      name: "SWE",
+      code: "SWE",
+    });
+    await addManagerLadder({ companyId: company.id, jobFamilyId: family.id });
+    const ic = await testPrisma.careerTrack.findFirstOrThrow({
+      where: { jobFamilyId: family.id, kind: "IC" },
+    });
+
+    await expect(
+      deleteCareerTrack({ companyId: company.id, careerTrackId: ic.id })
+    ).rejects.toBeInstanceOf(ConflictError);
+    // Both ladders remain.
+    expect(await testPrisma.careerTrack.count({ where: { jobFamilyId: family.id } })).toBe(2);
+  });
+
+  it("allows removing the Manager ladder to collapse back to a single ladder", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const family = await createJobFamily({
+      companyId: company.id,
+      departmentId: dept.id,
+      name: "SWE",
+      code: "SWE",
+    });
+    const manager = await addManagerLadder({ companyId: company.id, jobFamilyId: family.id });
+
+    await deleteCareerTrack({ companyId: company.id, careerTrackId: manager.id });
+
+    const remaining = await testPrisma.careerTrack.findMany({ where: { jobFamilyId: family.id } });
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]!.kind).toBe("IC");
   });
 });

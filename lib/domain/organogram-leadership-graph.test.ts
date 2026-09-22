@@ -24,6 +24,8 @@ function node(overrides: Partial<OrganogramNode> & { positionId: string }): Orga
     jobGradeName: "Leadership",
     jobGradeCode: "L9",
     jobGradeLevel: 9,
+    jobFamilyId: null,
+    jobFamilyName: null,
     organizationalLevel: 2,
     positionStatus: "ACTIVE",
     occupancyStatus: "occupied",
@@ -49,6 +51,8 @@ function ceo(): OrganogramNode {
     primaryReportsToPositionId: null,
     jobGradeCode: "L18",
     jobGradeLevel: 18,
+    jobFamilyId: null,
+    jobFamilyName: null,
   });
 }
 
@@ -189,6 +193,8 @@ describe("projectLeadershipGraph — structure", () => {
         departmentName: "People",
         jobGradeCode: "L4",
         jobGradeLevel: 4,
+        jobFamilyId: null,
+        jobFamilyName: null,
       }),
     ];
 
@@ -309,6 +315,8 @@ describe("projectLeadershipGraph — node contract", () => {
         departmentId: ENG,
         primaryReportsToPositionId: "cto",
         jobGradeLevel: 2,
+        jobFamilyId: null,
+        jobFamilyName: null,
       }),
     ];
 
@@ -329,6 +337,8 @@ describe("projectLeadershipGraph — node contract", () => {
         departmentId: ENG,
         primaryReportsToPositionId: "cto",
         jobGradeLevel: 2,
+        jobFamilyId: null,
+        jobFamilyName: null,
       }),
     ];
 
@@ -370,6 +380,8 @@ describe("projectLeadershipGraph — degenerate input", () => {
       jobGradeId: null,
       jobGradeCode: null,
       jobGradeLevel: null,
+      jobFamilyId: null,
+      jobFamilyName: null,
     });
 
     const result = projectLeadershipGraph([rootless]);
@@ -390,6 +402,8 @@ describe("projectLeadershipGraph — the default keeps junior roles in the graph
         primaryReportsToPositionId: "cto",
         jobGradeCode: "L4",
         jobGradeLevel: 4,
+        jobFamilyId: null,
+        jobFamilyName: null,
       }),
     ];
 

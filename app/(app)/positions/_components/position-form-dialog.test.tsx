@@ -88,6 +88,18 @@ const IC_TRACK: CareerTrack = {
   updatedAt: new Date(),
 };
 
+const MGR_TRACK_ID = "77777777-7777-4777-8777-777777777777";
+const MGR_TRACK: CareerTrack = {
+  id: MGR_TRACK_ID,
+  companyId: "company-1",
+  jobFamilyId: FAMILY_ID,
+  kind: "MANAGER",
+  name: "Manager",
+  displayOrder: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 const L7_IC_ENTRY: LevelMappingEntry = {
   id: "88888888-8888-4888-8888-888888888888",
   companyId: "company-1",
@@ -198,28 +210,23 @@ describe("PositionFormDialog", () => {
     expect(within(levelSelect).queryByRole("option", { name: /L7\s*—/ })).not.toBeInTheDocument();
   });
 
-  it("steps Department → Job Family → Track → Level, suggests matrix titles, and submits the ids", async () => {
+  it("single-ladder family: hides the track picker and auto-classifies onto the base ladder", async () => {
     createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
     const user = userEvent.setup();
     renderForm({
       jobGrades: [L7_GRADE],
       jobFamilies: [SWE_FAMILY],
-      careerTracks: [IC_TRACK],
+      careerTracks: [IC_TRACK], // one ladder only
       levelMappingEntries: [L7_IC_ENTRY],
     });
 
-    // Track is disabled until a family is chosen.
-    expect(screen.getByLabelText(/career track/i)).toBeDisabled();
-
     await user.selectOptions(screen.getByLabelText(/job family/i), FAMILY_ID);
-    expect(screen.getByLabelText(/job family/i)).toHaveValue(FAMILY_ID);
-    await user.selectOptions(screen.getByLabelText(/career track/i), TRACK_ID);
-    expect(screen.getByLabelText(/career track/i)).toHaveValue(TRACK_ID);
-    await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
-    expect(screen.getByLabelText(/^level$/i)).toHaveValue(L7_ID);
+    // No ladder to choose in single-ladder mode.
+    expect(screen.queryByLabelText(/career track/i)).not.toBeInTheDocument();
 
-    // The (family, track, level) cell's title is offered as a suggestion
-    // (the dialog renders in a portal, so query the document, not container).
+    await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
+    // The cell title is still suggested, because the position is auto-pinned
+    // to the family's base (IC) ladder behind the scenes.
     const suggestion = document.querySelector(
       '#position-title-suggestions option[value="Principal Software Engineer"]'
     );
@@ -234,7 +241,38 @@ describe("PositionFormDialog", () => {
         title: "Principal Software Engineer",
         departmentId: DEPARTMENT_ID,
         jobFamilyId: FAMILY_ID,
-        careerTrackId: TRACK_ID,
+        careerTrackId: TRACK_ID, // auto-selected base ladder
+        jobGradeId: L7_ID,
+      })
+    );
+  });
+
+  it("dual-ladder family: shows the track picker and submits the chosen ladder", async () => {
+    createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
+    const user = userEvent.setup();
+    renderForm({
+      jobGrades: [L7_GRADE],
+      jobFamilies: [SWE_FAMILY],
+      careerTracks: [IC_TRACK, MGR_TRACK], // parallel ladders
+      levelMappingEntries: [L7_IC_ENTRY],
+    });
+
+    await user.selectOptions(screen.getByLabelText(/job family/i), FAMILY_ID);
+    // The picker appears only once a parallel ladder exists.
+    await user.selectOptions(screen.getByLabelText(/career track/i), MGR_TRACK_ID);
+    expect(screen.getByLabelText(/career track/i)).toHaveValue(MGR_TRACK_ID);
+    await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
+
+    await user.type(screen.getByLabelText(/title/i), "Engineering Manager");
+    await user.click(screen.getByRole("button", { name: /create position/i }));
+
+    await waitFor(() => expect(createPositionActionMock).toHaveBeenCalled());
+    expect(createPositionActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Engineering Manager",
+        departmentId: DEPARTMENT_ID,
+        jobFamilyId: FAMILY_ID,
+        careerTrackId: MGR_TRACK_ID,
         jobGradeId: L7_ID,
       })
     );

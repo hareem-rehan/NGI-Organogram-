@@ -93,6 +93,8 @@ function makeDepartmentNode(args: {
     jobGradeName: null,
     jobGradeCode: null,
     jobGradeLevel: null,
+    jobFamilyId: null,
+    jobFamilyName: null,
     organizationalLevel: 0,
     positionStatus: "ACTIVE",
     occupancyStatus: "occupied",
