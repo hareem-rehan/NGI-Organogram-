@@ -351,16 +351,17 @@ describe("scopeReportsToOptions", () => {
   });
   const all = [ceo, engManager, hrManager];
 
-  it("offers same-department managers plus the root, hiding other departments", () => {
+  it("offers same-department positions plus the company root, hiding other departments", () => {
     const ids = scopeReportsToOptions(all, DEPARTMENT_ID, "").map((o) => o.value);
-    expect(ids).toContain("eng1");
-    expect(ids).toContain("ceo");
-    expect(ids).not.toContain("hr1");
+    expect(ids).toContain("eng1"); // same department
+    expect(ids).toContain("ceo"); // the company root, always allowed
+    expect(ids).not.toContain("hr1"); // a different department's position is hidden
   });
 
-  it("offers only the root CEO for a department that has no positions yet", () => {
-    const ids = scopeReportsToOptions(all, "client-delivery-dept", "").map((o) => o.value);
-    expect(ids).toEqual(["ceo"]);
+  it("offers only the company root for a department that has no positions of its own", () => {
+    expect(scopeReportsToOptions(all, "client-delivery-dept", "").map((o) => o.value)).toEqual([
+      "ceo",
+    ]);
   });
 
   it("applies no department scope when none is selected", () => {
@@ -370,13 +371,14 @@ describe("scopeReportsToOptions", () => {
 
   it("filters the scoped set by title or code query", () => {
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "cto").map((o) => o.value)).toEqual(["eng1"]);
+    // The company root stays reachable by name/code even under a department scope.
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-CEO").map((o) => o.value)).toEqual([
       "ceo",
     ]);
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "zzz")).toHaveLength(0);
   });
 
-  it("describes each option by level and job family, never the position code", () => {
+  it("describes each option by job family only — never the level or position code", () => {
     const positions = [
       makePosition({
         id: "eng1",
@@ -394,11 +396,12 @@ describe("scopeReportsToOptions", () => {
       "",
       new Map([[FAMILY_ID, "Software Engineering"]])
     );
-    expect(options[0]?.description).toBe("Level 2 · Software Engineering");
+    expect(options[0]?.description).toBe("Software Engineering");
+    expect(options[0]?.description).not.toContain("Level");
     expect(options[0]?.description).not.toContain("POS-");
   });
 
-  it("falls back to just the level when a position has no family", () => {
+  it("shows no secondary line when a position has no family", () => {
     const positions = [
       makePosition({
         id: "eng1",
@@ -411,6 +414,6 @@ describe("scopeReportsToOptions", () => {
       }),
     ];
     const options = scopeReportsToOptions(positions, DEPARTMENT_ID, "", new Map());
-    expect(options[0]?.description).toBe("Level 2");
+    expect(options[0]?.description).toBeUndefined();
   });
 });

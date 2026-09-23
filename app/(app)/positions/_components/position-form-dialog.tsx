@@ -45,12 +45,12 @@ interface FormValues {
 }
 
 /**
- * The managers a new position may report to, scoped to its own department.
- *
- * A position reports within its own department, and a department's first
- * or top role reports up to the ROOT (the CEO — the single position with
- * no manager of its own). Everything else is noise in the picker. Passing
- * an empty `departmentId` applies no department scope. `query` filters by
+ * The managers a new position may report to. Once a department is chosen,
+ * the picker hides positions from OTHER departments — with one deliberate
+ * exception: the company ROOT (the single position with no manager) stays
+ * available so a department's top role can report up to the company head,
+ * which is the only legitimate cross-department reporting link. Passing an
+ * empty `departmentId` applies no department scope. `query` filters by
  * title or code.
  *
  * This is a relevance filter for the UI only — the server still
@@ -67,6 +67,9 @@ export function scopeReportsToOptions(
   const q = query.trim().toLowerCase();
   return allPositions
     .filter((candidate) => {
+      // Same-department positions, plus the company root (so a department's
+      // top role can still report to the company head). No other department's
+      // positions are offered. With no department chosen, everything is shown.
       const inScope =
         departmentId === "" ||
         candidate.departmentId === departmentId ||
@@ -86,21 +89,18 @@ export function scopeReportsToOptions(
 }
 
 /**
- * The secondary line under a reports-to option. Shows the reader-meaningful
- * seniority and career family — the organizational level and the position's
- * job family — rather than the internal position code, which is an import
- * key of no use when picking a manager. Falls back to just the level when
- * the position has no family.
+ * The secondary line under a reports-to option. Shows the position's job
+ * family only — never the organizational level (removed as noise) nor the
+ * internal position code. Returns undefined when the position has no family,
+ * so the option shows just its title.
  */
 export function reportsToDescription(
-  candidate: Pick<Position, "organizationalLevel" | "jobFamilyId">,
+  candidate: Pick<Position, "jobFamilyId">,
   jobFamilyNameById?: ReadonlyMap<string, string>
-): string {
-  const familyName = candidate.jobFamilyId
-    ? (jobFamilyNameById?.get(candidate.jobFamilyId) ?? null)
-    : null;
-  const level = `Level ${candidate.organizationalLevel}`;
-  return familyName ? `${level} · ${familyName}` : level;
+): string | undefined {
+  return candidate.jobFamilyId
+    ? (jobFamilyNameById?.get(candidate.jobFamilyId) ?? undefined)
+    : undefined;
 }
 
 /**
