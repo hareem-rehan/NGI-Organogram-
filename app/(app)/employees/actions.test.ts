@@ -220,7 +220,9 @@ describe("createEmployeeAction — optional first assignment", () => {
 
     await createEmployeeAction({ employeeCode: "EMP-1", firstName: "A", lastName: "B" });
 
-    expect(employeeServiceMocks.createEmployeeWithOptionalAssignment.mock.calls[0]?.[0]?.assignment).toBeNull();
+    expect(
+      employeeServiceMocks.createEmployeeWithOptionalAssignment.mock.calls[0]?.[0]?.assignment
+    ).toBeNull();
   });
 
   it("passes a resolved assignment through when a position and start date are chosen", async () => {

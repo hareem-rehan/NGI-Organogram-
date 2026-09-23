@@ -1,10 +1,5 @@
 import "server-only";
-import type {
-  Employee,
-  EmploymentStatus,
-  PositionAssignment,
-  Prisma,
-} from "@prisma/client";
+import type { Employee, EmploymentStatus, PositionAssignment, Prisma } from "@prisma/client";
 import { Prisma as PrismaNamespace } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";

@@ -77,9 +77,7 @@ export const createEmployeeWithAssignmentSchema = createEmployeeSchema
       });
     }
   });
-export type CreateEmployeeWithAssignmentValues = z.infer<
-  typeof createEmployeeWithAssignmentSchema
->;
+export type CreateEmployeeWithAssignmentValues = z.infer<typeof createEmployeeWithAssignmentSchema>;
 
 export const updateEmployeeSchema = z
   .object({

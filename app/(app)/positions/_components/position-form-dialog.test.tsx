@@ -230,7 +230,9 @@ describe("PositionFormDialog", () => {
     await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
     // The picker appears with a plain, framework-independent choice.
     const trackSelect = screen.getByLabelText(/career track/i);
-    expect(within(trackSelect).getByRole("option", { name: /individual contributor/i })).toBeInTheDocument();
+    expect(
+      within(trackSelect).getByRole("option", { name: /individual contributor/i })
+    ).toBeInTheDocument();
     expect(within(trackSelect).getByRole("option", { name: /^manager$/i })).toBeInTheDocument();
 
     await user.selectOptions(trackSelect, "MANAGER");
