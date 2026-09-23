@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
 import type { OrganogramNode } from "@/lib/domain/organogram";
-import { lightTint, type FamilyColor } from "@/lib/domain/organogram-family-colors";
+import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 /** Which dimension drives a card's colour. Department is the default. */
 export type OrganogramColorMode = "department" | "family";
@@ -24,10 +24,12 @@ export interface PositionNodeData extends Record<string, unknown> {
   onToggleCollapse: (positionId: string) => void;
   onSelect: (positionId: string) => void;
   matchState?: PositionNodeMatchState;
-  /** Colour dimension; defaults to "department" when omitted. */
-  colorMode?: OrganogramColorMode;
-  /** The position's family colour, when known — used only in "family" mode. */
-  familyColor?: FamilyColor | null;
+  /**
+   * The card's fully-resolved fill + edge colour for the active colour mode
+   * (department or sub-division), from the shared reference palette. The
+   * canvas resolves it per node so the card just paints it. Null → neutral.
+   */
+  cardColor?: FamilyColor | null;
 }
 
 /**
@@ -67,22 +69,22 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
   // that total (set by the projection); the display/ direct counts are the
   // fallback for any caller that hasn't populated it.
   const roleCount = node.departmentMemberCount ?? node.displayChildCount ?? node.directReportCount;
-  const accent = node.departmentColor ?? "var(--color-primary)";
-  // Fully colour-filled heading (tint of the department colour), matching
-  // the fully-coloured member cards below it.
-  const headingBackground = node.departmentColor ? lightTint(node.departmentColor) : undefined;
+  // Fully colour-filled heading from the resolved card colour, with a thin
+  // same-hue border and no left accent bar — matching the reference cards.
+  const fill = data.cardColor?.fill;
+  const border = data.cardColor?.accent ?? "var(--color-primary)";
 
   return (
     <div
       className={cn(
-        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border-2 border-l-[6px] shadow-sm",
-        !headingBackground && "bg-muted"
+        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        !fill && "bg-muted"
       )}
       style={{
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
-        borderColor: accent,
-        backgroundColor: headingBackground,
+        borderColor: border,
+        backgroundColor: fill,
       }}
     >
       <Handle type="target" position={Position.Top} className="!bg-border !border-none" />
@@ -123,26 +125,17 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
     onToggleCollapse,
     onSelect,
     matchState = "none",
-    colorMode = "department",
-    familyColor = null,
+    cardColor = null,
   } = data;
 
   if (node.kind === "department") return <DepartmentNodeCard data={data} />;
 
-  // Cards are fully colour-filled (like the reference chart): in family mode
-  // by the family's palette fill + edge, otherwise by a light tint of the
-  // department colour + the department colour as the edge. An unclassified
-  // card in family mode, or one with no department colour, keeps the neutral
-  // background.
-  const familyStyled = colorMode === "family" && familyColor !== null;
-  const cardBackground = familyStyled
-    ? familyColor!.fill
-    : node.departmentColor
-      ? lightTint(node.departmentColor)
-      : undefined;
-  const leftEdgeColor = familyStyled
-    ? familyColor!.accent
-    : (node.departmentColor ?? "var(--color-border)");
+  // Fully colour-filled from the resolved palette colour (exact reference
+  // colours), with a thin same-hue border and no left accent bar, so the card
+  // reads as one solid colour like the reference chart. No resolved colour →
+  // neutral card.
+  const cardBackground = cardColor?.fill;
+  const borderColor = cardColor?.accent;
 
   // The card leads with the ROLE and adds the person underneath, matching
   // the company's own chart: most approved roles have nobody in them yet,
@@ -174,14 +167,17 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // inherited value at this element so the buttons below actually
         // receive events — see e2e/organogram.spec.ts, which caught this
         // as a real click-through-to-the-pane failure before this fix.
-        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border-2 border-l-[6px] shadow-sm transition-colors",
-        // Neutral card background only when no colour fill applies below.
+        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border shadow-sm transition-colors",
+        // Neutral card background only when no colour fill applies.
         !cardBackground && "bg-background",
+        // Selection/search override the border with a stronger ring; otherwise
+        // the border is the card's own same-hue edge (inline below), falling
+        // back to the neutral border only when the card has no colour.
         isSelected
           ? "border-primary"
           : matchState === "match"
             ? "border-primary/60"
-            : "border-border",
+            : !borderColor && "border-border",
         !node.isActive && node.positionStatus === "INACTIVE" && "opacity-75",
         // Context nodes dim, but never so far that the text becomes
         // unreadable (docs/ORGANOGRAM_SEARCH_AND_FOCUS.md "Visual
@@ -193,7 +189,8 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
       style={{
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
-        borderLeftColor: leftEdgeColor,
+        // Own same-hue border, unless selection/match override it via class.
+        borderColor: isSelected || matchState === "match" ? undefined : borderColor,
         backgroundColor: cardBackground,
       }}
     >

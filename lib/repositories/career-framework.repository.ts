@@ -4,7 +4,7 @@ import type { CareerTrack, JobFamily, LevelMappingEntry } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { DbClient } from "@/lib/repositories/types";
 
-// ── Job family ────────────────────────────────────────────────────────
+// ── Sub-division ────────────────────────────────────────────────────────
 
 export async function listJobFamiliesForCompany(
   companyId: string,

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Server-side validation for the career framework (job families, career
+ * Server-side validation for the career framework (sub-divisions, career
  * tracks, level-mapping entries). As everywhere else, `companyId` is
  * never a field — it is derived from the authenticated session, never
  * accepted from a client payload.
@@ -38,7 +38,7 @@ const titleSchema = z
 
 export const careerTrackKindSchema = z.enum(["IC", "MANAGER"]);
 
-// ── Job family ────────────────────────────────────────────────────────
+// ── Sub-division ────────────────────────────────────────────────────────
 
 export const createJobFamilySchema = z
   .object({
@@ -95,14 +95,6 @@ export type CreateLevelMappingEntryValues = z.infer<typeof createLevelMappingEnt
 
 export const addManagerLadderSchema = z.object({ jobFamilyId: z.string().uuid() }).strict();
 export type AddManagerLadderValues = z.infer<typeof addManagerLadderSchema>;
-
-export const populateStandardRolesSchema = z
-  .object({
-    jobFamilyId: z.string().uuid(),
-    track: z.enum(["ENGINEERING", "PROJECT", "PRODUCT", "HR", "IT"]),
-  })
-  .strict();
-export type PopulateStandardRolesValues = z.infer<typeof populateStandardRolesSchema>;
 
 export const deleteLevelMappingEntrySchema = z
   .object({ levelMappingEntryId: z.string().uuid() })

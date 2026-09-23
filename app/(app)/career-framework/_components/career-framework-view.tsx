@@ -8,7 +8,7 @@ import type {
   JobGrade,
   LevelMappingEntry,
 } from "@prisma/client";
-import { Plus, Trash2, Pencil, Sparkles } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,6 @@ import {
 } from "@/app/(app)/career-framework/actions";
 import { JobFamilyDialog } from "./job-family-dialog";
 import { LevelMappingDialog } from "./level-mapping-dialog";
-import { PopulateRolesDialog } from "./populate-roles-dialog";
 
 interface CareerFrameworkViewProps {
   canManage: boolean;
@@ -53,7 +52,6 @@ export function CareerFrameworkView({
   const [familyDialogOpen, setFamilyDialogOpen] = useState(false);
   const [editingFamily, setEditingFamily] = useState<JobFamily | null>(null);
   const [mappingForFamily, setMappingForFamily] = useState<JobFamily | null>(null);
-  const [populateForFamily, setPopulateForFamily] = useState<JobFamily | null>(null);
 
   const departmentsById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
   const gradesById = useMemo(() => new Map(levels.map((g) => [g.id, g])), [levels]);
@@ -109,7 +107,7 @@ export function CareerFrameworkView({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <p className="text-muted-foreground max-w-2xl text-sm">
-          Career progression only. Levels, job families and IC/Manager tracks describe career
+          Career progression only. Levels, sub-divisions and IC/Manager tracks describe career
           seniority — they never set who reports to whom. The organogram is built from reporting
           relationships alone.
         </p>
@@ -120,7 +118,7 @@ export function CareerFrameworkView({
               setFamilyDialogOpen(true);
             }}
           >
-            <Plus aria-hidden="true" className="size-4" /> Add Job Family
+            <Plus aria-hidden="true" className="size-4" /> Add Sub-division
           </Button>
         ) : null}
       </div>
@@ -155,7 +153,7 @@ export function CareerFrameworkView({
 
       {jobFamilies.length === 0 ? (
         <p className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
-          No job families yet. {canManage ? "Add one to start building the career matrix." : ""}
+          No sub-divisions yet. {canManage ? "Add one to start building the career matrix." : ""}
         </p>
       ) : (
         jobFamilies.map((family) => {
@@ -205,7 +203,7 @@ export function CareerFrameworkView({
             <section
               key={family.id}
               className="rounded-lg border p-4"
-              aria-label={`Job family ${family.name}`}
+              aria-label={`Sub-division ${family.name}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
@@ -231,14 +229,6 @@ export function CareerFrameworkView({
                         <Plus aria-hidden="true" className="size-4" /> Add manager ladder
                       </Button>
                     ) : null}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setPopulateForFamily(family)}
-                      title="Fill this family's ladder with the standard role titles from the PMF catalogue"
-                    >
-                      <Sparkles aria-hidden="true" className="size-4" /> Populate standard roles
-                    </Button>
                     <Button
                       size="sm"
                       variant="secondary"
@@ -382,14 +372,6 @@ export function CareerFrameworkView({
             jobFamilyId={mappingForFamily?.id ?? ""}
             tracks={mappingForFamily ? (tracksByFamily.get(mappingForFamily.id) ?? []) : []}
             jobGrades={levels}
-            onSaved={refetch}
-          />
-          <PopulateRolesDialog
-            open={populateForFamily !== null}
-            onOpenChange={(open) => {
-              if (!open) setPopulateForFamily(null);
-            }}
-            family={populateForFamily}
             onSaved={refetch}
           />
         </>

@@ -105,7 +105,7 @@ export interface OrganogramNode {
   /** Numeric seniority rank behind `jobGradeCode` (the grade's displayOrder), for threshold comparisons. Null when the position has no grade. */
   jobGradeLevel: number | null;
   /**
-   * The position's job family — career classification, wholly independent of
+   * The position's sub-division — career classification, wholly independent of
    * the reporting tree (docs/DECISIONS.md). Surfaced on the card, the details
    * panel, and as an optional colour dimension. Null when unclassified.
    */

@@ -185,18 +185,27 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     subgraph.edges
   );
 
+  // Departments present in this export, ordered by name so their palette
+  // colour assignment is stable and identical to the interactive chart's
+  // (which also assigns the reference palette by department name order).
+  const departmentNames = [...new Set(subgraph.nodes.map((n) => n.departmentName))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+  const departmentColorByName = buildFamilyColorMap(departmentNames);
+
   const departmentsById = new Map<string, SvgLegendDepartment>();
   for (const node of subgraph.nodes) {
     if (!departmentsById.has(node.departmentId)) {
       departmentsById.set(node.departmentId, {
         id: node.departmentId,
         name: node.departmentName,
-        color: node.departmentColor,
+        // Legend swatch matches the card colour (palette accent).
+        color: departmentColorByName.get(node.departmentName)?.accent ?? node.departmentColor,
       });
     }
   }
 
-  // Job families present in this export, ordered by name so the colour
+  // Sub-divisions present in this export, ordered by name so the colour
   // assignment is stable and identical to the interactive chart's.
   const familiesByName = new Map<string, { id: string; name: string }>();
   for (const node of subgraph.nodes) {
@@ -249,6 +258,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
       includeConfidentialityLabel: resolved.includeConfidentialityLabel,
       departments: [...departmentsById.values()],
       colorMode: resolved.colorMode,
+      departmentColorByName,
       familyColorById,
       families: familyLegendEntries,
     }

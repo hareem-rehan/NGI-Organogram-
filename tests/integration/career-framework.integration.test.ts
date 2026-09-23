@@ -9,7 +9,6 @@ import {
   deleteJobFamily,
   deleteLevelMappingEntry,
   ensureDefaultTrack,
-  populateStandardRolesForFamily,
   updateJobFamily,
 } from "@/lib/services/career-framework.service";
 import { ConflictError, CrossCompanyError, NotFoundError } from "@/lib/domain/errors";
@@ -459,121 +458,5 @@ describe("career-framework.service — single ladder by default", () => {
     const remaining = await testPrisma.careerTrack.findMany({ where: { jobFamilyId: family.id } });
     expect(remaining).toHaveLength(1);
     expect(remaining[0]!.kind).toBe("IC");
-  });
-});
-
-describe("career-framework.service — populate standard roles", () => {
-  it("Engineering fills an IC ladder AND a Manager ladder from the catalogue", async () => {
-    const company = await makeCompany();
-    const dept = await makeDepartment(company.id);
-    const family = await createJobFamily({
-      companyId: company.id,
-      departmentId: dept.id,
-      name: "SWE",
-      code: "SWE",
-    });
-
-    const result = await populateStandardRolesForFamily({
-      companyId: company.id,
-      jobFamilyId: family.id,
-      track: "ENGINEERING",
-    });
-
-    expect(result.created).toBeGreaterThan(0);
-    // Both ladders now exist.
-    const kinds = (await testPrisma.careerTrack.findMany({ where: { jobFamilyId: family.id } }))
-      .map((t) => t.kind)
-      .sort();
-    expect(kinds).toEqual(["IC", "MANAGER"]);
-
-    // Signature titles landed on the right ladder.
-    const entries = await testPrisma.levelMappingEntry.findMany({
-      where: { jobFamilyId: family.id },
-      include: { careerTrack: true, jobGrade: true },
-    });
-    const principal = entries.find((e) => e.title === "Principal Software Engineer");
-    expect(principal?.careerTrack.kind).toBe("IC");
-    expect(principal?.jobGrade.code).toBe("L7");
-    const techLead = entries.find((e) => e.title === "Tech Lead");
-    expect(techLead?.careerTrack.kind).toBe("MANAGER");
-    expect(techLead?.jobGrade.code).toBe("L7");
-  });
-
-  it("HR (manager-only) fills the single default ladder, no parallel ladder", async () => {
-    const company = await makeCompany();
-    const dept = await makeDepartment(company.id);
-    const family = await createJobFamily({
-      companyId: company.id,
-      departmentId: dept.id,
-      name: "People",
-      code: "PPL",
-    });
-
-    await populateStandardRolesForFamily({
-      companyId: company.id,
-      jobFamilyId: family.id,
-      track: "HR",
-    });
-
-    const tracks = await testPrisma.careerTrack.findMany({ where: { jobFamilyId: family.id } });
-    expect(tracks).toHaveLength(1);
-    expect(tracks[0]!.kind).toBe("IC"); // the single base ladder
-    const hrManager = await testPrisma.levelMappingEntry.findFirst({
-      where: { jobFamilyId: family.id, title: "HR Manager" },
-      include: { jobGrade: true },
-    });
-    expect(hrManager?.jobGrade.code).toBe("L7");
-  });
-
-  it("is idempotent — a second run adds nothing and reports them as already present", async () => {
-    const company = await makeCompany();
-    const dept = await makeDepartment(company.id);
-    const family = await createJobFamily({
-      companyId: company.id,
-      departmentId: dept.id,
-      name: "SWE",
-      code: "SWE",
-    });
-
-    const first = await populateStandardRolesForFamily({
-      companyId: company.id,
-      jobFamilyId: family.id,
-      track: "ENGINEERING",
-    });
-    const second = await populateStandardRolesForFamily({
-      companyId: company.id,
-      jobFamilyId: family.id,
-      track: "ENGINEERING",
-    });
-
-    expect(second.created).toBe(0);
-    expect(second.alreadyPresent).toBe(first.created);
-    const count = await testPrisma.levelMappingEntry.count({ where: { jobFamilyId: family.id } });
-    expect(count).toBe(first.created);
-  });
-
-  it("provisions the standard levels if the company has none yet", async () => {
-    const company = await makeCompany();
-    const dept = await makeDepartment(company.id);
-    const family = await createJobFamily({
-      companyId: company.id,
-      departmentId: dept.id,
-      name: "IT",
-      code: "IT",
-    });
-    // No job grades exist yet for this company.
-    expect(await testPrisma.jobGrade.count({ where: { companyId: company.id } })).toBe(0);
-
-    const result = await populateStandardRolesForFamily({
-      companyId: company.id,
-      jobFamilyId: family.id,
-      track: "IT",
-    });
-
-    expect(result.created).toBeGreaterThan(0);
-    // Levels were provisioned as a side effect.
-    expect(await testPrisma.jobGrade.count({ where: { companyId: company.id } })).toBeGreaterThan(
-      0
-    );
   });
 });

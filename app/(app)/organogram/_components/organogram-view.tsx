@@ -274,22 +274,37 @@ export function OrganogramView({
     return counts;
   }, [data, collapsedIds]);
 
-  const departmentLegendEntries = useMemo(() => {
-    if (!data) return [];
-    const seen = new Map<string, { id: string; name: string; color: string | null }>();
+  // Every department present on the chart, ordered by name so palette colour
+  // assignment is stable — the same reference palette the sub-division
+  // colouring uses, so cards read with the exact reference colours in both
+  // modes.
+  const departmentsInOrder = useMemo(() => {
+    if (!data) return [] as { id: string; name: string }[];
+    const seen = new Map<string, string>();
     for (const node of data.nodes) {
-      if (!seen.has(node.departmentId)) {
-        seen.set(node.departmentId, {
-          id: node.departmentId,
-          name: node.departmentName,
-          color: node.departmentColor,
-        });
-      }
+      if (!seen.has(node.departmentId)) seen.set(node.departmentId, node.departmentName);
     }
-    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...seen.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
-  // Every job family present on the chart, ordered by name so colour
+  const departmentColorById = useMemo(
+    () => buildFamilyColorMap(departmentsInOrder.map((d) => d.id)),
+    [departmentsInOrder]
+  );
+
+  const departmentLegendEntries = useMemo(
+    () =>
+      departmentsInOrder.map((d) => ({
+        id: d.id,
+        name: d.name,
+        color: departmentColorById.get(d.id)?.accent ?? null,
+      })),
+    [departmentsInOrder, departmentColorById]
+  );
+
+  // Every sub-division present on the chart, ordered by name so colour
   // assignment is stable and reproducible, then mapped to the palette.
   const familiesInOrder = useMemo(() => {
     if (!data) return [] as { id: string; name: string }[];
@@ -624,6 +639,7 @@ export function OrganogramView({
                 fitViewSignal={fitViewSignal}
                 departmentLegendEntries={departmentLegendEntries}
                 colorMode={colorMode}
+                departmentColorById={departmentColorById}
                 familyColorById={familyColorById}
                 familyLegendEntries={familyLegendEntries}
                 matchStateById={matchStateById}

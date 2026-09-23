@@ -431,7 +431,7 @@ export function OrganogramExportDialog({
                   className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
                 >
                   <option value="department">Department</option>
-                  <option value="family">Job family</option>
+                  <option value="family">Sub-division</option>
                 </select>
               </label>
               <label className="flex items-center gap-2 text-sm">

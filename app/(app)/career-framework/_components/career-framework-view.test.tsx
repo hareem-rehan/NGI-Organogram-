@@ -19,14 +19,12 @@ vi.mock("@/app/(app)/career-framework/actions", () => ({
   updateJobFamilyAction: vi.fn(),
   createLevelMappingEntryAction: vi.fn(),
   provisionStandardLevelsAction: vi.fn(),
-  populateStandardRolesAction: vi.fn(),
 }));
 
 import { CareerFrameworkView } from "./career-framework-view";
 import {
   addManagerLadderAction,
   getCareerFrameworkAction,
-  populateStandardRolesAction,
   provisionStandardLevelsAction,
 } from "@/app/(app)/career-framework/actions";
 
@@ -128,8 +126,8 @@ function renderView(overrides: Partial<Parameters<typeof CareerFrameworkView>[0]
 describe("CareerFrameworkView", () => {
   it("shows an empty state and an Add button when there are no families", () => {
     renderView({ initialJobFamilies: [], initialCareerTracks: [], initialLevelMappingEntries: [] });
-    expect(screen.getByText(/no job families yet/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /add job family/i })).toBeInTheDocument();
+    expect(screen.getByText(/no sub-divisions yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add sub-division/i })).toBeInTheDocument();
   });
 
   it("renders the matrix with IC and Manager columns and the mapped titles", () => {
@@ -166,7 +164,7 @@ describe("CareerFrameworkView", () => {
 
   it("hides all management controls in read-only mode", () => {
     renderView({ canManage: false });
-    expect(screen.queryByRole("button", { name: /add job family/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add sub-division/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /delete software engineering/i })
     ).not.toBeInTheDocument();
@@ -217,40 +215,6 @@ describe("CareerFrameworkView", () => {
     renderView(); // default has IC + MGR
     expect(screen.queryByRole("button", { name: /add manager ladder/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /remove manager ladder/i })).toBeInTheDocument();
-  });
-
-  it("offers 'populate standard roles' per family and populates the chosen track", async () => {
-    const user = userEvent.setup();
-    vi.mocked(populateStandardRolesAction).mockResolvedValue({
-      ok: true,
-      data: { created: 12, alreadyPresent: 0 },
-    });
-    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
-      ok: true,
-      data: {
-        jobFamilies: [FAMILY],
-        careerTracks: [IC, MGR],
-        levelMappingEntries: [],
-        jobGrades: [L7],
-      },
-    });
-    renderView();
-
-    await user.click(screen.getByRole("button", { name: /populate standard roles/i }));
-    // The dialog offers the PMF track choice and a confirm.
-    await user.click(screen.getByRole("button", { name: /^populate roles$/i }));
-
-    expect(populateStandardRolesAction).toHaveBeenCalledWith({
-      jobFamilyId: FAMILY.id,
-      track: "ENGINEERING",
-    });
-  });
-
-  it("hides 'populate standard roles' in read-only mode", () => {
-    renderView({ canManage: false });
-    expect(
-      screen.queryByRole("button", { name: /populate standard roles/i })
-    ).not.toBeInTheDocument();
   });
 
   it("offers a one-click 'set up standard levels' action when no levels exist yet", () => {
