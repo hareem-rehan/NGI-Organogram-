@@ -92,6 +92,25 @@ describe("renderOrganogramSvg — colour by sub-division", () => {
     expect(result.svg).not.toContain('fill="#cbf2b1"');
     expect(result.svg).toContain("Departments");
   });
+
+  it("in department mode uses the exact reference palette when a department colour map is given", () => {
+    const positions = new Map([["p1", { x: 0, y: 0 }]]);
+    const result = renderOrganogramSvg(
+      [node({ positionId: "p1" })], // departmentName "Engineering"
+      [],
+      positions,
+      METADATA,
+      {
+        ...BASE_OPTIONS,
+        colorMode: "department",
+        departmentColorByName: new Map([["Engineering", { fill: "#cbf2b1", accent: "#6fbf3f" }]]),
+      }
+    );
+    // Card fills with the exact palette colour + same-hue border (no lightTint).
+    expect(result.svg).toContain('fill="#cbf2b1"');
+    expect(result.svg).toContain('stroke="#6fbf3f"');
+    expect(result.svg).not.toContain('fill="#ccebd7"');
+  });
 });
 
 describe("renderOrganogramSvg", () => {

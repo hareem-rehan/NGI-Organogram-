@@ -2,7 +2,7 @@
 
 import "@xyflow/react/dist/style.css";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -53,6 +53,7 @@ interface OrganogramCanvasProps {
   departmentLegendEntries: readonly DepartmentLegendEntry[];
   /** Which dimension colours the cards, and (in family mode) the per-family colours + legend. */
   colorMode: OrganogramColorMode;
+  departmentColorById: ReadonlyMap<string, FamilyColor>;
   familyColorById: ReadonlyMap<string, FamilyColor>;
   familyLegendEntries: readonly FamilyLegendEntry[];
   /** Phase 9: Match/Context styling per node — omitted or "none" renders exactly like Phase 8. */
@@ -82,6 +83,7 @@ function CanvasInner({
   fitViewSignal,
   departmentLegendEntries,
   colorMode,
+  departmentColorById,
   familyColorById,
   familyLegendEntries,
   matchStateById,
@@ -135,6 +137,23 @@ function CanvasInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeIdsKey, edgesKey]);
 
+  // The card colour for a node in the active mode: a department heading, or
+  // any card in department mode, takes its department's palette colour; a
+  // position in sub-division mode takes its sub-division's palette colour
+  // (null when unclassified, leaving a neutral card).
+  const resolveCardColor = useCallback(
+    (node: OrganogramNode): FamilyColor | null => {
+      if (node.kind === "department") {
+        return departmentColorById.get(node.departmentId) ?? null;
+      }
+      if (colorMode === "family") {
+        return node.jobFamilyId ? (familyColorById.get(node.jobFamilyId) ?? null) : null;
+      }
+      return departmentColorById.get(node.departmentId) ?? null;
+    },
+    [colorMode, departmentColorById, familyColorById]
+  );
+
   // Positions only change when the visible id/edge SET changes (the
   // effect above); selection/collapse state is derived here on every
   // render instead of a second effect, so toggling a node never re-runs
@@ -155,8 +174,7 @@ function CanvasInner({
             hiddenDescendantCount: hiddenDescendantCounts.get(node.positionId) ?? 0,
             isSelected: selectedId === node.positionId,
             matchState: matchStateById?.get(node.positionId) ?? "none",
-            colorMode,
-            familyColor: node.jobFamilyId ? (familyColorById.get(node.jobFamilyId) ?? null) : null,
+            cardColor: resolveCardColor(node),
             onToggleCollapse,
             onSelect,
           } satisfies PositionNodeData,
@@ -168,8 +186,7 @@ function CanvasInner({
       hiddenDescendantCounts,
       selectedId,
       matchStateById,
-      colorMode,
-      familyColorById,
+      resolveCardColor,
       onToggleCollapse,
       onSelect,
     ]

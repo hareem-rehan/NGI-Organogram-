@@ -83,7 +83,9 @@ export interface SvgRenderOptions {
   departments: readonly SvgLegendDepartment[];
   /** Which dimension colours the cards; defaults to "department". */
   colorMode?: ExportColorMode;
-  /** Per-family colours, used only in "family" mode. */
+  /** Per-department palette colours, keyed by department name (department mode). */
+  departmentColorByName?: ReadonlyMap<string, FamilyColor>;
+  /** Per-sub-division palette colours, used in "family" mode. */
   familyColorById?: ReadonlyMap<string, FamilyColor>;
   /** Sub-divisions for the legend in "family" mode. */
   families?: readonly SvgLegendFamily[];
@@ -194,17 +196,22 @@ function nodeBadge(node: SvgRenderNode): { label: string; color: string } | null
 function renderDepartmentCard(
   node: SvgRenderNode,
   position: SvgLayoutPosition,
-  roleCount: number
+  roleCount: number,
+  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
 ): string {
-  const accentColor = resolveDepartmentColor(node.departmentColor);
+  const { fill: bodyFill, accent: accentColor } = cardColorsFor(
+    node,
+    "department",
+    undefined,
+    departmentColorByName
+  );
   const nameLines = wrapText(node.departmentName.toUpperCase(), 26, 2);
 
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="1">`);
   parts.push(
-    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${lightTint(accentColor)}" stroke="${accentColor}" stroke-width="2" />`
+    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${bodyFill}" stroke="${accentColor}" stroke-width="1.5" />`
   );
-  parts.push(`<rect x="0" y="0" width="6" height="${NODE_HEIGHT}" fill="${accentColor}" />`);
   nameLines.forEach((line, index) => {
     parts.push(
       `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" letter-spacing="0.6" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
@@ -218,20 +225,24 @@ function renderDepartmentCard(
 }
 
 /**
- * A card's body fill and left-edge accent. Cards are fully colour-filled
- * (like the reference chart): in "family" colour mode a classified position
- * takes its family's palette fill + accent; otherwise the card takes a light
- * tint of its department colour with the department colour as the edge.
+ * A card's body fill and same-hue border, from the shared reference palette
+ * (exact reference colours). In "family" colour mode a classified position
+ * takes its sub-division's palette colour; a department heading, or any card
+ * in department mode, takes its department's palette colour. Falls back to a
+ * light tint of the raw department colour only when no palette entry exists.
  */
 function cardColorsFor(
   node: SvgRenderNode,
   colorMode: ExportColorMode,
-  familyColorById: ReadonlyMap<string, FamilyColor> | undefined
+  familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
+  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
 ): { fill: string; accent: string } {
   if (colorMode === "family" && node.kind !== "department" && node.jobFamilyId) {
     const fc = familyColorById?.get(node.jobFamilyId);
     if (fc) return { fill: fc.fill, accent: fc.accent };
   }
+  const dc = departmentColorByName?.get(node.departmentName);
+  if (dc) return { fill: dc.fill, accent: dc.accent };
   const accent = resolveDepartmentColor(node.departmentColor);
   return { fill: lightTint(accent), accent };
 }
@@ -240,12 +251,21 @@ function renderNodeCard(
   node: SvgRenderNode,
   position: SvgLayoutPosition,
   colorMode: ExportColorMode,
-  familyColorById: ReadonlyMap<string, FamilyColor> | undefined
+  familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
+  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
 ): string {
-  const { fill: bodyFill, accent: accentColor } = cardColorsFor(node, colorMode, familyColorById);
+  const { fill: bodyFill, accent: accentColor } = cardColorsFor(
+    node,
+    colorMode,
+    familyColorById,
+    departmentColorByName
+  );
   const isMatch = node.matchState === "match";
   const isContext = node.matchState === "context";
-  const strokeColor = isMatch ? EXPORT_COLORS.primary : EXPORT_COLORS.border;
+  // A search match keeps the strong primary ring; otherwise the border is the
+  // card's own same-hue accent (no separate left accent bar), matching the
+  // reference cards.
+  const strokeColor = isMatch ? EXPORT_COLORS.primary : accentColor;
   const strokeWidth = isMatch ? 2 : 1;
   const opacity = isContext ? 0.6 : 1;
 
@@ -265,7 +285,6 @@ function renderNodeCard(
   parts.push(
     `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${bodyFill}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`
   );
-  parts.push(`<rect x="0" y="0" width="6" height="${NODE_HEIGHT}" fill="${accentColor}" />`);
 
   if (badge) {
     parts.push(
@@ -493,8 +512,19 @@ export function renderOrganogramSvg(
       if (!pos) return "";
       const at = { x: pos.x - minX, y: pos.y - minY };
       return node.kind === "department"
-        ? renderDepartmentCard(node, at, childCountByParent.get(node.positionId) ?? 0)
-        : renderNodeCard(node, at, options.colorMode ?? "department", options.familyColorById);
+        ? renderDepartmentCard(
+            node,
+            at,
+            childCountByParent.get(node.positionId) ?? 0,
+            options.departmentColorByName
+          )
+        : renderNodeCard(
+            node,
+            at,
+            options.colorMode ?? "department",
+            options.familyColorById,
+            options.departmentColorByName
+          );
     })
     .join("");
 

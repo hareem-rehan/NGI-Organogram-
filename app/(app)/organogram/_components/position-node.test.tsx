@@ -175,37 +175,30 @@ describe("PositionNode", () => {
     expect(screen.getByText(/Software Engineering/)).toBeInTheDocument();
   });
 
-  it("colours a card by its family fill and accent in family mode", () => {
+  it("fully fills the card with its resolved colour and a same-hue border, no left accent bar", () => {
     renderNode({
-      colorMode: "family",
-      familyColor: { fill: "#cbf2b1", accent: "#6fbf3f" },
-      node: makeNode({
-        title: "Principal Engineer",
-        jobFamilyId: "fam-swe",
-        jobFamilyName: "Software Engineering",
-      }),
+      cardColor: { fill: "#cbf2b1", accent: "#6fbf3f" },
+      node: makeNode({ title: "Principal Engineer" }),
     });
     const card = screen
       .getByText("Principal Engineer")
-      .closest('div[style*="border-left-color"]') as HTMLElement;
-    expect(card.style.backgroundColor).toBe("rgb(203, 242, 177)"); // #cbf2b1
-    expect(card.style.borderLeftColor).toBe("rgb(111, 191, 63)"); // #6fbf3f
+      .closest('div[style*="border-color"]') as HTMLElement;
+    expect(card.style.backgroundColor).toBe("rgb(203, 242, 177)"); // #cbf2b1 fill
+    expect(card.style.borderColor).toBe("rgb(111, 191, 63)"); // #6fbf3f edge
+    // No left-accent-bar styling remains.
+    expect(
+      card.style.borderLeftColor === "" || card.style.borderLeftColor === card.style.borderColor
+    ).toBe(true);
   });
 
-  it("in department mode fills the card with a tint of the department colour, ignoring family colour", () => {
+  it("renders a neutral card when no colour is resolved", () => {
     renderNode({
-      colorMode: "department",
-      familyColor: { fill: "#cbf2b1", accent: "#6fbf3f" },
-      node: makeNode({ title: "Principal Engineer", departmentColor: "#16a34a" }),
+      cardColor: null,
+      node: makeNode({ title: "Principal Engineer" }),
     });
-    const card = screen
-      .getByText("Principal Engineer")
-      .closest('div[style*="border-left-color"]') as HTMLElement;
-    // Filled with a light tint of the department colour (not the family fill)…
-    expect(card.style.backgroundColor).toBe("rgb(204, 235, 215)"); // lightTint("#16a34a")
-    expect(card.style.backgroundColor).not.toBe("rgb(203, 242, 177)"); // not the family fill
-    // …and the left edge stays the department colour (#16a34a).
-    expect(card.style.borderLeftColor).toBe("rgb(22, 163, 74)");
+    const card = screen.getByRole("button", { name: /Principal Engineer/ })
+      .parentElement as HTMLElement;
+    expect(card.style.backgroundColor).toBe("");
   });
 
   it("shows the occupant's display name for an occupied position, never a raw employee id", () => {
