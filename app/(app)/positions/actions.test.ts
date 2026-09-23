@@ -7,6 +7,7 @@ const {
   deptRepoMock,
   jobGradeRepoMock,
   jobGradeServiceMock,
+  careerServiceMock,
   careerRepoMock,
 } = vi.hoisted(() => ({
   requirePermissionMock: vi.fn(),
@@ -27,6 +28,7 @@ const {
   deptRepoMock: { listDepartmentsForCompany: vi.fn() },
   jobGradeRepoMock: { listJobGradesForCompany: vi.fn() },
   jobGradeServiceMock: { ensureJobGradeByCode: vi.fn() },
+  careerServiceMock: { ensureCareerTrackOfKind: vi.fn() },
   careerRepoMock: {
     listJobFamiliesForCompany: vi.fn(),
     listCareerTracksForCompany: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock("@/lib/repositories/position.repository", () => positionRepoMocks);
 vi.mock("@/lib/repositories/department.repository", () => deptRepoMock);
 vi.mock("@/lib/repositories/job-grade.repository", () => jobGradeRepoMock);
 vi.mock("@/lib/services/job-grade.service", () => jobGradeServiceMock);
+vi.mock("@/lib/services/career-framework.service", () => careerServiceMock);
 vi.mock("@/lib/repositories/career-framework.repository", () => careerRepoMock);
 
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
@@ -249,6 +252,81 @@ describe("createPositionAction — level (jobGradeCode) resolution", () => {
 
     expect(jobGradeServiceMock.ensureJobGradeByCode).not.toHaveBeenCalled();
     expect(serviceMocks.createPosition.mock.calls[0]?.[0]?.jobGradeId).toBeNull();
+  });
+});
+
+describe("position actions — career track (careerTrackKind) resolution", () => {
+  const FAMILY_UUID = "22222222-2222-4222-8222-222222222222";
+  afterEach(() => vi.clearAllMocks());
+
+  it("resolves an IC/Manager choice to a track id for the chosen sub-division, creating it on first use", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    careerServiceMock.ensureCareerTrackOfKind.mockResolvedValue({ id: "track-mgr" });
+    serviceMocks.createPosition.mockResolvedValue({});
+
+    await createPositionAction({
+      title: "Engineering Manager",
+      departmentId: VALID_UUID,
+      jobFamilyId: FAMILY_UUID,
+      careerTrackKind: "MANAGER",
+    });
+
+    expect(careerServiceMock.ensureCareerTrackOfKind).toHaveBeenCalledWith(
+      ADMIN_USER.companyId,
+      FAMILY_UUID,
+      "MANAGER",
+      expect.anything()
+    );
+    // The service is handed the resolved id, never the kind string.
+    expect(serviceMocks.createPosition.mock.calls[0]?.[0]?.careerTrackId).toBe("track-mgr");
+  });
+
+  it("does not resolve a track when no sub-division is chosen (nothing to attach it to)", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.createPosition.mockResolvedValue({});
+
+    await createPositionAction({
+      title: "Coordinator",
+      departmentId: VALID_UUID,
+      careerTrackKind: "IC",
+    });
+
+    expect(careerServiceMock.ensureCareerTrackOfKind).not.toHaveBeenCalled();
+    expect(serviceMocks.createPosition.mock.calls[0]?.[0]?.careerTrackId).toBeNull();
+  });
+
+  it("clears the track on update when careerTrackKind is null", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.updatePosition.mockResolvedValue({});
+
+    await updatePositionAction({
+      positionId: VALID_UUID,
+      jobFamilyId: FAMILY_UUID,
+      careerTrackKind: null,
+    });
+
+    expect(careerServiceMock.ensureCareerTrackOfKind).not.toHaveBeenCalled();
+    expect(serviceMocks.updatePosition.mock.calls[0]?.[0]?.careerTrackId).toBeNull();
+  });
+
+  it("resolves the track on update when a kind is chosen with a sub-division", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    careerServiceMock.ensureCareerTrackOfKind.mockResolvedValue({ id: "track-ic" });
+    serviceMocks.updatePosition.mockResolvedValue({});
+
+    await updatePositionAction({
+      positionId: VALID_UUID,
+      jobFamilyId: FAMILY_UUID,
+      careerTrackKind: "IC",
+    });
+
+    expect(careerServiceMock.ensureCareerTrackOfKind).toHaveBeenCalledWith(
+      ADMIN_USER.companyId,
+      FAMILY_UUID,
+      "IC",
+      expect.anything()
+    );
+    expect(serviceMocks.updatePosition.mock.calls[0]?.[0]?.careerTrackId).toBe("track-ic");
   });
 });
 

@@ -11,7 +11,7 @@ const {
 } = vi.hoisted(() => ({
   requirePermissionMock: vi.fn(),
   employeeServiceMocks: {
-    createEmployee: vi.fn(),
+    createEmployeeWithOptionalAssignment: vi.fn(),
     updateEmployee: vi.fn(),
     changeEmployeeStatus: vi.fn(),
     terminateEmployee: vi.fn(),
@@ -134,7 +134,7 @@ describe("employee actions — server-side authorization", () => {
     ],
   ])("%s requires employees:manage", async (_name, invoke) => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
-    employeeServiceMocks.createEmployee.mockResolvedValue({});
+    employeeServiceMocks.createEmployeeWithOptionalAssignment.mockResolvedValue({ employee: {} });
     employeeServiceMocks.updateEmployee.mockResolvedValue({});
     employeeServiceMocks.changeEmployeeStatus.mockResolvedValue({});
     employeeServiceMocks.terminateEmployee.mockResolvedValue({});
@@ -162,7 +162,7 @@ describe("employee actions — server-side authorization", () => {
       error: "You don't have permission to do that.",
       authRedirect: "/access-denied",
     });
-    expect(employeeServiceMocks.createEmployee).not.toHaveBeenCalled();
+    expect(employeeServiceMocks.createEmployeeWithOptionalAssignment).not.toHaveBeenCalled();
   });
 
   it("an unauthenticated caller is blocked before the repository layer ever runs", async () => {
@@ -177,7 +177,7 @@ describe("employee actions — server-side authorization", () => {
 
   it("companyId always comes from the authenticated session, never from the input payload", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
-    employeeServiceMocks.createEmployee.mockResolvedValue({});
+    employeeServiceMocks.createEmployeeWithOptionalAssignment.mockResolvedValue({ employee: {} });
 
     await createEmployeeAction({
       employeeCode: "EMP-1",
@@ -186,10 +186,10 @@ describe("employee actions — server-side authorization", () => {
       companyId: "attacker-company",
     });
 
-    if (employeeServiceMocks.createEmployee.mock.calls.length > 0) {
-      expect(employeeServiceMocks.createEmployee.mock.calls[0]?.[0]?.companyId).toBe(
-        ADMIN_USER.companyId
-      );
+    if (employeeServiceMocks.createEmployeeWithOptionalAssignment.mock.calls.length > 0) {
+      expect(
+        employeeServiceMocks.createEmployeeWithOptionalAssignment.mock.calls[0]?.[0]?.companyId
+      ).toBe(ADMIN_USER.companyId);
     }
   });
 
@@ -207,6 +207,51 @@ describe("employee actions — server-side authorization", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(employeeServiceMocks.createEmployee).not.toHaveBeenCalled();
+    expect(employeeServiceMocks.createEmployeeWithOptionalAssignment).not.toHaveBeenCalled();
+  });
+});
+
+describe("createEmployeeAction — optional first assignment", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("creates an unassigned employee when no position is chosen (assignment = null)", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    employeeServiceMocks.createEmployeeWithOptionalAssignment.mockResolvedValue({ employee: {} });
+
+    await createEmployeeAction({ employeeCode: "EMP-1", firstName: "A", lastName: "B" });
+
+    expect(employeeServiceMocks.createEmployeeWithOptionalAssignment.mock.calls[0]?.[0]?.assignment).toBeNull();
+  });
+
+  it("passes a resolved assignment through when a position and start date are chosen", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    employeeServiceMocks.createEmployeeWithOptionalAssignment.mockResolvedValue({ employee: {} });
+
+    await createEmployeeAction({
+      employeeCode: "EMP-1",
+      firstName: "A",
+      lastName: "B",
+      assignmentPositionId: VALID_UUID,
+      assignmentStartDate: "2024-03-01T00:00:00Z",
+    });
+
+    const assignment =
+      employeeServiceMocks.createEmployeeWithOptionalAssignment.mock.calls[0]?.[0]?.assignment;
+    expect(assignment?.positionId).toBe(VALID_UUID);
+    expect(assignment?.startDate).toBeInstanceOf(Date);
+  });
+
+  it("rejects a chosen position with no start date (server-side refinement)", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+
+    const result = await createEmployeeAction({
+      employeeCode: "EMP-1",
+      firstName: "A",
+      lastName: "B",
+      assignmentPositionId: VALID_UUID,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(employeeServiceMocks.createEmployeeWithOptionalAssignment).not.toHaveBeenCalled();
   });
 });

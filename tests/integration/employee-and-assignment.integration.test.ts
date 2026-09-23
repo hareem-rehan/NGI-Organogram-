@@ -9,6 +9,7 @@ import {
 import {
   changeEmployeeStatus,
   createEmployee,
+  createEmployeeWithOptionalAssignment,
   terminateEmployee,
   updateEmployee,
 } from "@/lib/services/employee.service";
@@ -115,6 +116,76 @@ describe("Position vacancy", () => {
     expect(isVacantOnDate([range], new Date("2023-03-01"))).toBe(false);
     expect(isVacantOnDate([range], new Date("2023-07-01"))).toBe(true);
     expect(isVacantOnDate([range], new Date("2022-12-01"))).toBe(true);
+  });
+});
+
+describe("createEmployeeWithOptionalAssignment", () => {
+  it("creates an unassigned employee when no assignment is supplied", async () => {
+    const company = await makeCompany();
+    const { employee, assignment } = await createEmployeeWithOptionalAssignment({
+      companyId: company.id,
+      employeeCode: "EMP-UNASSIGNED",
+      firstName: "Una",
+      lastName: "Ssigned",
+    });
+    expect(assignment).toBeNull();
+    const current = await listCurrentAssignmentsForEmployees([employee.id], company.id, new Date());
+    expect(current.has(employee.id)).toBe(false);
+  });
+
+  it("creates the employee and their first assignment atomically", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+
+    const { employee, assignment } = await createEmployeeWithOptionalAssignment({
+      companyId: company.id,
+      employeeCode: "EMP-HIRED",
+      firstName: "Newton",
+      lastName: "Hire",
+      assignment: { positionId: position.id, startDate: new Date("2024-01-01") },
+    });
+
+    expect(assignment).not.toBeNull();
+    expect(assignment?.positionId).toBe(position.id);
+    expect(assignment?.employeeId).toBe(employee.id);
+    const current = await listCurrentAssignmentsForEmployees(
+      [employee.id],
+      company.id,
+      new Date("2024-06-01")
+    );
+    expect(current.get(employee.id)?.position.id).toBe(position.id);
+  });
+
+  it("rolls the employee back when the assignment fails (position already filled)", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    // Fill the seat first.
+    const incumbent = await makeEmployee(company.id, { employeeCode: "EMP-INCUMBENT" });
+    await createAssignment({
+      companyId: company.id,
+      employeeId: incumbent.id,
+      positionId: position.id,
+      startDate: new Date("2023-01-01"),
+    });
+
+    await expect(
+      createEmployeeWithOptionalAssignment({
+        companyId: company.id,
+        employeeCode: "EMP-ROLLBACK",
+        firstName: "Rollback",
+        lastName: "Victim",
+        assignment: { positionId: position.id, startDate: new Date("2024-01-01") },
+      })
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    // The whole transaction rolled back — the new employee was never created,
+    // so nothing is half-written (business rule: separate entities, atomic writes).
+    const found = await testPrisma.employee.findMany({
+      where: { companyId: company.id, employeeCode: "EMP-ROLLBACK" },
+    });
+    expect(found).toHaveLength(0);
   });
 });
 

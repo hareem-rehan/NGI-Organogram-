@@ -1,16 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Employee } from "@prisma/client";
 
-const { createEmployeeActionMock, updateEmployeeActionMock } = vi.hoisted(() => ({
-  createEmployeeActionMock: vi.fn(),
-  updateEmployeeActionMock: vi.fn(),
-}));
+const { createEmployeeActionMock, updateEmployeeActionMock, listEligiblePositionsActionMock } =
+  vi.hoisted(() => ({
+    createEmployeeActionMock: vi.fn(),
+    updateEmployeeActionMock: vi.fn(),
+    listEligiblePositionsActionMock: vi.fn(),
+  }));
 
 vi.mock("@/app/(app)/employees/actions", () => ({
   createEmployeeAction: createEmployeeActionMock,
   updateEmployeeAction: updateEmployeeActionMock,
+  listEligiblePositionsAction: listEligiblePositionsActionMock,
 }));
 
 import { EmployeeFormDialog } from "./employee-form-dialog";
@@ -36,6 +39,11 @@ function makeEmployee(overrides: Partial<Employee> = {}): Employee {
 }
 
 describe("EmployeeFormDialog", () => {
+  beforeEach(() => {
+    // The create form loads eligible positions for the optional assignment
+    // section on open; default to an empty list so unrelated tests don't error.
+    listEligiblePositionsActionMock.mockResolvedValue({ ok: true, data: [] });
+  });
   afterEach(() => vi.clearAllMocks());
 
   it("renders a create form with no manager/department/level/status fields", () => {
@@ -128,6 +136,38 @@ describe("EmployeeFormDialog", () => {
     const payload = updateEmployeeActionMock.mock.calls[0]?.[0];
     expect(payload).not.toHaveProperty("employmentStatus");
     expect(payload).toEqual(expect.objectContaining({ employeeId: EMPLOYEE_ID }));
+  });
+
+  it("offers an optional 'Assign to a position' section on create", () => {
+    render(<EmployeeFormDialog open onOpenChange={() => {}} employee={null} onSaved={() => {}} />);
+    expect(screen.getByText(/assign to a position \(optional\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^position$/i)).toBeInTheDocument();
+  });
+
+  it("hides the assignment section when editing (assignment is a create-only convenience)", () => {
+    const employee = makeEmployee();
+    render(
+      <EmployeeFormDialog open onOpenChange={() => {}} employee={employee} onSaved={() => {}} />
+    );
+    expect(screen.queryByText(/assign to a position \(optional\)/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^position$/i)).not.toBeInTheDocument();
+  });
+
+  it("submits create with a null assignment when no position is chosen", async () => {
+    createEmployeeActionMock.mockResolvedValue({ ok: true, data: makeEmployee() });
+    const user = userEvent.setup();
+
+    render(<EmployeeFormDialog open onOpenChange={() => {}} employee={null} onSaved={() => {}} />);
+
+    await user.type(screen.getByLabelText(/employee code/i), "EMP-001");
+    await user.type(screen.getByLabelText(/first name/i), "Amara");
+    await user.type(screen.getByLabelText(/last name/i), "Chen");
+    await user.click(screen.getByRole("button", { name: /create employee/i }));
+
+    await waitFor(() => expect(createEmployeeActionMock).toHaveBeenCalled());
+    expect(createEmployeeActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ assignmentPositionId: null, assignmentStartDate: null })
+    );
   });
 
   it("treats an empty work email as absent rather than a validation error", async () => {
