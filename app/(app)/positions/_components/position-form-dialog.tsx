@@ -195,10 +195,11 @@ export function PositionFormDialog({
 
   const hasRoot = allPositions.some((candidate) => candidate.primaryReportsToPositionId === null);
 
-  // Level options: the company's levels as BARE codes (L2, L7, …) — never
-  // a combined "L7 — Name" label. One option per code, preferring the
-  // shared (company-wide) grade over any per-department duplicate, sorted
-  // by the grade's own numeric rank.
+  // Level options: the company's levels, each shown as its code plus the
+  // level's role name (e.g. "L7 — Lead / Principal") so the picker reads as
+  // the career ladder, not opaque codes. One option per code, preferring
+  // the shared (company-wide) grade over any per-department duplicate,
+  // sorted by the grade's own numeric rank.
   const gradeOptions = useMemo(() => {
     const byCode = new Map<string, JobGrade>();
     for (const g of jobGrades) {
@@ -408,7 +409,7 @@ export function PositionFormDialog({
                 <option value="">No level</option>
                 {gradeOptions.map((grade) => (
                   <option key={grade.id} value={grade.id}>
-                    {grade.code}
+                    {grade.name ? `${grade.code} — ${grade.name}` : grade.code}
                   </option>
                 ))}
               </Select>

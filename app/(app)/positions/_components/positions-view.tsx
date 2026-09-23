@@ -345,9 +345,6 @@ export function PositionsView({ canManage }: PositionsViewProps) {
                   Title
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
-                  Code
-                </th>
-                <th scope="col" className="px-4 py-2 text-left font-medium">
                   Department
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
@@ -359,16 +356,9 @@ export function PositionsView({ canManage }: PositionsViewProps) {
                 <th
                   scope="col"
                   className="px-4 py-2 text-left font-medium"
-                  title="Career grade (L2–L18)"
+                  title="Career level (L2–L18)"
                 >
-                  Grade
-                </th>
-                <th
-                  scope="col"
-                  className="px-4 py-2 text-left font-medium"
-                  title="Depth in the reporting tree (root = 1)"
-                >
-                  Depth
+                  Level
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
                   Status
@@ -387,12 +377,10 @@ export function PositionsView({ canManage }: PositionsViewProps) {
               {positions.map((position) => (
                 <tr key={position.id}>
                   <td className="px-4 py-2 font-medium">{position.title}</td>
-                  <td className="px-4 py-2">{position.positionCode}</td>
                   <td className="px-4 py-2">{departmentName(position.departmentId)}</td>
                   <td className="px-4 py-2">{jobFamilyName(position.jobFamilyId)}</td>
                   <td className="px-4 py-2">{reportsToTitle(position)}</td>
                   <td className="px-4 py-2">{jobGradeCode(position.jobGradeId)}</td>
-                  <td className="px-4 py-2">{position.organizationalLevel}</td>
                   <td className="px-4 py-2">
                     <Badge variant={STATUS_BADGE_VARIANT[position.status]}>
                       {position.status === "ACTIVE"
