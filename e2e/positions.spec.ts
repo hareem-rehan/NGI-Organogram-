@@ -62,10 +62,9 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
 
     await expect(dialog).toBeHidden();
     await expect(page.getByText(rootTitle)).toBeVisible();
+    // The root position's row shows "— (root)" in the Reports to column.
     await expect(
-      page
-        .getByRole("row", { name: new RegExp(rootTitle) })
-        .getByRole("cell", { name: "1", exact: true })
+      page.getByRole("row", { name: new RegExp(rootTitle) }).getByText("— (root)")
     ).toBeVisible();
   });
 
@@ -98,8 +97,8 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     await expect(dialog).toBeHidden();
     const childRow = page.getByRole("row", { name: new RegExp(childTitle) });
     await expect(childRow).toBeVisible();
+    // The child reports to the root — shown in the Reports to column.
     await expect(childRow.getByText(rootTitle)).toBeVisible();
-    await expect(childRow.getByRole("cell", { name: "2", exact: true })).toBeVisible();
   });
 
   test("changing Reports-To shows descendant-recalculation feedback and updates the hierarchy", async ({

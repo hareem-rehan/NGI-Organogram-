@@ -59,7 +59,7 @@ const JOB_GRADE: JobGrade = {
 const L7_GRADE: JobGrade = {
   ...JOB_GRADE,
   id: L7_ID,
-  name: "L7",
+  name: "Lead / Principal",
   code: "L7",
   displayOrder: 7,
 };
@@ -202,12 +202,13 @@ describe("PositionFormDialog", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  it("shows the Level as a bare code (L7), never a combined 'L7 — Name' label", () => {
+  it("shows each Level as its code plus the level's role name", () => {
     renderForm({ jobGrades: [L7_GRADE] });
     const levelSelect = screen.getByLabelText(/^level$/i);
-    expect(within(levelSelect).getByRole("option", { name: "L7" })).toBeInTheDocument();
-    // No descriptive suffix anywhere in the level options.
-    expect(within(levelSelect).queryByRole("option", { name: /L7\s*—/ })).not.toBeInTheDocument();
+    // The option reads "L7 — Lead / Principal", not the bare code.
+    expect(
+      within(levelSelect).getByRole("option", { name: /L7\s*—\s*Lead \/ Principal/ })
+    ).toBeInTheDocument();
   });
 
   it("single-ladder family: hides the track picker and auto-classifies onto the base ladder", async () => {

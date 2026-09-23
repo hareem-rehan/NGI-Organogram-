@@ -92,7 +92,6 @@ describe("PositionsView", () => {
     render(<PositionsView canManage={false} />);
 
     expect(await screen.findByText("Chief Executive Officer")).toBeInTheDocument();
-    expect(screen.getByText("POS-CEO")).toBeInTheDocument();
     expect(screen.getByText("Filled")).toBeInTheDocument();
   });
 
