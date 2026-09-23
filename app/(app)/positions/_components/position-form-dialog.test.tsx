@@ -351,16 +351,16 @@ describe("scopeReportsToOptions", () => {
   });
   const all = [ceo, engManager, hrManager];
 
-  it("offers same-department managers plus the root, hiding other departments", () => {
+  it("offers only same-department positions, hiding other departments (incl. a cross-department root)", () => {
     const ids = scopeReportsToOptions(all, DEPARTMENT_ID, "").map((o) => o.value);
-    expect(ids).toContain("eng1");
-    expect(ids).toContain("ceo");
+    expect(ids).toEqual(["eng1"]);
+    // The root CEO lives in another department, so it is no longer offered.
+    expect(ids).not.toContain("ceo");
     expect(ids).not.toContain("hr1");
   });
 
-  it("offers only the root CEO for a department that has no positions yet", () => {
-    const ids = scopeReportsToOptions(all, "client-delivery-dept", "").map((o) => o.value);
-    expect(ids).toEqual(["ceo"]);
+  it("offers nothing for a department that has no positions of its own", () => {
+    expect(scopeReportsToOptions(all, "client-delivery-dept", "")).toHaveLength(0);
   });
 
   it("applies no department scope when none is selected", () => {
@@ -370,13 +370,15 @@ describe("scopeReportsToOptions", () => {
 
   it("filters the scoped set by title or code query", () => {
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "cto").map((o) => o.value)).toEqual(["eng1"]);
-    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-CEO").map((o) => o.value)).toEqual([
-      "ceo",
+    // A same-department code matches; the cross-department root does not.
+    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-ENG").map((o) => o.value)).toEqual([
+      "eng1",
     ]);
+    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-CEO")).toHaveLength(0);
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "zzz")).toHaveLength(0);
   });
 
-  it("describes each option by level and job family, never the position code", () => {
+  it("describes each option by job family only — never the level or position code", () => {
     const positions = [
       makePosition({
         id: "eng1",
@@ -394,11 +396,12 @@ describe("scopeReportsToOptions", () => {
       "",
       new Map([[FAMILY_ID, "Software Engineering"]])
     );
-    expect(options[0]?.description).toBe("Level 2 · Software Engineering");
+    expect(options[0]?.description).toBe("Software Engineering");
+    expect(options[0]?.description).not.toContain("Level");
     expect(options[0]?.description).not.toContain("POS-");
   });
 
-  it("falls back to just the level when a position has no family", () => {
+  it("shows no secondary line when a position has no family", () => {
     const positions = [
       makePosition({
         id: "eng1",
@@ -411,6 +414,6 @@ describe("scopeReportsToOptions", () => {
       }),
     ];
     const options = scopeReportsToOptions(positions, DEPARTMENT_ID, "", new Map());
-    expect(options[0]?.description).toBe("Level 2");
+    expect(options[0]?.description).toBeUndefined();
   });
 });
