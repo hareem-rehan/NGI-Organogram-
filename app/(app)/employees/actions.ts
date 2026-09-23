@@ -7,7 +7,7 @@ import { runAction, type ActionResult } from "@/lib/server/action-result";
 import { toAuditActor } from "@/lib/server/audit-actor";
 import {
   changeEmployeeStatus,
-  createEmployee,
+  createEmployeeWithOptionalAssignment,
   terminateEmployee,
   updateEmployee,
   type TerminateEmployeeResult,
@@ -37,7 +37,7 @@ import { listDepartmentsForCompany } from "@/lib/repositories/department.reposit
 import {
   assignEmployeeSchema,
   changeEmployeeStatusSchema,
-  createEmployeeSchema,
+  createEmployeeWithAssignmentSchema,
   eligiblePositionSearchSchema,
   endAssignmentSchema,
   listEmployeesQuerySchema,
@@ -141,8 +141,22 @@ export async function listEligiblePositionsAction(
 export async function createEmployeeAction(input: unknown): Promise<ActionResult<Employee>> {
   return runAction(async () => {
     const user = await requirePermission("employees:manage");
-    const values = createEmployeeSchema.parse(input);
-    return createEmployee({ companyId: user.companyId, actor: toAuditActor(user), ...values });
+    const { assignmentPositionId, assignmentStartDate, ...employeeValues } =
+      createEmployeeWithAssignmentSchema.parse(input);
+    // An optional first assignment is applied atomically with the create
+    // (see createEmployeeWithOptionalAssignment). Without a chosen position
+    // the employee is created unassigned.
+    const assignment =
+      assignmentPositionId && assignmentStartDate
+        ? { positionId: assignmentPositionId, startDate: assignmentStartDate }
+        : null;
+    const { employee } = await createEmployeeWithOptionalAssignment({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      ...employeeValues,
+      assignment,
+    });
+    return employee;
   });
 }
 

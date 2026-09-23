@@ -211,57 +211,31 @@ describe("PositionFormDialog", () => {
     ).toBeInTheDocument();
   });
 
-  it("single-ladder family: hides the track picker and auto-classifies onto the base ladder", async () => {
-    createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
-    const user = userEvent.setup();
-    renderForm({
-      jobGrades: [L7_GRADE],
-      jobFamilies: [SWE_FAMILY],
-      careerTracks: [IC_TRACK], // one ladder only
-      levelMappingEntries: [L7_IC_ENTRY],
-    });
-
-    await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
-    // No ladder to choose in single-ladder mode.
+  it("hides the Career-track picker until a sub-division is chosen", () => {
+    renderForm({ jobGrades: [L7_GRADE], jobFamilies: [SWE_FAMILY] });
+    // No sub-division selected yet → no track choice.
     expect(screen.queryByLabelText(/career track/i)).not.toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
-    // The cell title is still suggested, because the position is auto-pinned
-    // to the family's base (IC) ladder behind the scenes.
-    const suggestion = document.querySelector(
-      '#position-title-suggestions option[value="Principal Software Engineer"]'
-    );
-    expect(suggestion).not.toBeNull();
-
-    await user.type(screen.getByLabelText(/title/i), "Principal Software Engineer");
-    await user.click(screen.getByRole("button", { name: /create position/i }));
-
-    await waitFor(() => expect(createPositionActionMock).toHaveBeenCalled());
-    expect(createPositionActionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Principal Software Engineer",
-        departmentId: DEPARTMENT_ID,
-        jobFamilyId: FAMILY_ID,
-        careerTrackId: TRACK_ID, // auto-selected base ladder
-        jobGradeId: L7_ID,
-      })
-    );
   });
 
-  it("dual-ladder family: shows the track picker and submits the chosen ladder", async () => {
+  it("offers a plain IC/Manager choice once a sub-division is chosen, and submits it as careerTrackKind", async () => {
     createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
     const user = userEvent.setup();
     renderForm({
       jobGrades: [L7_GRADE],
       jobFamilies: [SWE_FAMILY],
-      careerTracks: [IC_TRACK, MGR_TRACK], // parallel ladders
+      careerTracks: [], // no tracks configured yet — the choice still works
       levelMappingEntries: [L7_IC_ENTRY],
     });
 
     await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
-    // The picker appears only once a parallel ladder exists.
-    await user.selectOptions(screen.getByLabelText(/career track/i), MGR_TRACK_ID);
-    expect(screen.getByLabelText(/career track/i)).toHaveValue(MGR_TRACK_ID);
+    // The picker appears with a plain, framework-independent choice.
+    const trackSelect = screen.getByLabelText(/career track/i);
+    expect(
+      within(trackSelect).getByRole("option", { name: /individual contributor/i })
+    ).toBeInTheDocument();
+    expect(within(trackSelect).getByRole("option", { name: /^manager$/i })).toBeInTheDocument();
+
+    await user.selectOptions(trackSelect, "MANAGER");
     await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
 
     await user.type(screen.getByLabelText(/title/i), "Engineering Manager");
@@ -273,10 +247,38 @@ describe("PositionFormDialog", () => {
         title: "Engineering Manager",
         departmentId: DEPARTMENT_ID,
         jobFamilyId: FAMILY_ID,
-        careerTrackId: MGR_TRACK_ID,
+        careerTrackKind: "MANAGER",
         jobGradeId: L7_ID,
       })
     );
+  });
+
+  it("suggests titles from the (family, level) matrix cell regardless of ladder", async () => {
+    const user = userEvent.setup();
+    renderForm({
+      jobGrades: [L7_GRADE],
+      jobFamilies: [SWE_FAMILY],
+      careerTracks: [IC_TRACK],
+      levelMappingEntries: [L7_IC_ENTRY],
+    });
+
+    await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
+    await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
+    const suggestion = document.querySelector(
+      '#position-title-suggestions option[value="Principal Software Engineer"]'
+    );
+    expect(suggestion).not.toBeNull();
+  });
+
+  it("prefills the Career-track choice from the position's stored track when editing", () => {
+    const position = makePosition({ jobFamilyId: FAMILY_ID, careerTrackId: MGR_TRACK_ID });
+    renderForm({
+      position,
+      jobFamilies: [SWE_FAMILY],
+      careerTracks: [IC_TRACK, MGR_TRACK],
+      allPositions: [position],
+    });
+    expect(screen.getByLabelText(/career track/i)).toHaveValue("MANAGER");
   });
 
   it("scopes sub-divisions to the selected department", () => {

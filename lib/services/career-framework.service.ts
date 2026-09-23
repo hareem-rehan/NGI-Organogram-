@@ -284,6 +284,26 @@ export async function ensureDefaultTrack(
 }
 
 /**
+ * Find-or-create a family's career track of the given kind (IC or Manager).
+ * Lets the Position form offer a plain "IC / Manager" choice that works even
+ * when the family has no tracks configured yet — the track is materialised
+ * on first use. Idempotent per (company, family, kind).
+ */
+export async function ensureCareerTrackOfKind(
+  companyId: string,
+  jobFamilyId: string,
+  kind: CareerTrackKind,
+  actor: AuditActor | undefined,
+  db: DbClient = prisma
+): Promise<CareerTrack> {
+  return withTransaction(db, async (tx) => {
+    const existing = await tx.careerTrack.findFirst({ where: { companyId, jobFamilyId, kind } });
+    if (existing) return existing;
+    return createCareerTrack({ companyId, actor, jobFamilyId, kind }, tx);
+  });
+}
+
+/**
  * Adds a parallel Manager ladder to a family, turning its single-ladder
  * matrix into the two-column IC/Manager form. The base (IC) ladder is
  * ensured first so the two columns always coexist. No-ops sensibly if a

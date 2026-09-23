@@ -1,5 +1,5 @@
 import "server-only";
-import type { Employee, EmploymentStatus, Prisma } from "@prisma/client";
+import type { Employee, EmploymentStatus, PositionAssignment, Prisma } from "@prisma/client";
 import { Prisma as PrismaNamespace } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
@@ -10,6 +10,7 @@ import { ConflictError, DomainValidationError, NotFoundError } from "@/lib/domai
 import { findEmployeeById } from "@/lib/repositories/employee.repository";
 import { getActivePrimaryAssignmentForEmployee } from "@/lib/repositories/assignment.repository";
 import type { DbClient } from "@/lib/repositories/types";
+import { createAssignment } from "@/lib/services/assignment.service";
 import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service";
 
 const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
@@ -75,6 +76,48 @@ export async function createEmployee(
       tx
     );
     return created;
+  });
+}
+
+export interface CreateEmployeeWithOptionalAssignmentInput extends CreateEmployeeInput {
+  /**
+   * When present, the new employee is immediately assigned to this vacant
+   * position — atomically, in the SAME transaction as the create, so a
+   * failed assignment (position already filled, archived, etc.) rolls the
+   * employee back too and nothing is half-written. Omit it to create an
+   * unassigned employee (the default).
+   */
+  assignment?: { positionId: string; startDate: Date } | null;
+}
+
+/**
+ * Creates an employee and, optionally, their first position assignment in
+ * one atomic transaction (CLAUDE.md §9). Employee and Position stay separate
+ * entities (business rule 2) — this is a convenience for the "add employee
+ * and put them straight into a vacant seat" flow, not a merging of the two.
+ * The assignment reuses `createAssignment`, so every eligibility, overlap and
+ * concurrency guard there applies unchanged; if it throws, the whole
+ * transaction rolls back and the employee is never created.
+ */
+export async function createEmployeeWithOptionalAssignment(
+  input: CreateEmployeeWithOptionalAssignmentInput,
+  db: DbClient = prisma
+): Promise<{ employee: Employee; assignment: PositionAssignment | null }> {
+  const { assignment, ...employeeInput } = input;
+  return withTransaction(db, async (tx) => {
+    const employee = await createEmployee(employeeInput, tx);
+    if (!assignment) return { employee, assignment: null };
+    const created = await createAssignment(
+      {
+        companyId: input.companyId,
+        actor: input.actor,
+        employeeId: employee.id,
+        positionId: assignment.positionId,
+        startDate: assignment.startDate,
+      },
+      tx
+    );
+    return { employee, assignment: created };
   });
 }
 

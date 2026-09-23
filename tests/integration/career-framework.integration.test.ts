@@ -8,6 +8,7 @@ import {
   deleteCareerTrack,
   deleteJobFamily,
   deleteLevelMappingEntry,
+  ensureCareerTrackOfKind,
   ensureDefaultTrack,
   updateJobFamily,
 } from "@/lib/services/career-framework.service";
@@ -400,6 +401,31 @@ describe("career-framework.service — single ladder by default", () => {
 
     expect(second.id).toBe(first.id);
     expect(await testPrisma.careerTrack.count({ where: { jobFamilyId: family.id } })).toBe(1);
+  });
+
+  it("ensureCareerTrackOfKind creates the kind's ladder on first use, then reuses it", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const family = await createJobFamily({
+      companyId: company.id,
+      departmentId: dept.id,
+      name: "SWE",
+      code: "SWE",
+    });
+
+    // A family with no tracks yet: the Position form's plain "Manager" choice
+    // materialises the Manager ladder here, without pre-configuring Career
+    // Framework.
+    const first = await ensureCareerTrackOfKind(company.id, family.id, "MANAGER", undefined);
+    const second = await ensureCareerTrackOfKind(company.id, family.id, "MANAGER", undefined);
+
+    expect(first.kind).toBe("MANAGER");
+    expect(second.id).toBe(first.id); // idempotent per (company, family, kind)
+    const kinds = (await testPrisma.careerTrack.findMany({ where: { jobFamilyId: family.id } }))
+      .map((t) => t.kind)
+      .sort();
+    // Only the Manager ladder is created — no incidental IC ladder.
+    expect(kinds).toEqual(["MANAGER"]);
   });
 
   it("addManagerLadder ensures the base IC ladder and adds the Manager ladder", async () => {

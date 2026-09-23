@@ -38,7 +38,8 @@ interface FormValues {
   title: string;
   departmentId: string;
   jobFamilyId: string | null;
-  careerTrackId: string | null;
+  /** Plain IC/Manager choice; resolved to a track (created if needed) on submit. */
+  careerTrackKind: "IC" | "MANAGER" | null;
   jobGradeId: string | null;
   description: string | null;
   primaryReportsToPositionId: string | null;
@@ -143,7 +144,7 @@ export function PositionFormDialog({
       title: "",
       departmentId: "",
       jobFamilyId: null,
-      careerTrackId: null,
+      careerTrackKind: null,
       jobGradeId: null,
       description: null,
       primaryReportsToPositionId: null,
@@ -158,6 +159,8 @@ export function PositionFormDialog({
   positionRef.current = position;
   const departmentsRef = useRef(departments);
   departmentsRef.current = departments;
+  const careerTracksRef = useRef(careerTracks);
+  careerTracksRef.current = careerTracks;
 
   useEffect(() => {
     if (open && !wasOpen.current) {
@@ -165,11 +168,16 @@ export function PositionFormDialog({
       const currentDepartments = departmentsRef.current;
       setFormError(null);
       setReportsToQuery("");
+      // Derive the plain IC/Manager choice from the position's stored track,
+      // so editing shows the same choice the form offers.
+      const currentTrack = currentPosition?.careerTrackId
+        ? careerTracksRef.current.find((t) => t.id === currentPosition.careerTrackId)
+        : undefined;
       reset({
         title: currentPosition?.title ?? "",
         departmentId: currentPosition?.departmentId ?? currentDepartments[0]?.id ?? "",
         jobFamilyId: currentPosition?.jobFamilyId ?? null,
-        careerTrackId: currentPosition?.careerTrackId ?? null,
+        careerTrackKind: currentTrack?.kind ?? null,
         jobGradeId: currentPosition?.jobGradeId ?? null,
         description: currentPosition?.description ?? null,
         primaryReportsToPositionId: null,
@@ -189,7 +197,7 @@ export function PositionFormDialog({
 
   const departmentId = watch("departmentId");
   const jobFamilyId = watch("jobFamilyId");
-  const careerTrackId = watch("careerTrackId");
+  const careerTrackKind = watch("careerTrackKind");
   const jobGradeId = watch("jobGradeId");
   const primaryReportsToPositionId = watch("primaryReportsToPositionId");
 
@@ -209,46 +217,23 @@ export function PositionFormDialog({
     return [...byCode.values()].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
   }, [jobGrades]);
 
-  // Sub-divisions in the selected department; tracks within the selected
-  // family. Both optional — a position need not be classified.
+  // Sub-divisions in the selected department. Optional — a position need
+  // not be classified.
   const familyOptions = useMemo(
     () => jobFamilies.filter((f) => f.departmentId === departmentId),
     [jobFamilies, departmentId]
   );
-  const trackOptions = useMemo(
-    () => careerTracks.filter((t) => t.jobFamilyId === jobFamilyId),
-    [careerTracks, jobFamilyId]
-  );
-  // Only families that run a parallel Manager ladder need a ladder choice.
-  // A single-ladder family (the common case) hides the picker and classifies
-  // the position onto its base (IC) ladder automatically.
-  const hasManagerLadder = useMemo(
-    () => trackOptions.some((t) => t.kind === "MANAGER"),
-    [trackOptions]
-  );
-  useEffect(() => {
-    if (!jobFamilyId) return;
-    if (!hasManagerLadder) {
-      // Single ladder: pin to the family's base (IC) ladder if it exists,
-      // otherwise leave unset — the family classification is what matters.
-      const base = trackOptions.find((t) => t.kind === "IC");
-      setValue("careerTrackId", base?.id ?? null);
-    }
-  }, [jobFamilyId, hasManagerLadder, trackOptions, setValue]);
 
-  // Titles configured for the chosen (family, track, level) cell of the
-  // career matrix — offered as suggestions, never enforced.
+  // Titles configured for the chosen (family, level) cell of the career
+  // matrix — offered as suggestions, never enforced. Track is a plain
+  // IC/Manager choice here (resolved server-side), so suggestions are keyed
+  // by family + level only.
   const titleSuggestions = useMemo(() => {
-    if (!jobFamilyId || !careerTrackId || !jobGradeId) return [];
+    if (!jobFamilyId || !jobGradeId) return [];
     return levelMappingEntries
-      .filter(
-        (e) =>
-          e.jobFamilyId === jobFamilyId &&
-          e.careerTrackId === careerTrackId &&
-          e.jobGradeId === jobGradeId
-      )
+      .filter((e) => e.jobFamilyId === jobFamilyId && e.jobGradeId === jobGradeId)
       .map((e) => e.title);
-  }, [levelMappingEntries, jobFamilyId, careerTrackId, jobGradeId]);
+  }, [levelMappingEntries, jobFamilyId, jobGradeId]);
 
   const jobFamilyNameById = useMemo(
     () => new Map(jobFamilies.map((f) => [f.id, f.name])),
@@ -269,7 +254,7 @@ export function PositionFormDialog({
             departmentId: values.departmentId,
             jobGradeId: values.jobGradeId,
             jobFamilyId: values.jobFamilyId,
-            careerTrackId: values.careerTrackId,
+            careerTrackKind: values.jobFamilyId ? values.careerTrackKind : null,
             description: values.description,
           })
         : await createPositionAction({
@@ -277,7 +262,7 @@ export function PositionFormDialog({
             departmentId: values.departmentId,
             jobGradeId: values.jobGradeId,
             jobFamilyId: values.jobFamilyId,
-            careerTrackId: values.careerTrackId,
+            careerTrackKind: values.jobFamilyId ? values.careerTrackKind : null,
             description: values.description,
             primaryReportsToPositionId: values.primaryReportsToPositionId,
           });
@@ -326,11 +311,11 @@ export function PositionFormDialog({
                 onChange={(event) => {
                   const newDept = event.target.value;
                   setValue("departmentId", newDept, { shouldValidate: true });
-                  // Sub-division (and therefore track) is scoped to the
-                  // department, so a family from the old department no longer
-                  // applies — clear both.
+                  // Sub-division is scoped to the department, so a family from
+                  // the old department no longer applies — clear it and the
+                  // track choice with it.
                   setValue("jobFamilyId", null);
-                  setValue("careerTrackId", null);
+                  setValue("careerTrackKind", null);
                   // Reports-To is department-scoped too; drop a now-out-of-scope
                   // manager (keep the root CEO, always allowed).
                   const chosen = allPositions.find((p) => p.id === primaryReportsToPositionId);
@@ -362,7 +347,7 @@ export function PositionFormDialog({
                 value={jobFamilyId ?? ""}
                 onChange={(event) => {
                   setValue("jobFamilyId", event.target.value || null);
-                  setValue("careerTrackId", null);
+                  setValue("careerTrackKind", null);
                 }}
               >
                 <option value="">
@@ -377,20 +362,25 @@ export function PositionFormDialog({
             )}
           </Field>
 
-          {hasManagerLadder ? (
-            <Field label="Career track" hint="IC or Manager ladder (optional).">
+          {jobFamilyId ? (
+            <Field
+              label="Career track"
+              hint="Individual Contributor or Manager ladder (optional). Created automatically if it does not exist yet."
+            >
               {(fieldProps) => (
                 <Select
                   {...fieldProps}
-                  value={careerTrackId ?? ""}
-                  onChange={(event) => setValue("careerTrackId", event.target.value || null)}
+                  value={careerTrackKind ?? ""}
+                  onChange={(event) =>
+                    setValue(
+                      "careerTrackKind",
+                      (event.target.value || null) as "IC" | "MANAGER" | null
+                    )
+                  }
                 >
                   <option value="">None</option>
-                  {trackOptions.map((track) => (
-                    <option key={track.id} value={track.id}>
-                      {track.name}
-                    </option>
-                  ))}
+                  <option value="IC">Individual Contributor</option>
+                  <option value="MANAGER">Manager</option>
                 </Select>
               )}
             </Field>

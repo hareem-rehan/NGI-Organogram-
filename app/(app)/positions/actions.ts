@@ -12,6 +12,7 @@ import type {
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
 import { ensureJobGradeByCode } from "@/lib/services/job-grade.service";
+import { ensureCareerTrackOfKind } from "@/lib/services/career-framework.service";
 import { randomBytes } from "node:crypto";
 import { toAuditActor } from "@/lib/server/audit-actor";
 import {
@@ -134,7 +135,8 @@ function generatePositionCode(): string {
 export async function createPositionAction(input: unknown): Promise<ActionResult<Position>> {
   return runAction(async () => {
     const user = await requirePermission("positions:manage");
-    const { jobGradeCode, jobGradeName, ...values } = createPositionSchema.parse(input);
+    const { jobGradeCode, jobGradeName, careerTrackKind, ...values } =
+      createPositionSchema.parse(input);
     // A level chosen in the form (e.g. "L7") is resolved to the grade for
     // THIS position's department, creating it — with its per-department
     // name — on first use.
@@ -148,12 +150,27 @@ export async function createPositionAction(input: unknown): Promise<ActionResult
           )
         ).id
       : (values.jobGradeId ?? null);
+    // A plain IC/Manager choice resolves to a career track for the chosen
+    // sub-division, creating it on first use. Needs a sub-division; without
+    // one there is nothing to attach a track to.
+    const careerTrackId =
+      careerTrackKind && values.jobFamilyId
+        ? (
+            await ensureCareerTrackOfKind(
+              user.companyId,
+              values.jobFamilyId,
+              careerTrackKind,
+              toAuditActor(user)
+            )
+          ).id
+        : (values.careerTrackId ?? null);
     return createPosition({
       companyId: user.companyId,
       actor: toAuditActor(user),
       ...values,
       positionCode: values.positionCode ?? generatePositionCode(),
       jobGradeId,
+      careerTrackId,
     });
   });
 }
@@ -161,7 +178,8 @@ export async function createPositionAction(input: unknown): Promise<ActionResult
 export async function updatePositionAction(input: unknown): Promise<ActionResult<Position>> {
   return runAction(async () => {
     const user = await requirePermission("positions:manage");
-    const { jobGradeCode, jobGradeName, ...values } = updatePositionSchema.parse(input);
+    const { jobGradeCode, jobGradeName, careerTrackKind, ...values } =
+      updatePositionSchema.parse(input);
     let jobGradeId = values.jobGradeId;
     if (jobGradeCode === null) {
       jobGradeId = null;
@@ -176,11 +194,27 @@ export async function updatePositionAction(input: unknown): Promise<ActionResult
         ).id;
       }
     }
+    // Resolve a plain IC/Manager choice to a career track for the chosen
+    // sub-division (created on first use). Null clears it; undefined leaves it.
+    let careerTrackId = values.careerTrackId;
+    if (careerTrackKind === null) {
+      careerTrackId = null;
+    } else if (careerTrackKind !== undefined && values.jobFamilyId) {
+      careerTrackId = (
+        await ensureCareerTrackOfKind(
+          user.companyId,
+          values.jobFamilyId,
+          careerTrackKind,
+          toAuditActor(user)
+        )
+      ).id;
+    }
     return updatePosition({
       companyId: user.companyId,
       actor: toAuditActor(user),
       ...values,
       jobGradeId,
+      careerTrackId,
     });
   });
 }

@@ -62,6 +62,14 @@ export const createPositionSchema = z
      */
     jobFamilyId: z.string().uuid().nullable().optional(),
     careerTrackId: z.string().uuid().nullable().optional(),
+    /**
+     * A plain IC/Manager choice from the Position form. The action resolves
+     * it to a career-track id for the chosen sub-division, creating the track
+     * if it does not exist yet — so a track can be set without pre-configuring
+     * Career Framework. `careerTrackId` stays supported for callers holding a
+     * resolved id.
+     */
+    careerTrackKind: z.enum(["IC", "MANAGER"]).nullable().optional(),
     description: descriptionSchema,
     location: locationSchema,
     primaryReportsToPositionId: z.string().uuid().nullable().optional(),
@@ -90,6 +98,8 @@ export const updatePositionSchema = z
     /** Career-framework classification (both optional; never affects reporting). */
     jobFamilyId: z.string().uuid().nullable().optional(),
     careerTrackId: z.string().uuid().nullable().optional(),
+    /** Plain IC/Manager choice; resolved to a track id (created if needed) by the action. */
+    careerTrackKind: z.enum(["IC", "MANAGER"]).nullable().optional(),
     description: descriptionSchema,
     location: locationSchema,
   })

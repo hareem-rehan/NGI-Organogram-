@@ -54,6 +54,31 @@ export const createEmployeeSchema = z
   .strict();
 export type CreateEmployeeValues = z.infer<typeof createEmployeeSchema>;
 
+/**
+ * Create-employee payload plus an OPTIONAL first assignment to a vacant
+ * position. When `assignmentPositionId` is set, `assignmentStartDate` is
+ * required (the assignment must have a start). Both omitted → an unassigned
+ * employee, exactly as before. The action resolves these into the atomic
+ * `createEmployeeWithOptionalAssignment` flow; the server still re-validates
+ * the position's eligibility on commit.
+ */
+export const createEmployeeWithAssignmentSchema = createEmployeeSchema
+  .extend({
+    assignmentPositionId: z.string().uuid().nullable().optional(),
+    assignmentStartDate: z.coerce.date().nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.assignmentPositionId && !value.assignmentStartDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["assignmentStartDate"],
+        message: "Start date is required when assigning to a position.",
+      });
+    }
+  });
+export type CreateEmployeeWithAssignmentValues = z.infer<typeof createEmployeeWithAssignmentSchema>;
+
 export const updateEmployeeSchema = z
   .object({
     employeeId: z.string().uuid(),
