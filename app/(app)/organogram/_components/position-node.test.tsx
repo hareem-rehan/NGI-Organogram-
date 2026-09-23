@@ -192,7 +192,7 @@ describe("PositionNode", () => {
     expect(card.style.borderLeftColor).toBe("rgb(111, 191, 63)"); // #6fbf3f
   });
 
-  it("in department mode ignores any family colour and keeps the department edge", () => {
+  it("in department mode fills the card with a tint of the department colour, ignoring family colour", () => {
     renderNode({
       colorMode: "department",
       familyColor: { fill: "#cbf2b1", accent: "#6fbf3f" },
@@ -201,8 +201,9 @@ describe("PositionNode", () => {
     const card = screen
       .getByText("Principal Engineer")
       .closest('div[style*="border-left-color"]') as HTMLElement;
-    // No family fill applied…
-    expect(card.style.backgroundColor).toBe("");
+    // Filled with a light tint of the department colour (not the family fill)…
+    expect(card.style.backgroundColor).toBe("rgb(204, 235, 215)"); // lightTint("#16a34a")
+    expect(card.style.backgroundColor).not.toBe("rgb(203, 242, 177)"); // not the family fill
     // …and the left edge stays the department colour (#16a34a).
     expect(card.style.borderLeftColor).toBe("rgb(22, 163, 74)");
   });

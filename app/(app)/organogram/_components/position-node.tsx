@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
 import type { OrganogramNode } from "@/lib/domain/organogram";
-import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
+import { lightTint, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 /** Which dimension drives a card's colour. Department is the default. */
 export type OrganogramColorMode = "department" | "family";
@@ -68,11 +68,22 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
   // fallback for any caller that hasn't populated it.
   const roleCount = node.departmentMemberCount ?? node.displayChildCount ?? node.directReportCount;
   const accent = node.departmentColor ?? "var(--color-primary)";
+  // Fully colour-filled heading (tint of the department colour), matching
+  // the fully-coloured member cards below it.
+  const headingBackground = node.departmentColor ? lightTint(node.departmentColor) : undefined;
 
   return (
     <div
-      className="bg-muted pointer-events-auto flex flex-col overflow-hidden rounded-lg border-2 border-l-[6px] shadow-sm"
-      style={{ width: NODE_WIDTH, height: NODE_HEIGHT, borderColor: accent }}
+      className={cn(
+        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border-2 border-l-[6px] shadow-sm",
+        !headingBackground && "bg-muted"
+      )}
+      style={{
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        borderColor: accent,
+        backgroundColor: headingBackground,
+      }}
     >
       <Handle type="target" position={Position.Top} className="!bg-border !border-none" />
       <button
@@ -118,11 +129,17 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
 
   if (node.kind === "department") return <DepartmentNodeCard data={data} />;
 
-  // In family mode a classified card takes its family's fill + edge; an
-  // unclassified position (no family) falls back to the neutral card. In
-  // department mode only the left edge is coloured (the Phase 8 look).
+  // Cards are fully colour-filled (like the reference chart): in family mode
+  // by the family's palette fill + edge, otherwise by a light tint of the
+  // department colour + the department colour as the edge. An unclassified
+  // card in family mode, or one with no department colour, keeps the neutral
+  // background.
   const familyStyled = colorMode === "family" && familyColor !== null;
-  const cardBackground = familyStyled ? familyColor!.fill : undefined;
+  const cardBackground = familyStyled
+    ? familyColor!.fill
+    : node.departmentColor
+      ? lightTint(node.departmentColor)
+      : undefined;
   const leftEdgeColor = familyStyled
     ? familyColor!.accent
     : (node.departmentColor ?? "var(--color-border)");
@@ -158,8 +175,8 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // receive events — see e2e/organogram.spec.ts, which caught this
         // as a real click-through-to-the-pane failure before this fix.
         "pointer-events-auto flex flex-col overflow-hidden rounded-lg border-2 border-l-[6px] shadow-sm transition-colors",
-        // Neutral card background unless a family fill is applied below.
-        !familyStyled && "bg-background",
+        // Neutral card background only when no colour fill applies below.
+        !cardBackground && "bg-background",
         isSelected
           ? "border-primary"
           : matchState === "match"

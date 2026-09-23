@@ -46,3 +46,24 @@ export function buildFamilyColorMap(familyIdsInOrder: readonly string[]): Map<st
   });
   return map;
 }
+
+/**
+ * A light, readable pastel fill derived from a base colour — the card body
+ * tint that makes a card read as "fully coloured" (like the reference org
+ * chart) while keeping dark text legible. `weight` is how much of the base
+ * colour to keep (the rest is blended toward white); the default is a light
+ * pastel. Computed explicitly (not via CSS `color-mix`) so the same value
+ * works in the browser AND in the SVG/PNG/PDF export renderers, which do
+ * not support `color-mix`. A colour it cannot parse is returned unchanged.
+ */
+export function lightTint(hex: string, weight = 0.22): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const int = parseInt(m[1]!, 16);
+  const r = (int >> 16) & 0xff;
+  const g = (int >> 8) & 0xff;
+  const b = int & 0xff;
+  const mix = (c: number) => Math.round(c * weight + 255 * (1 - weight));
+  const to2 = (c: number) => c.toString(16).padStart(2, "0");
+  return `#${to2(mix(r))}${to2(mix(g))}${to2(mix(b))}`;
+}
