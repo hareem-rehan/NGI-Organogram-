@@ -351,16 +351,17 @@ describe("scopeReportsToOptions", () => {
   });
   const all = [ceo, engManager, hrManager];
 
-  it("offers only same-department positions, hiding other departments (incl. a cross-department root)", () => {
+  it("offers same-department positions plus the company root, hiding other departments", () => {
     const ids = scopeReportsToOptions(all, DEPARTMENT_ID, "").map((o) => o.value);
-    expect(ids).toEqual(["eng1"]);
-    // The root CEO lives in another department, so it is no longer offered.
-    expect(ids).not.toContain("ceo");
-    expect(ids).not.toContain("hr1");
+    expect(ids).toContain("eng1"); // same department
+    expect(ids).toContain("ceo"); // the company root, always allowed
+    expect(ids).not.toContain("hr1"); // a different department's position is hidden
   });
 
-  it("offers nothing for a department that has no positions of its own", () => {
-    expect(scopeReportsToOptions(all, "client-delivery-dept", "")).toHaveLength(0);
+  it("offers only the company root for a department that has no positions of its own", () => {
+    expect(scopeReportsToOptions(all, "client-delivery-dept", "").map((o) => o.value)).toEqual([
+      "ceo",
+    ]);
   });
 
   it("applies no department scope when none is selected", () => {
@@ -370,11 +371,10 @@ describe("scopeReportsToOptions", () => {
 
   it("filters the scoped set by title or code query", () => {
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "cto").map((o) => o.value)).toEqual(["eng1"]);
-    // A same-department code matches; the cross-department root does not.
-    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-ENG").map((o) => o.value)).toEqual([
-      "eng1",
+    // The company root stays reachable by name/code even under a department scope.
+    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-CEO").map((o) => o.value)).toEqual([
+      "ceo",
     ]);
-    expect(scopeReportsToOptions(all, DEPARTMENT_ID, "POS-CEO")).toHaveLength(0);
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "zzz")).toHaveLength(0);
   });
 

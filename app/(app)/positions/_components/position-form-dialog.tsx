@@ -45,14 +45,13 @@ interface FormValues {
 }
 
 /**
- * The managers a new position may report to, scoped to its OWN department:
- * once a department is chosen, only that department's positions are offered
- * — never positions from other departments. Passing an empty `departmentId`
- * applies no department scope. `query` filters by title or code.
- *
- * Leaving Reports-To empty makes the position a root (the department's/
- * company's top), so a department's first role does not need a cross-
- * department manager in the list.
+ * The managers a new position may report to. Once a department is chosen,
+ * the picker hides positions from OTHER departments — with one deliberate
+ * exception: the company ROOT (the single position with no manager) stays
+ * available so a department's top role can report up to the company head,
+ * which is the only legitimate cross-department reporting link. Passing an
+ * empty `departmentId` applies no department scope. `query` filters by
+ * title or code.
  *
  * This is a relevance filter for the UI only — the server still
  * re-validates the chosen manager on submit, so narrowing here can never
@@ -68,11 +67,13 @@ export function scopeReportsToOptions(
   const q = query.trim().toLowerCase();
   return allPositions
     .filter((candidate) => {
-      // When a department is chosen, only that department's own positions are
-      // offered as managers — no positions from other departments. With no
-      // department chosen yet, every position is in scope. (Leaving Reports-To
-      // empty still makes the position a root; the server re-validates.)
-      const inScope = departmentId === "" || candidate.departmentId === departmentId;
+      // Same-department positions, plus the company root (so a department's
+      // top role can still report to the company head). No other department's
+      // positions are offered. With no department chosen, everything is shown.
+      const inScope =
+        departmentId === "" ||
+        candidate.departmentId === departmentId ||
+        candidate.primaryReportsToPositionId === null;
       if (!inScope) return false;
       return (
         q === "" ||
