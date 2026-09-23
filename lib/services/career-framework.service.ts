@@ -8,6 +8,8 @@ import { normalizeCode } from "@/lib/domain/normalize";
 import { ConflictError, CrossCompanyError, NotFoundError } from "@/lib/domain/errors";
 import { findDepartmentById } from "@/lib/repositories/department.repository";
 import { findJobGradeById } from "@/lib/repositories/job-grade.repository";
+import { provisionStandardLevels } from "@/lib/services/job-grade.service";
+import { getPmfTrack, pmfLadderEntries, type PmfTrackKey } from "@/lib/domain/pmf-role-catalog";
 import {
   countPositionsInCareerTrack,
   countPositionsInJobFamily,
@@ -484,5 +486,154 @@ export async function deleteLevelMappingEntry(
       },
       tx
     );
+  });
+}
+
+// ── Populate standard roles (from the PMF catalogue) ──────────────────
+
+export interface PopulateStandardRolesInput {
+  companyId: string;
+  actor?: AuditActor;
+  jobFamilyId: string;
+  /** Which PMF track's titles to apply to this family. */
+  track: PmfTrackKey;
+}
+
+export interface PopulateStandardRolesResult {
+  created: number;
+  alreadyPresent: number;
+}
+
+/**
+ * Fills a job family's matrix in one pass from the standard PMF role
+ * catalogue (lib/domain/pmf-role-catalog.ts), instead of the user typing
+ * every title by hand.
+ *
+ * The chosen track supplies an IC ladder and/or a Manager ladder of titles
+ * per level. A track with only manager titles (Project, HR, IT) fills the
+ * family's single default ladder; a track with both IC and manager titles
+ * (Engineering, Product) fills the base (IC) ladder and adds a parallel
+ * Manager ladder — matching the "single ladder by default, manager ladder
+ * optional" model.
+ *
+ * Idempotent: a (ladder, level, title) that already exists is left in place
+ * and counted as `alreadyPresent`, so the button is safe to press again and
+ * never disturbs titles the user has since edited. Company-wide levels are
+ * provisioned first if missing, so it works on a family that has none yet.
+ */
+export async function populateStandardRolesForFamily(
+  input: PopulateStandardRolesInput,
+  db: DbClient = prisma
+): Promise<PopulateStandardRolesResult> {
+  const track = getPmfTrack(input.track);
+  if (!track) {
+    throw new ConflictError(`Unknown role track "${input.track}".`);
+  }
+
+  return withTransaction(db, async (tx) => {
+    const family = await findJobFamilyById(input.jobFamilyId, input.companyId, tx);
+    if (!family) {
+      throw new CrossCompanyError(
+        `Job family ${input.jobFamilyId} does not exist in this company.`
+      );
+    }
+
+    // Ensure the company-wide L2–L18 levels exist, then map code → grade id.
+    await provisionStandardLevels(input.companyId, input.actor ?? "SYSTEM", tx);
+    const grades = await tx.jobGrade.findMany({
+      where: { companyId: input.companyId, departmentId: null },
+      select: { id: true, code: true },
+    });
+    const gradeIdByCode = new Map(grades.map((g) => [g.code, g.id]));
+
+    const hasIc = pmfLadderEntries(track, "ic").length > 0;
+    const hasManager = pmfLadderEntries(track, "manager").length > 0;
+
+    // Resolve the ladders this track needs. IC titles always go on the base
+    // (default) ladder. Manager titles go on a parallel Manager ladder when
+    // the track also has an IC ladder; otherwise they fill the single base
+    // ladder on their own.
+    const baseTrack = await ensureDefaultTrack(input.companyId, input.jobFamilyId, input.actor, tx);
+    const managerTrack =
+      hasManager && hasIc
+        ? await ensureTrackOfKind(input.companyId, input.jobFamilyId, "MANAGER", input.actor, tx)
+        : null;
+
+    // Existing entries for this family, to skip anything already present.
+    const existing = await tx.levelMappingEntry.findMany({
+      where: { companyId: input.companyId, jobFamilyId: input.jobFamilyId },
+      select: { careerTrackId: true, jobGradeId: true, title: true },
+    });
+    const existingKey = new Set(
+      existing.map((e) => `${e.careerTrackId}|${e.jobGradeId}|${e.title}`)
+    );
+
+    let created = 0;
+    let alreadyPresent = 0;
+
+    async function applyLadder(ladder: "ic" | "manager", careerTrackId: string): Promise<void> {
+      for (const { levelCode, title } of pmfLadderEntries(track!, ladder)) {
+        const jobGradeId = gradeIdByCode.get(levelCode);
+        if (!jobGradeId) continue; // level not on the standard scale
+        const trimmed = title.trim();
+        const key = `${careerTrackId}|${jobGradeId}|${trimmed}`;
+        if (existingKey.has(key)) {
+          alreadyPresent += 1;
+          continue;
+        }
+        await tx.levelMappingEntry.create({
+          data: {
+            companyId: input.companyId,
+            jobFamilyId: input.jobFamilyId,
+            careerTrackId,
+            jobGradeId,
+            title: trimmed,
+          },
+        });
+        existingKey.add(key);
+        created += 1;
+      }
+    }
+
+    if (hasIc) {
+      await applyLadder("ic", baseTrack.id);
+    }
+    if (hasManager) {
+      // Manager titles land on the dedicated Manager ladder when one exists,
+      // otherwise on the single base ladder.
+      await applyLadder("manager", (managerTrack ?? baseTrack).id);
+    }
+
+    if (created > 0) {
+      await recordAuditEvent(
+        {
+          companyId: input.companyId,
+          actor: input.actor ?? "SYSTEM",
+          action: "CREATED",
+          category: "CAREER_FRAMEWORK",
+          entityType: "LevelMappingEntry",
+          entityDisplayReference: `${family.code}: standard ${track.label} roles (${created})`,
+          metadata: { track: track.key, created, alreadyPresent },
+        },
+        tx
+      );
+    }
+
+    return { created, alreadyPresent };
+  });
+}
+
+/** Find-or-create a family's career track of a given kind (IC or Manager). */
+async function ensureTrackOfKind(
+  companyId: string,
+  jobFamilyId: string,
+  kind: CareerTrackKind,
+  actor: AuditActor | undefined,
+  db: DbClient = prisma
+): Promise<CareerTrack> {
+  return withTransaction(db, async (tx) => {
+    const existing = await tx.careerTrack.findFirst({ where: { companyId, jobFamilyId, kind } });
+    if (existing) return existing;
+    return createCareerTrack({ companyId, actor, jobFamilyId, kind }, tx);
   });
 }

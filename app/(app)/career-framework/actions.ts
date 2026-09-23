@@ -13,6 +13,7 @@ import {
   deleteCareerTrack,
   deleteJobFamily,
   deleteLevelMappingEntry,
+  populateStandardRolesForFamily,
   updateJobFamily,
 } from "@/lib/services/career-framework.service";
 import { provisionStandardLevels } from "@/lib/services/job-grade.service";
@@ -30,6 +31,7 @@ import {
   deleteCareerTrackSchema,
   deleteJobFamilySchema,
   deleteLevelMappingEntrySchema,
+  populateStandardRolesSchema,
   updateJobFamilySchema,
 } from "@/lib/validation/career-framework";
 
@@ -113,6 +115,25 @@ export async function addManagerLadderAction(input: unknown): Promise<ActionResu
     const user = await requirePermission("career:manage");
     const { jobFamilyId } = addManagerLadderSchema.parse(input);
     return addManagerLadder({ companyId: user.companyId, actor: toAuditActor(user), jobFamilyId });
+  });
+}
+
+/**
+ * One-click fill of a family's matrix from the standard PMF role catalogue
+ * for the chosen track. :manage only.
+ */
+export async function populateStandardRolesAction(
+  input: unknown
+): Promise<ActionResult<{ created: number; alreadyPresent: number }>> {
+  return runAction(async () => {
+    const user = await requirePermission("career:manage");
+    const { jobFamilyId, track } = populateStandardRolesSchema.parse(input);
+    return populateStandardRolesForFamily({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      jobFamilyId,
+      track,
+    });
   });
 }
 
