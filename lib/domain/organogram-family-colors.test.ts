@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { FAMILY_COLOR_PALETTE, buildFamilyColorMap } from "./organogram-family-colors";
+import { FAMILY_COLOR_PALETTE, buildFamilyColorMap, lightTint } from "./organogram-family-colors";
+
+describe("lightTint", () => {
+  it("blends a colour toward white into a readable pastel", () => {
+    // 22% of #16a34a mixed with 78% white.
+    expect(lightTint("#16a34a")).toBe("#ccebd7");
+  });
+
+  it("accepts a bare (no-hash) 6-digit hex", () => {
+    expect(lightTint("16a34a")).toBe("#ccebd7");
+  });
+
+  it("returns an unparseable colour unchanged (e.g. a CSS var)", () => {
+    expect(lightTint("var(--color-border)")).toBe("var(--color-border)");
+  });
+
+  it("keeps more of the base colour at a higher weight", () => {
+    // Fully weighted is the original colour; unweighted is white.
+    expect(lightTint("#16a34a", 1)).toBe("#16a34a");
+    expect(lightTint("#16a34a", 0)).toBe("#ffffff");
+  });
+});
 
 describe("buildFamilyColorMap", () => {
   it("assigns palette colours to families in the given order", () => {

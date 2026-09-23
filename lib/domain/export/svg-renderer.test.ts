@@ -72,7 +72,7 @@ describe("renderOrganogramSvg — colour by job family", () => {
     expect(result.svg).not.toContain(">Departments<");
   });
 
-  it("in department mode keeps the neutral card fill and a Departments legend", () => {
+  it("in department mode fills the card with a tint of the department colour and a Departments legend", () => {
     const positions = new Map([["p1", { x: 0, y: 0 }]]);
     const result = renderOrganogramSvg(
       [node({ positionId: "p1", jobFamilyId: "fam-swe", jobFamilyName: "Software Engineering" })],
@@ -87,7 +87,8 @@ describe("renderOrganogramSvg — colour by job family", () => {
         families: [{ id: "fam-swe", name: "Software Engineering", color: "#6fbf3f" }],
       }
     );
-    // No family fill applied to the card body.
+    // The card body is a light tint of the department colour, not the family fill.
+    expect(result.svg).toContain('fill="#ccebd7"'); // lightTint("#16a34a")
     expect(result.svg).not.toContain('fill="#cbf2b1"');
     expect(result.svg).toContain("Departments");
   });
@@ -614,6 +615,7 @@ describe("renderOrganogramSvg — department tier", () => {
 
   it("fills the card rather than outlining it, so it never reads as a person", () => {
     const svg = renderWithDepartment();
-    expect(svg).toContain(`fill="${EXPORT_COLORS.muted}"`);
+    // Fully colour-filled with a light tint of the department colour.
+    expect(svg).toContain('fill="#ccebd7"'); // lightTint("#16a34a")
   });
 });

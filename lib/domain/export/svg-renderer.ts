@@ -1,5 +1,5 @@
 import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
-import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
+import { lightTint, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 import { EXPORT_COLORS, resolveDepartmentColor } from "./colors";
 import { escapeXmlText, wrapText } from "./svg-text";
@@ -202,7 +202,7 @@ function renderDepartmentCard(
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="1">`);
   parts.push(
-    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${EXPORT_COLORS.muted}" stroke="${accentColor}" stroke-width="2" />`
+    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${lightTint(accentColor)}" stroke="${accentColor}" stroke-width="2" />`
   );
   parts.push(`<rect x="0" y="0" width="6" height="${NODE_HEIGHT}" fill="${accentColor}" />`);
   nameLines.forEach((line, index) => {
@@ -218,11 +218,10 @@ function renderDepartmentCard(
 }
 
 /**
- * A card's body fill and left-edge accent. In "family" colour mode a
- * classified position takes its family's fill + accent (mirroring the
- * interactive chart); otherwise the card keeps the neutral background and a
- * department-coloured edge. Department heading cards always use the
- * department colour — they are not positions and carry no family.
+ * A card's body fill and left-edge accent. Cards are fully colour-filled
+ * (like the reference chart): in "family" colour mode a classified position
+ * takes its family's palette fill + accent; otherwise the card takes a light
+ * tint of its department colour with the department colour as the edge.
  */
 function cardColorsFor(
   node: SvgRenderNode,
@@ -233,7 +232,8 @@ function cardColorsFor(
     const fc = familyColorById?.get(node.jobFamilyId);
     if (fc) return { fill: fc.fill, accent: fc.accent };
   }
-  return { fill: EXPORT_COLORS.background, accent: resolveDepartmentColor(node.departmentColor) };
+  const accent = resolveDepartmentColor(node.departmentColor);
+  return { fill: lightTint(accent), accent };
 }
 
 function renderNodeCard(
