@@ -33,6 +33,8 @@ function node(overrides: Partial<SvgRenderNode> & { positionId: string }): SvgRe
     organizationalLevel: 1,
     jobGradeName: null,
     jobGradeCode: null,
+    jobFamilyId: null,
+    jobFamilyName: null,
     occupancyStatus: "vacant",
     occupantDisplayName: null,
     positionStatus: "ACTIVE",

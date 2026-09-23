@@ -7,6 +7,8 @@
 
 export type ExportFormat = "PDF" | "PNG";
 export type ExportScope = "FULL_COMPANY" | "CURRENT_VIEW" | "POSITION_FOCUS" | "DEPARTMENT_FOCUS";
+/** Which dimension colours the exported cards — mirrors the interactive chart's toggle. */
+export type ExportColorMode = "department" | "family";
 export type PdfPageSize = "A4" | "A3";
 export type PdfLayoutMode = "AUTO" | "SINGLE_PAGE" | "MULTI_PAGE_TILED";
 export type PngScale = 1 | 2 | 3;
@@ -34,6 +36,7 @@ export interface ExportOptionsInput {
   includeLegend?: boolean;
   includeMetadata?: boolean;
   includeConfidentialityLabel?: boolean;
+  colorMode?: ExportColorMode;
 }
 
 /** Every field resolved to its concrete default — what the renderer actually consumes. */
@@ -51,9 +54,11 @@ export interface ResolvedExportOptions {
   includeLegend: boolean;
   includeMetadata: boolean;
   includeConfidentialityLabel: boolean;
+  colorMode: ExportColorMode;
 }
 
 export const EXPORT_FORMATS: readonly ExportFormat[] = ["PDF", "PNG"];
+export const EXPORT_COLOR_MODES: readonly ExportColorMode[] = ["department", "family"];
 export const EXPORT_SCOPES: readonly ExportScope[] = [
   "FULL_COMPANY",
   "CURRENT_VIEW",
@@ -210,5 +215,14 @@ export function resolveExportOptions(input: ExportOptionsInput): ResolvedExportO
     includeLegend: input.includeLegend ?? true,
     includeMetadata: input.includeMetadata ?? true,
     includeConfidentialityLabel: input.includeConfidentialityLabel ?? true,
+    colorMode: resolveColorMode(input.colorMode),
   };
+}
+
+function resolveColorMode(value: ExportColorMode | undefined): ExportColorMode {
+  const mode = value ?? "department";
+  if (!EXPORT_COLOR_MODES.includes(mode)) {
+    throw new ExportOptionsError(`Unsupported colour mode: ${String(value)}.`, "colorMode");
+  }
+  return mode;
 }

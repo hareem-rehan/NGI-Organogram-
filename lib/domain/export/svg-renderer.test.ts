@@ -14,6 +14,8 @@ function node(overrides: Partial<SvgRenderNode> & { positionId: string }): SvgRe
     organizationalLevel: 1,
     jobGradeName: null,
     jobGradeCode: null,
+    jobFamilyId: null,
+    jobFamilyName: null,
     occupancyStatus: "vacant",
     occupantDisplayName: null,
     positionStatus: "ACTIVE",
@@ -37,6 +39,59 @@ const BASE_OPTIONS = {
   includeConfidentialityLabel: true,
   departments: [],
 };
+
+describe("renderOrganogramSvg — colour by job family", () => {
+  it("fills a classified card with its family colour and lists families in the legend", () => {
+    const positions = new Map([["p1", { x: 0, y: 0 }]]);
+    const result = renderOrganogramSvg(
+      [
+        node({
+          positionId: "p1",
+          jobFamilyId: "fam-swe",
+          jobFamilyName: "Software Engineering",
+          jobGradeCode: "L7",
+        }),
+      ],
+      [],
+      positions,
+      METADATA,
+      {
+        ...BASE_OPTIONS,
+        colorMode: "family",
+        familyColorById: new Map([["fam-swe", { fill: "#cbf2b1", accent: "#6fbf3f" }]]),
+        families: [{ id: "fam-swe", name: "Software Engineering", color: "#6fbf3f" }],
+      }
+    );
+    // The card body takes the family fill and the family accent edge.
+    expect(result.svg).toContain('fill="#cbf2b1"');
+    expect(result.svg).toContain('fill="#6fbf3f"');
+    // The grade and family share the card's last line.
+    expect(result.svg).toContain("L7 · Software Engineering");
+    // The legend keys job families, not departments.
+    expect(result.svg).toContain("Job families");
+    expect(result.svg).not.toContain(">Departments<");
+  });
+
+  it("in department mode keeps the neutral card fill and a Departments legend", () => {
+    const positions = new Map([["p1", { x: 0, y: 0 }]]);
+    const result = renderOrganogramSvg(
+      [node({ positionId: "p1", jobFamilyId: "fam-swe", jobFamilyName: "Software Engineering" })],
+      [],
+      positions,
+      METADATA,
+      {
+        ...BASE_OPTIONS,
+        colorMode: "department",
+        departments: [{ id: "d1", name: "Engineering", color: "#16a34a" }],
+        familyColorById: new Map([["fam-swe", { fill: "#cbf2b1", accent: "#6fbf3f" }]]),
+        families: [{ id: "fam-swe", name: "Software Engineering", color: "#6fbf3f" }],
+      }
+    );
+    // No family fill applied to the card body.
+    expect(result.svg).not.toContain('fill="#cbf2b1"');
+    expect(result.svg).toContain("Departments");
+  });
+});
 
 describe("renderOrganogramSvg", () => {
   it("produces a well-formed SVG document with the expected root element", () => {
@@ -394,6 +449,8 @@ describe("renderOrganogramSvg", () => {
           occupancyStatus: "occupied",
           occupantDisplayName: "John Doe",
           jobGradeCode: "L7",
+          jobFamilyId: null,
+          jobFamilyName: null,
         }),
       ],
       [],
@@ -440,6 +497,8 @@ describe("renderOrganogramSvg", () => {
           occupancyStatus: "occupied",
           occupantDisplayName: "John Doe",
           jobGradeCode: "L11",
+          jobFamilyId: null,
+          jobFamilyName: null,
         }),
       ],
       [],

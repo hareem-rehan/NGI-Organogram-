@@ -8,12 +8,15 @@ import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { getSubtreeSizeAction, movePositionAction } from "@/app/(app)/positions/actions";
+import { reportsToDescription } from "@/app/(app)/positions/_components/position-form-dialog";
 
 interface PositionMoveDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   position: Position | null;
   allPositions: readonly Position[];
+  /** Family id → name, so options show the level and family instead of the position code. */
+  jobFamilyNameById?: ReadonlyMap<string, string>;
   onMoved: () => void;
 }
 
@@ -29,6 +32,7 @@ export function PositionMoveDialog({
   onOpenChange,
   position,
   allPositions,
+  jobFamilyNameById,
   onMoved,
 }: PositionMoveDialogProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -70,10 +74,10 @@ export function PositionMoveDialog({
       ...candidates.map((candidate) => ({
         value: candidate.id,
         label: candidate.title,
-        description: `${candidate.positionCode} · Level ${candidate.organizationalLevel}`,
+        description: reportsToDescription(candidate, jobFamilyNameById),
       })),
     ];
-  }, [allPositions, position, query]);
+  }, [allPositions, position, query, jobFamilyNameById]);
 
   const selectedOption = options.find((option) => option.value === (selectedId ?? "__root__"));
 

@@ -374,4 +374,42 @@ describe("scopeReportsToOptions", () => {
     ]);
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "zzz")).toHaveLength(0);
   });
+
+  it("describes each option by level and job family, never the position code", () => {
+    const positions = [
+      makePosition({
+        id: "eng1",
+        title: "CTO",
+        positionCode: "POS-ENG",
+        departmentId: DEPARTMENT_ID,
+        organizationalLevel: 2,
+        jobFamilyId: FAMILY_ID,
+        primaryReportsToPositionId: "ceo",
+      }),
+    ];
+    const options = scopeReportsToOptions(
+      positions,
+      DEPARTMENT_ID,
+      "",
+      new Map([[FAMILY_ID, "Software Engineering"]])
+    );
+    expect(options[0]?.description).toBe("Level 2 · Software Engineering");
+    expect(options[0]?.description).not.toContain("POS-");
+  });
+
+  it("falls back to just the level when a position has no family", () => {
+    const positions = [
+      makePosition({
+        id: "eng1",
+        title: "CTO",
+        positionCode: "POS-ENG",
+        departmentId: DEPARTMENT_ID,
+        organizationalLevel: 2,
+        jobFamilyId: null,
+        primaryReportsToPositionId: "ceo",
+      }),
+    ];
+    const options = scopeReportsToOptions(positions, DEPARTMENT_ID, "", new Map());
+    expect(options[0]?.description).toBe("Level 2");
+  });
 });

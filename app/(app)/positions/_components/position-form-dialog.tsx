@@ -61,7 +61,8 @@ interface FormValues {
 export function scopeReportsToOptions(
   allPositions: readonly Position[],
   departmentId: string,
-  query: string
+  query: string,
+  jobFamilyNameById?: ReadonlyMap<string, string>
 ): ComboboxOption[] {
   const q = query.trim().toLowerCase();
   return allPositions
@@ -80,8 +81,26 @@ export function scopeReportsToOptions(
     .map((candidate) => ({
       value: candidate.id,
       label: candidate.title,
-      description: `${candidate.positionCode} · Level ${candidate.organizationalLevel}`,
+      description: reportsToDescription(candidate, jobFamilyNameById),
     }));
+}
+
+/**
+ * The secondary line under a reports-to option. Shows the reader-meaningful
+ * seniority and career family — the organizational level and the position's
+ * job family — rather than the internal position code, which is an import
+ * key of no use when picking a manager. Falls back to just the level when
+ * the position has no family.
+ */
+export function reportsToDescription(
+  candidate: Pick<Position, "organizationalLevel" | "jobFamilyId">,
+  jobFamilyNameById?: ReadonlyMap<string, string>
+): string {
+  const familyName = candidate.jobFamilyId
+    ? (jobFamilyNameById?.get(candidate.jobFamilyId) ?? null)
+    : null;
+  const level = `Level ${candidate.organizationalLevel}`;
+  return familyName ? `${level} · ${familyName}` : level;
 }
 
 /**
@@ -230,9 +249,13 @@ export function PositionFormDialog({
       .map((e) => e.title);
   }, [levelMappingEntries, jobFamilyId, careerTrackId, jobGradeId]);
 
+  const jobFamilyNameById = useMemo(
+    () => new Map(jobFamilies.map((f) => [f.id, f.name])),
+    [jobFamilies]
+  );
   const reportsToOptions: ComboboxOption[] = useMemo(
-    () => scopeReportsToOptions(allPositions, departmentId, reportsToQuery),
-    [allPositions, reportsToQuery, departmentId]
+    () => scopeReportsToOptions(allPositions, departmentId, reportsToQuery, jobFamilyNameById),
+    [allPositions, reportsToQuery, departmentId, jobFamilyNameById]
   );
 
   function onSubmit(values: FormValues) {

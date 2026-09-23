@@ -12,7 +12,12 @@ import {
   type ResolvedExportOptions,
 } from "@/lib/domain/export/types";
 import { buildExportSubgraph } from "@/lib/domain/export/subgraph";
-import { renderOrganogramSvg, type SvgLegendDepartment } from "@/lib/domain/export/svg-renderer";
+import {
+  renderOrganogramSvg,
+  type SvgLegendDepartment,
+  type SvgLegendFamily,
+} from "@/lib/domain/export/svg-renderer";
+import { buildFamilyColorMap } from "@/lib/domain/organogram-family-colors";
 import {
   assertPngWithinSafeRenderBudget,
   PngPerformanceLimitError,
@@ -191,6 +196,22 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     }
   }
 
+  // Job families present in this export, ordered by name so the colour
+  // assignment is stable and identical to the interactive chart's.
+  const familiesByName = new Map<string, { id: string; name: string }>();
+  for (const node of subgraph.nodes) {
+    if (node.jobFamilyId && node.jobFamilyName && !familiesByName.has(node.jobFamilyId)) {
+      familiesByName.set(node.jobFamilyId, { id: node.jobFamilyId, name: node.jobFamilyName });
+    }
+  }
+  const familiesInOrder = [...familiesByName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const familyColorById = buildFamilyColorMap(familiesInOrder.map((f) => f.id));
+  const familyLegendEntries: SvgLegendFamily[] = familiesInOrder.map((f) => ({
+    id: f.id,
+    name: f.name,
+    color: familyColorById.get(f.id)?.accent ?? "#999999",
+  }));
+
   const svgResult = renderOrganogramSvg(
     subgraph.nodes.map((n) => ({
       positionId: n.positionId,
@@ -202,6 +223,8 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
       organizationalLevel: n.organizationalLevel,
       jobGradeName: n.jobGradeName,
       jobGradeCode: n.jobGradeCode,
+      jobFamilyId: n.jobFamilyId,
+      jobFamilyName: n.jobFamilyName,
       occupancyStatus: n.occupancyStatus,
       occupantDisplayName: n.occupantDisplayName,
       positionStatus: n.positionStatus,
@@ -225,6 +248,9 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
       includeMetadata: resolved.includeMetadata,
       includeConfidentialityLabel: resolved.includeConfidentialityLabel,
       departments: [...departmentsById.values()],
+      colorMode: resolved.colorMode,
+      familyColorById,
+      families: familyLegendEntries,
     }
   );
 
