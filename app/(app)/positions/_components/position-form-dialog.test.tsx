@@ -221,7 +221,7 @@ describe("PositionFormDialog", () => {
       levelMappingEntries: [L7_IC_ENTRY],
     });
 
-    await user.selectOptions(screen.getByLabelText(/job family/i), FAMILY_ID);
+    await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
     // No ladder to choose in single-ladder mode.
     expect(screen.queryByLabelText(/career track/i)).not.toBeInTheDocument();
 
@@ -258,7 +258,7 @@ describe("PositionFormDialog", () => {
       levelMappingEntries: [L7_IC_ENTRY],
     });
 
-    await user.selectOptions(screen.getByLabelText(/job family/i), FAMILY_ID);
+    await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
     // The picker appears only once a parallel ladder exists.
     await user.selectOptions(screen.getByLabelText(/career track/i), MGR_TRACK_ID);
     expect(screen.getByLabelText(/career track/i)).toHaveValue(MGR_TRACK_ID);
@@ -279,10 +279,10 @@ describe("PositionFormDialog", () => {
     );
   });
 
-  it("scopes job families to the selected department", () => {
+  it("scopes sub-divisions to the selected department", () => {
     const otherFamily: JobFamily = { ...SWE_FAMILY, id: "other", departmentId: "other-dept" };
     renderForm({ jobFamilies: [SWE_FAMILY, otherFamily] });
-    const familySelect = screen.getByLabelText(/job family/i);
+    const familySelect = screen.getByLabelText(/sub-division/i);
     expect(
       within(familySelect).getByRole("option", { name: "Software Engineering" })
     ).toBeInTheDocument();
@@ -378,7 +378,7 @@ describe("scopeReportsToOptions", () => {
     expect(scopeReportsToOptions(all, DEPARTMENT_ID, "zzz")).toHaveLength(0);
   });
 
-  it("describes each option by job family only — never the level or position code", () => {
+  it("describes each option by sub-division only — never the level or position code", () => {
     const positions = [
       makePosition({
         id: "eng1",

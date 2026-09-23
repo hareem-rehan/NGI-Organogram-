@@ -85,7 +85,7 @@ export interface SvgRenderOptions {
   colorMode?: ExportColorMode;
   /** Per-family colours, used only in "family" mode. */
   familyColorById?: ReadonlyMap<string, FamilyColor>;
-  /** Job families for the legend in "family" mode. */
+  /** Sub-divisions for the legend in "family" mode. */
   families?: readonly SvgLegendFamily[];
 }
 
@@ -389,7 +389,7 @@ function renderLegend(
   const columnX = PADDING + LEGEND_COLUMN_WIDTH;
   if (showFamilies && families.length > 0) {
     parts.push(
-      `<text x="${columnX}" y="${y + 14}" font-size="11" font-weight="700" fill="${EXPORT_COLORS.foreground}">Job families</text>`
+      `<text x="${columnX}" y="${y + 14}" font-size="11" font-weight="700" fill="${EXPORT_COLORS.foreground}">Sub-divisions</text>`
     );
     families.forEach((family, index) => {
       const rowY = y + 32 + index * LEGEND_ROW_HEIGHT;

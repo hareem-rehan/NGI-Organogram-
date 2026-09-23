@@ -94,7 +94,7 @@ export interface PositionCareerOptions {
   levelMappingEntries: LevelMappingEntry[];
 }
 
-/** Career-framework options for the Position form's Job Family / Track dropdowns and title suggestions. Read-only, needs only positions:view. */
+/** Career-framework options for the Position form's Sub-division / Track dropdowns and title suggestions. Read-only, needs only positions:view. */
 export async function listPositionCareerOptionsAction(): Promise<
   ActionResult<PositionCareerOptions>
 > {

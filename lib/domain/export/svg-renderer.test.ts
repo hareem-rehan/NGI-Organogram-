@@ -40,7 +40,7 @@ const BASE_OPTIONS = {
   departments: [],
 };
 
-describe("renderOrganogramSvg — colour by job family", () => {
+describe("renderOrganogramSvg — colour by sub-division", () => {
   it("fills a classified card with its family colour and lists families in the legend", () => {
     const positions = new Map([["p1", { x: 0, y: 0 }]]);
     const result = renderOrganogramSvg(
@@ -67,8 +67,8 @@ describe("renderOrganogramSvg — colour by job family", () => {
     expect(result.svg).toContain('fill="#6fbf3f"');
     // The grade and family share the card's last line.
     expect(result.svg).toContain("L7 · Software Engineering");
-    // The legend keys job families, not departments.
-    expect(result.svg).toContain("Job families");
+    // The legend keys sub-divisions, not departments.
+    expect(result.svg).toContain("Sub-divisions");
     expect(result.svg).not.toContain(">Departments<");
   });
 

@@ -289,7 +289,7 @@ export function OrganogramView({
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
-  // Every job family present on the chart, ordered by name so colour
+  // Every sub-division present on the chart, ordered by name so colour
   // assignment is stable and reproducible, then mapped to the palette.
   const familiesInOrder = useMemo(() => {
     if (!data) return [] as { id: string; name: string }[];

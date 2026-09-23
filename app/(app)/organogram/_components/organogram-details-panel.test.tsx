@@ -101,11 +101,11 @@ describe("OrganogramDetailsPanel", () => {
         onFocusDepartment={vi.fn()}
       />
     );
-    // The Job grade value renders as a dash (job family is set, so only one).
+    // The Job grade value renders as a dash (sub-division is set, so only one).
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
-  it("shows the job family when set", () => {
+  it("shows the sub-division when set", () => {
     render(
       <OrganogramDetailsPanel
         node={makeNode({ jobFamilyName: "Software Engineering" })}

@@ -196,7 +196,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     }
   }
 
-  // Job families present in this export, ordered by name so the colour
+  // Sub-divisions present in this export, ordered by name so the colour
   // assignment is stable and identical to the interactive chart's.
   const familiesByName = new Map<string, { id: string; name: string }>();
   for (const node of subgraph.nodes) {

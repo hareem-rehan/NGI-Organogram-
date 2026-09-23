@@ -59,7 +59,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: "/career-framework",
     label: "Career Framework",
     description:
-      "Career progression matrix: levels by job family and track — separate from the reporting hierarchy.",
+      "Career progression matrix: levels by sub-division and track — separate from the reporting hierarchy.",
     plannedPhase: 14,
     permission: "career:view",
   },

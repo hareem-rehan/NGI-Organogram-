@@ -108,7 +108,7 @@ export function OrganogramToolbar({
               className={cn(colorMode === "family" && "bg-accent")}
               onClick={() => onColorModeChange("family")}
             >
-              Job family
+              Sub-division
             </Button>
           </div>
         </>

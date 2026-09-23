@@ -1,11 +1,11 @@
 /**
- * Job-family colour palette for the organogram's "Colour by: Job family"
+ * Job-family colour palette for the organogram's "Colour by: Sub-division"
  * mode.
  *
  * The hues are taken directly from the stakeholder's reference org chart
  * (docs reference: visily-multicomponents) so a family-coloured chart reads
  * the same as that reference: a light `fill` for the card body and a
- * stronger, same-hue `accent` for its left edge. Job families carry no
+ * stronger, same-hue `accent` for its left edge. Sub-divisions carry no
  * colour of their own in the data model, so colours are assigned
  * deterministically by the family's position in a stable, caller-supplied
  * order (see `buildFamilyColorMap`) — the same family always lands on the

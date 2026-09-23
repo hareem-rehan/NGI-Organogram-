@@ -348,7 +348,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
                   Department
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
-                  Job Family
+                  Sub-division
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
                   Reports to

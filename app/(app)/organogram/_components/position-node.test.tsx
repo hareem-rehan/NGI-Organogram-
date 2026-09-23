@@ -161,7 +161,7 @@ describe("PositionNode", () => {
     expect(lines.indexOf("Hammad Hussain")).toBeLessThan(lines.indexOf("L10"));
   });
 
-  it("shows the job family alongside the grade under the title", () => {
+  it("shows the sub-division alongside the grade under the title", () => {
     renderNode({
       node: makeNode({
         title: "Principal Engineer",

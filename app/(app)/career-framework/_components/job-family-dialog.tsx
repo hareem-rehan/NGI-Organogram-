@@ -94,8 +94,8 @@ export function JobFamilyDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={isEdit ? `Edit ${jobFamily.name}` : "Add Job Family"}
-        description="A job family is a career specialization within a department (e.g. Software Engineering, QA). It is separate from the reporting hierarchy."
+        title={isEdit ? `Edit ${jobFamily.name}` : "Add Sub-division"}
+        description="A sub-division is a career specialization within a department (e.g. Software Engineering, QA). It is separate from the reporting hierarchy."
       >
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
           {formError ? (
@@ -147,7 +147,7 @@ export function JobFamilyDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
-              {isEdit ? "Save changes" : "Create job family"}
+              {isEdit ? "Save changes" : "Create sub-division"}
             </Button>
           </DialogFooter>
         </form>

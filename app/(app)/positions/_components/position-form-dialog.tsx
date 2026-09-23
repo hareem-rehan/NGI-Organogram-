@@ -105,7 +105,7 @@ export function reportsToDescription(
 
 /**
  * Create/edit dialog. The fields step down through the career framework —
- * Department → Job Family → Career Track → Level → Title — where each
+ * Department → Sub-division → Career Track → Level → Title — where each
  * choice filters the next, and Title offers the eligible titles configured
  * for that (family, track, level) cell without forcing one. NONE of this
  * sets reporting: Reports-To (create only) is a separate, independent
@@ -209,7 +209,7 @@ export function PositionFormDialog({
     return [...byCode.values()].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
   }, [jobGrades]);
 
-  // Job families in the selected department; tracks within the selected
+  // Sub-divisions in the selected department; tracks within the selected
   // family. Both optional — a position need not be classified.
   const familyOptions = useMemo(
     () => jobFamilies.filter((f) => f.departmentId === departmentId),
@@ -326,7 +326,7 @@ export function PositionFormDialog({
                 onChange={(event) => {
                   const newDept = event.target.value;
                   setValue("departmentId", newDept, { shouldValidate: true });
-                  // Job family (and therefore track) is scoped to the
+                  // Sub-division (and therefore track) is scoped to the
                   // department, so a family from the old department no longer
                   // applies — clear both.
                   setValue("jobFamilyId", null);
@@ -353,7 +353,7 @@ export function PositionFormDialog({
           </Field>
 
           <Field
-            label="Job family"
+            label="Sub-division"
             hint="Career specialization (optional). Independent of reporting."
           >
             {(fieldProps) => (

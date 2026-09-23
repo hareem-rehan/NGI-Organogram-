@@ -123,7 +123,7 @@ export function OrganogramLegend({
       {colorMode === "family" ? (
         families.length > 0 ? (
           <>
-            <p className="text-foreground mt-3 mb-1 font-semibold">Job families</p>
+            <p className="text-foreground mt-3 mb-1 font-semibold">Sub-divisions</p>
             <ul className="flex max-h-32 flex-col gap-1.5 overflow-y-auto">
               {families.map((family) => (
                 <li key={family.id} className="flex items-center gap-2">
