@@ -96,6 +96,14 @@ export type CreateLevelMappingEntryValues = z.infer<typeof createLevelMappingEnt
 export const addManagerLadderSchema = z.object({ jobFamilyId: z.string().uuid() }).strict();
 export type AddManagerLadderValues = z.infer<typeof addManagerLadderSchema>;
 
+export const populateStandardRolesSchema = z
+  .object({
+    jobFamilyId: z.string().uuid(),
+    track: z.enum(["ENGINEERING", "PROJECT", "PRODUCT", "HR", "IT"]),
+  })
+  .strict();
+export type PopulateStandardRolesValues = z.infer<typeof populateStandardRolesSchema>;
+
 export const deleteLevelMappingEntrySchema = z
   .object({ levelMappingEntryId: z.string().uuid() })
   .strict();
