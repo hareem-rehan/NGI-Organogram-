@@ -99,3 +99,20 @@ export type AddManagerLadderValues = z.infer<typeof addManagerLadderSchema>;
 export const deleteLevelMappingEntrySchema = z
   .object({ levelMappingEntryId: z.string().uuid() })
   .strict();
+
+// ── Levels (job grades) ───────────────────────────────────────────────
+// The Career Framework "Levels" panel curates the company's scale by CODE
+// (matching the pickers, which dedupe by code). The service validates the
+// code against the known scale; this schema only shapes/bounds the input.
+
+const levelCodeSchema = z
+  .string()
+  .trim()
+  .min(1, "Level code is required.")
+  .max(16, "Level code must be 16 characters or fewer.");
+
+export const addLevelSchema = z.object({ code: levelCodeSchema }).strict();
+export type AddLevelValues = z.infer<typeof addLevelSchema>;
+
+export const deleteLevelSchema = z.object({ code: levelCodeSchema }).strict();
+export type DeleteLevelValues = z.infer<typeof deleteLevelSchema>;

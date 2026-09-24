@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  deleteLevelByCode,
   ensureJobGradeByCode,
   normalizeGradeCode,
+  provisionStandardLevel,
   provisionStandardLevels,
+  removeUnusedLevels,
 } from "@/lib/services/job-grade.service";
+import { getJobGradeUsageCounts } from "@/lib/repositories/job-grade.repository";
+import { createJobFamily, createLevelMappingEntry } from "@/lib/services/career-framework.service";
 import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
-import { DomainValidationError } from "@/lib/domain/errors";
+import { DomainValidationError, UnsafeMutationError } from "@/lib/domain/errors";
 import { testPrisma } from "./setup";
 import { makeCompany, makeDepartment } from "./fixtures";
 
@@ -180,5 +185,129 @@ describe("provisionStandardLevels — one-click level scale", () => {
     expect(events).toHaveLength(1);
     expect(events[0]!.category).toBe("COMPANY_SETTINGS");
     expect(events[0]!.action).toBe("CREATED");
+  });
+});
+
+describe("level curation — usage counts, add, and remove", () => {
+  it("provisionStandardLevel adds one company-wide level and is idempotent", async () => {
+    const company = await makeCompany();
+
+    const first = await provisionStandardLevel(company.id, "L9", "SYSTEM", testPrisma);
+    const second = await provisionStandardLevel(company.id, "L9", "SYSTEM", testPrisma);
+
+    expect(first.code).toBe("L9");
+    expect(first.departmentId).toBeNull();
+    expect(second.id).toBe(first.id); // idempotent — no duplicate
+    const rows = await testPrisma.jobGrade.findMany({
+      where: { companyId: company.id, code: "L9" },
+    });
+    expect(rows).toHaveLength(1);
+  });
+
+  it("provisionStandardLevel rejects a code outside the scale", async () => {
+    const company = await makeCompany();
+    await expect(
+      provisionStandardLevel(company.id, "L99", "SYSTEM", testPrisma)
+    ).rejects.toBeInstanceOf(DomainValidationError);
+  });
+
+  it("getJobGradeUsageCounts counts positions and titles per grade", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const l7 = await provisionStandardLevel(company.id, "L7", "SYSTEM", testPrisma);
+
+    // One position at L7.
+    await testPrisma.position.create({
+      data: {
+        companyId: company.id,
+        departmentId: dept.id,
+        positionCode: "POS-USG",
+        title: "Principal",
+        primaryReportsToPositionId: null,
+        organizationalLevel: 1,
+        jobGradeId: l7.id,
+      },
+    });
+    // One career-matrix title at L7.
+    const family = await createJobFamily({
+      companyId: company.id,
+      departmentId: dept.id,
+      name: "SWE",
+      code: "SWE",
+    });
+    await createLevelMappingEntry({
+      companyId: company.id,
+      jobFamilyId: family.id,
+      jobGradeId: l7.id,
+      title: "Principal Software Engineer",
+    });
+
+    const usage = await getJobGradeUsageCounts(company.id);
+    expect(usage.get(l7.id)).toEqual({ positionCount: 1, titleCount: 1 });
+  });
+
+  it("deleteLevelByCode removes an unused level but refuses one in use", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const l7 = await provisionStandardLevel(company.id, "L7", "SYSTEM", testPrisma);
+    await provisionStandardLevel(company.id, "L9", "SYSTEM", testPrisma);
+
+    // L7 is used by a position; L9 is used by nothing.
+    await testPrisma.position.create({
+      data: {
+        companyId: company.id,
+        departmentId: dept.id,
+        positionCode: "POS-L7",
+        title: "Principal",
+        primaryReportsToPositionId: null,
+        organizationalLevel: 1,
+        jobGradeId: l7.id,
+      },
+    });
+
+    await expect(deleteLevelByCode(company.id, "L7", "SYSTEM", testPrisma)).rejects.toBeInstanceOf(
+      UnsafeMutationError
+    );
+    // L7 is untouched.
+    await expect(
+      testPrisma.jobGrade.findFirst({ where: { companyId: company.id, code: "L7" } })
+    ).resolves.not.toBeNull();
+
+    // L9 (unused) deletes cleanly.
+    const result = await deleteLevelByCode(company.id, "L9", "SYSTEM", testPrisma);
+    expect(result.deletedCount).toBe(1);
+    await expect(
+      testPrisma.jobGrade.findFirst({ where: { companyId: company.id, code: "L9" } })
+    ).resolves.toBeNull();
+  });
+
+  it("removeUnusedLevels clears only the levels nothing references", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    // Provision the whole scale, then use exactly one level.
+    await provisionStandardLevels(company.id, "SYSTEM", testPrisma);
+    const l7 = await testPrisma.jobGrade.findFirstOrThrow({
+      where: { companyId: company.id, code: "L7", departmentId: null },
+    });
+    await testPrisma.position.create({
+      data: {
+        companyId: company.id,
+        departmentId: dept.id,
+        positionCode: "POS-KEEP",
+        title: "Principal",
+        primaryReportsToPositionId: null,
+        organizationalLevel: 1,
+        jobGradeId: l7.id,
+      },
+    });
+
+    const before = await testPrisma.jobGrade.count({ where: { companyId: company.id } });
+    const { removedCodes } = await removeUnusedLevels(company.id, "SYSTEM", testPrisma);
+
+    // Every scale level except the used L7 is removed.
+    expect(removedCodes).not.toContain("L7");
+    expect(removedCodes.length).toBe(before - 1);
+    const remaining = await testPrisma.jobGrade.findMany({ where: { companyId: company.id } });
+    expect(remaining.map((g) => g.code)).toEqual(["L7"]);
   });
 });

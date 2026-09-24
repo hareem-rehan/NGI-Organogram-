@@ -10,7 +10,11 @@ import {
   listLevelMappingEntriesForCompany,
 } from "@/lib/repositories/career-framework.repository";
 import { listDepartmentsForCompany } from "@/lib/repositories/department.repository";
-import { listJobGradesForCompany } from "@/lib/repositories/job-grade.repository";
+import {
+  getJobGradeUsageCounts,
+  listJobGradesForCompany,
+} from "@/lib/repositories/job-grade.repository";
+import type { JobGradeUsageByCode } from "@/app/(app)/career-framework/actions";
 import { CareerFrameworkView } from "@/app/(app)/career-framework/_components/career-framework-view";
 
 const item = NAV_ITEMS.find((navItem) => navItem.href === "/career-framework")!;
@@ -24,14 +28,27 @@ export default async function CareerFrameworkPage() {
 
   // The career framework is company config; counts stay small, so load it
   // all server-side and hand it to the client view rather than paginating.
-  const [jobFamilies, careerTracks, levelMappingEntries, departments, jobGrades] =
+  const [jobFamilies, careerTracks, levelMappingEntries, departments, jobGrades, usageById] =
     await Promise.all([
       listJobFamiliesForCompany(user.companyId),
       listCareerTracksForCompany(user.companyId),
       listLevelMappingEntriesForCompany(user.companyId),
       listDepartmentsForCompany(user.companyId),
       listJobGradesForCompany(user.companyId),
+      getJobGradeUsageCounts(user.companyId),
     ]);
+
+  // Roll per-grade usage up to per-code for the Levels panel (matches the
+  // deduped-by-code pickers).
+  const levelUsageByCode: JobGradeUsageByCode = {};
+  for (const grade of jobGrades) {
+    const u = usageById.get(grade.id);
+    const bucket = (levelUsageByCode[grade.code] ??= { positionCount: 0, titleCount: 0 });
+    if (u) {
+      bucket.positionCount += u.positionCount;
+      bucket.titleCount += u.titleCount;
+    }
+  }
 
   return (
     <div>
@@ -43,6 +60,7 @@ export default async function CareerFrameworkPage() {
         initialLevelMappingEntries={levelMappingEntries}
         departments={departments.filter((d) => d.status === "ACTIVE")}
         jobGrades={jobGrades}
+        initialLevelUsageByCode={levelUsageByCode}
       />
     </div>
   );

@@ -12,13 +12,19 @@ import { Plus, Trash2, Pencil } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
 import {
+  addLevelAction,
   addManagerLadderAction,
   deleteCareerTrackAction,
   deleteJobFamilyAction,
+  deleteLevelAction,
   deleteLevelMappingEntryAction,
   getCareerFrameworkAction,
   provisionStandardLevelsAction,
+  removeUnusedLevelsAction,
+  type JobGradeUsageByCode,
 } from "@/app/(app)/career-framework/actions";
 import { JobFamilyDialog } from "./job-family-dialog";
 import { LevelMappingDialog } from "./level-mapping-dialog";
@@ -30,6 +36,7 @@ interface CareerFrameworkViewProps {
   initialLevelMappingEntries: LevelMappingEntry[];
   departments: Department[];
   jobGrades: JobGrade[];
+  initialLevelUsageByCode: JobGradeUsageByCode;
 }
 
 const TRACK_ORDER: Record<string, number> = { IC: 0, MANAGER: 1 };
@@ -41,11 +48,13 @@ export function CareerFrameworkView({
   initialLevelMappingEntries,
   departments,
   jobGrades,
+  initialLevelUsageByCode,
 }: CareerFrameworkViewProps) {
   const [jobFamilies, setJobFamilies] = useState(initialJobFamilies);
   const [careerTracks, setCareerTracks] = useState(initialCareerTracks);
   const [entries, setEntries] = useState(initialLevelMappingEntries);
   const [levels, setLevels] = useState(jobGrades);
+  const [levelUsage, setLevelUsage] = useState(initialLevelUsageByCode);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -56,6 +65,34 @@ export function CareerFrameworkView({
   const departmentsById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
   const gradesById = useMemo(() => new Map(levels.map((g) => [g.id, g])), [levels]);
 
+  // The distinct levels as the pickers show them: one per code, preferring the
+  // shared company-wide grade over any per-department duplicate, sorted by the
+  // level's own rank. This is exactly the list a company sees in every Level
+  // dropdown, so curating it here trims that clutter directly.
+  const distinctLevels = useMemo(() => {
+    const byCode = new Map<string, JobGrade>();
+    for (const g of levels) {
+      const existing = byCode.get(g.code);
+      if (!existing || (existing.departmentId && !g.departmentId)) byCode.set(g.code, g);
+    }
+    return [...byCode.values()].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+  }, [levels]);
+
+  const unusedLevelCount = useMemo(
+    () =>
+      distinctLevels.filter((g) => {
+        const u = levelUsage[g.code];
+        return !u || (u.positionCount === 0 && u.titleCount === 0);
+      }).length,
+    [distinctLevels, levelUsage]
+  );
+
+  // Standard-scale codes not yet present — the "Add a level" options.
+  const addableLevels = useMemo(() => {
+    const present = new Set(distinctLevels.map((g) => g.code));
+    return JOB_GRADE_SCALE.filter((s) => !present.has(s.code));
+  }, [distinctLevels]);
+
   function refetch() {
     startTransition(async () => {
       const result = await getCareerFrameworkAction();
@@ -64,6 +101,7 @@ export function CareerFrameworkView({
         setCareerTracks(result.data.careerTracks);
         setEntries(result.data.levelMappingEntries);
         setLevels(result.data.jobGrades);
+        setLevelUsage(result.data.levelUsageByCode);
       }
     });
   }
@@ -129,14 +167,14 @@ export function CareerFrameworkView({
         </p>
       ) : null}
 
-      {levels.length === 0 ? (
+      {distinctLevels.length === 0 ? (
         <div className="border-border bg-muted/30 flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-foreground text-sm font-medium">No levels set up yet</p>
             <p className="text-muted-foreground mt-0.5 text-sm">
               Levels (L2–L18) are the rows of the career matrix and the seniority you pick for a
-              position. Add the standard scale to get started — you can rename or remove levels
-              afterwards.
+              position. Add the standard scale to get started — you can remove the ones you don’t
+              use afterwards.
             </p>
           </div>
           {canManage ? (
@@ -149,7 +187,103 @@ export function CareerFrameworkView({
             </Button>
           ) : null}
         </div>
-      ) : null}
+      ) : (
+        <section className="rounded-lg border p-4" aria-label="Levels">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold">Levels</h2>
+              <p className="text-muted-foreground text-xs">
+                The seniority scale shared by every Level picker. Keep only the levels you use — a
+                level in use by a position or a title can’t be removed.
+              </p>
+            </div>
+            {canManage ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {unusedLevelCount > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={pending}
+                    onClick={() => runManage(() => removeUnusedLevelsAction())}
+                  >
+                    <Trash2 aria-hidden="true" className="size-4" /> Remove {unusedLevelCount}{" "}
+                    unused level{unusedLevelCount === 1 ? "" : "s"}
+                  </Button>
+                ) : null}
+                {addableLevels.length > 0 ? (
+                  <Select
+                    aria-label="Add a level"
+                    value=""
+                    disabled={pending}
+                    onChange={(event) => {
+                      const code = event.target.value;
+                      if (code) runManage(() => addLevelAction({ code }));
+                    }}
+                  >
+                    <option value="">Add a level…</option>
+                    {addableLevels.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.code} — {s.name}
+                      </option>
+                    ))}
+                  </Select>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <ul className="mt-3 divide-y">
+            {distinctLevels.map((grade) => {
+              const usage = levelUsage[grade.code] ?? { positionCount: 0, titleCount: 0 };
+              const used = usage.positionCount > 0 || usage.titleCount > 0;
+              const usageParts = [
+                usage.positionCount > 0
+                  ? `${usage.positionCount} position${usage.positionCount === 1 ? "" : "s"}`
+                  : null,
+                usage.titleCount > 0
+                  ? `${usage.titleCount} title${usage.titleCount === 1 ? "" : "s"}`
+                  : null,
+              ].filter(Boolean);
+              return (
+                <li key={grade.id} className="flex items-center justify-between gap-3 py-2">
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <span className="font-medium">{grade.code}</span>
+                    {grade.name ? (
+                      <span className="text-muted-foreground truncate text-sm">{grade.name}</span>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {used ? (
+                      <span className="text-muted-foreground text-xs">
+                        {usageParts.join(" · ")}
+                      </span>
+                    ) : (
+                      <Badge variant="outline">Unused</Badge>
+                    )}
+                    {canManage ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label={`Remove level ${grade.code}`}
+                        disabled={pending || used}
+                        title={
+                          used
+                            ? "In use — change the positions/titles using it to a different level first"
+                            : "Remove this level"
+                        }
+                        onClick={() => runManage(() => deleteLevelAction({ code: grade.code }))}
+                      >
+                        <Trash2 aria-hidden="true" className="size-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {jobFamilies.length === 0 ? (
         <p className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">

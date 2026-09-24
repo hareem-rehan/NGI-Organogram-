@@ -19,13 +19,19 @@ vi.mock("@/app/(app)/career-framework/actions", () => ({
   updateJobFamilyAction: vi.fn(),
   createLevelMappingEntryAction: vi.fn(),
   provisionStandardLevelsAction: vi.fn(),
+  addLevelAction: vi.fn(),
+  deleteLevelAction: vi.fn(),
+  removeUnusedLevelsAction: vi.fn(),
 }));
 
 import { CareerFrameworkView } from "./career-framework-view";
 import {
+  addLevelAction,
   addManagerLadderAction,
+  deleteLevelAction,
   getCareerFrameworkAction,
   provisionStandardLevelsAction,
+  removeUnusedLevelsAction,
 } from "@/app/(app)/career-framework/actions";
 
 const DEPT: Department = {
@@ -118,6 +124,7 @@ function renderView(overrides: Partial<Parameters<typeof CareerFrameworkView>[0]
       ]}
       departments={[DEPT]}
       jobGrades={[L7]}
+      initialLevelUsageByCode={{ L7: { positionCount: 0, titleCount: 2 } }}
       {...overrides}
     />
   );
@@ -203,6 +210,7 @@ describe("CareerFrameworkView", () => {
         careerTracks: [IC, MGR],
         levelMappingEntries: [],
         jobGrades: [L7],
+        levelUsageByCode: { L7: { positionCount: 0, titleCount: 0 } },
       },
     });
     renderView({ initialCareerTracks: [IC], initialLevelMappingEntries: [] });
@@ -250,6 +258,7 @@ describe("CareerFrameworkView", () => {
         careerTracks: [IC, MGR],
         levelMappingEntries: [],
         jobGrades: [L7],
+        levelUsageByCode: { L7: { positionCount: 0, titleCount: 0 } },
       },
     });
 
@@ -261,5 +270,103 @@ describe("CareerFrameworkView", () => {
     await waitFor(() =>
       expect(screen.queryByText(/no levels set up yet/i)).not.toBeInTheDocument()
     );
+  });
+});
+
+describe("CareerFrameworkView — Levels panel (usage-aware curation)", () => {
+  const L9 = grade("g-l9", "L9", 9);
+
+  it("lists each level with its usage, marking an unused one and disabling its removal guard only when used", () => {
+    renderView({
+      jobGrades: [L7, L9],
+      // L7 is used by 2 titles; L9 is used by nothing.
+      initialLevelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
+    });
+
+    // Used level: shows the count, no "Unused" badge, Remove disabled.
+    const l7Remove = screen.getByRole("button", { name: /remove level l7/i });
+    expect(l7Remove).toBeDisabled();
+    expect(screen.getByText(/2 titles/i)).toBeInTheDocument();
+
+    // Unused level: shows an "Unused" badge, Remove enabled.
+    expect(screen.getByText("Unused")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /remove level l9/i })).toBeEnabled();
+  });
+
+  it("removes a single unused level by code", async () => {
+    const user = userEvent.setup();
+    vi.mocked(deleteLevelAction).mockResolvedValue({ ok: true, data: { deletedCount: 1 } });
+    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
+      ok: true,
+      data: {
+        jobFamilies: [FAMILY],
+        careerTracks: [IC, MGR],
+        levelMappingEntries: [],
+        jobGrades: [L7],
+        levelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
+      },
+    });
+    renderView({
+      jobGrades: [L7, L9],
+      initialLevelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
+    });
+
+    await user.click(screen.getByRole("button", { name: /remove level l9/i }));
+    expect(deleteLevelAction).toHaveBeenCalledWith({ code: "L9" });
+  });
+
+  it("offers a one-click 'Remove N unused levels' and calls the bulk action", async () => {
+    const user = userEvent.setup();
+    vi.mocked(removeUnusedLevelsAction).mockResolvedValue({
+      ok: true,
+      data: { removedCodes: ["L9"] },
+    });
+    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
+      ok: true,
+      data: {
+        jobFamilies: [FAMILY],
+        careerTracks: [IC, MGR],
+        levelMappingEntries: [],
+        jobGrades: [L7],
+        levelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
+      },
+    });
+    renderView({
+      jobGrades: [L7, L9],
+      initialLevelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
+    });
+
+    await user.click(screen.getByRole("button", { name: /remove 1 unused level/i }));
+    expect(removeUnusedLevelsAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds a standard level from the 'Add a level' picker", async () => {
+    const user = userEvent.setup();
+    vi.mocked(addLevelAction).mockResolvedValue({ ok: true, data: { code: "L10" } });
+    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
+      ok: true,
+      data: {
+        jobFamilies: [FAMILY],
+        careerTracks: [IC, MGR],
+        levelMappingEntries: [],
+        jobGrades: [L7],
+        levelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
+      },
+    });
+    renderView();
+
+    await user.selectOptions(screen.getByLabelText(/add a level/i), "L10");
+    expect(addLevelAction).toHaveBeenCalledWith({ code: "L10" });
+  });
+
+  it("hides all Levels-panel controls in read-only mode but still shows usage", () => {
+    renderView({
+      canManage: false,
+      jobGrades: [L7, L9],
+      initialLevelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
+    });
+    expect(screen.queryByRole("button", { name: /remove level/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/add a level/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Unused")).toBeInTheDocument();
   });
 });
