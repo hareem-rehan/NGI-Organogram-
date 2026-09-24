@@ -36,8 +36,13 @@ test.describe("Audit Log (Phase 12)", () => {
     await row.getByRole("button", { name: "View Details" }).click();
     const dialog = page.getByRole("dialog", { name: /audit event details/i });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText("Before")).toBeVisible();
-    await expect(dialog.getByText("After")).toBeVisible();
+    // Match the before/after column HEADERS exactly. A substring match here is
+    // ambiguous — the dialog's own description ("…a safe before/after
+    // comparison.") also contains "before" and "after", so `getByText("Before")`
+    // resolves to two elements and trips Playwright's strict mode. `exact: true`
+    // pins the assertion to the `<p>Before</p>` / `<p>After</p>` headers.
+    await expect(dialog.getByText("Before", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("After", { exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: /^edit$/i })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: /^delete$/i })).toHaveCount(0);
   });

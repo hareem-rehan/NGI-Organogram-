@@ -4,11 +4,31 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, Download, Plus } from "lucide-react";
+import type {
+  CareerTrack,
+  Department,
+  JobFamily,
+  JobGrade,
+  LevelMappingEntry,
+  Position,
+} from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { ErrorState } from "@/components/patterns/error-state";
 import { LoadingState } from "@/components/patterns/loading-state";
 import { getOrganogramAction } from "@/app/(app)/organogram/actions";
+import { PositionFormDialog } from "@/app/(app)/positions/_components/position-form-dialog";
+import {
+  deletePositionAction,
+  deletePositionSubtreeAction,
+  getSubtreeSizeAction,
+  listAllPositionsAction,
+  listDepartmentOptionsAction,
+  listJobGradeOptionsAction,
+  listPositionCareerOptionsAction,
+  movePositionAction,
+} from "@/app/(app)/positions/actions";
 import { OrganogramCanvas } from "@/app/(app)/organogram/_components/organogram-canvas";
 import { OrganogramDetailsPanel } from "@/app/(app)/organogram/_components/organogram-details-panel";
 import { OrganogramExportDialog } from "@/app/(app)/organogram/_components/organogram-export-dialog";
@@ -128,6 +148,52 @@ export function OrganogramView({
   // palette.
   const [colorMode, setColorMode] = useState<OrganogramColorMode>("department");
 
+  // Arrange mode (managers only, off by default — docs/DECISIONS.md D21).
+  const [arrangeMode, setArrangeMode] = useState(false);
+
+  // Form-option data for the in-chart Add/Edit Position dialog — loaded lazily
+  // the first time a manager needs it (entering arrange mode), then refreshed
+  // after each mutation so the pickers and the edit target stay current.
+  interface PositionFormOptions {
+    departments: Department[];
+    jobGrades: JobGrade[];
+    jobFamilies: JobFamily[];
+    careerTracks: CareerTrack[];
+    levelMappingEntries: LevelMappingEntry[];
+    allPositions: Position[];
+  }
+  const [formOptions, setFormOptions] = useState<PositionFormOptions | null>(null);
+
+  // Add/Edit Position dialog state.
+  const [formOpen, setFormOpen] = useState(false);
+  const [formEditPosition, setFormEditPosition] = useState<Position | null>(null);
+  const [formInitialDepartmentId, setFormInitialDepartmentId] = useState<string | null>(null);
+  const [formInitialReportsToId, setFormInitialReportsToId] = useState<string | null>(null);
+
+  // Re-parent (drag-drop) confirmation.
+  interface MoveIntent {
+    childId: string;
+    parentId: string;
+    childTitle: string;
+    parentTitle: string;
+    affectedCount: number;
+  }
+  const [moveIntent, setMoveIntent] = useState<MoveIntent | null>(null);
+  const moveDialog = useConfirmDialog();
+  const [movePending, setMovePending] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+
+  // Delete-card confirmation (single position, or whole subtree).
+  interface DeleteIntent {
+    positionId: string;
+    title: string;
+    descendantCount: number;
+  }
+  const [deleteIntent, setDeleteIntent] = useState<DeleteIntent | null>(null);
+  const deleteDialog = useConfirmDialog();
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   // Shallow-routing via the native History API — NOT `router.push`/
   // `router.replace`, which re-invoke the server component tree (a real
   // DB round-trip through requirePagePermission/requireActiveUser) on
@@ -167,6 +233,161 @@ export function OrganogramView({
       setSelectedId(null);
     })();
   }, []);
+
+  // Load (or reload) the Add/Edit Position form's option data. Managers only;
+  // the four reads each re-authorize server-side. Returns the loaded options
+  // so callers can act on fresh data (e.g. find an edit target) without
+  // waiting for a state round-trip.
+  const loadFormOptions = useCallback(async (): Promise<PositionFormOptions | null> => {
+    if (!canManage) return null;
+    const [departments, jobGrades, career, allPositions] = await Promise.all([
+      listDepartmentOptionsAction(),
+      listJobGradeOptionsAction(),
+      listPositionCareerOptionsAction(),
+      listAllPositionsAction(),
+    ]);
+    if (!departments.ok || !jobGrades.ok || !career.ok || !allPositions.ok) return null;
+    const options: PositionFormOptions = {
+      departments: departments.data,
+      jobGrades: jobGrades.data,
+      jobFamilies: career.data.jobFamilies,
+      careerTracks: career.data.careerTracks,
+      levelMappingEntries: career.data.levelMappingEntries,
+      allPositions: allPositions.data,
+    };
+    setFormOptions(options);
+    return options;
+  }, [canManage]);
+
+  const handleArrangeModeChange = useCallback(
+    (value: boolean) => {
+      setArrangeMode(value);
+      // Load the form data on first entry so Add/Edit open instantly later.
+      if (value && !formOptions) void loadFormOptions();
+    },
+    [formOptions, loadFormOptions]
+  );
+
+  // Reload both the chart and the form options after a structural change, so
+  // the pickers, the edit targets and the drawn tree all reflect the new state.
+  const refreshAfterMutation = useCallback(() => {
+    refresh();
+    void loadFormOptions();
+  }, [refresh, loadFormOptions]);
+
+  const handleEditCard = useCallback(
+    (positionId: string) => {
+      // The full Position (with description/code the node doesn't carry) comes
+      // from the loaded list; open the form once we have it.
+      void (async () => {
+        const options = formOptions ?? (await loadFormOptions());
+        const target = options?.allPositions.find((p) => p.id === positionId) ?? null;
+        if (!target) return;
+        setFormEditPosition(target);
+        setFormInitialDepartmentId(null);
+        setFormInitialReportsToId(null);
+        setFormOpen(true);
+      })();
+    },
+    [formOptions, loadFormOptions]
+  );
+
+  const handleAddChild = useCallback(
+    (parentId: string) => {
+      const parent = data?.nodes.find((n) => n.positionId === parentId);
+      if (!parent) return;
+      if (!formOptions) void loadFormOptions();
+      setFormEditPosition(null);
+      setFormInitialDepartmentId(parent.departmentId);
+      setFormInitialReportsToId(parentId);
+      setFormOpen(true);
+    },
+    [data, formOptions, loadFormOptions]
+  );
+
+  const handleReparent = useCallback(
+    (childId: string, parentId: string) => {
+      const child = data?.nodes.find((n) => n.positionId === childId);
+      const parent = data?.nodes.find((n) => n.positionId === parentId);
+      if (!child || !parent) return;
+      setMoveError(null);
+      void (async () => {
+        // Affected count = the descendants that get their level recalculated
+        // with the move. Best-effort; a failed count just shows none.
+        const size = await getSubtreeSizeAction(childId);
+        setMoveIntent({
+          childId,
+          parentId,
+          childTitle: child.title,
+          parentTitle: parent.title,
+          affectedCount: size.ok ? size.data : 0,
+        });
+        moveDialog.setOpen(true);
+      })();
+    },
+    [data, moveDialog]
+  );
+
+  const confirmMove = useCallback(() => {
+    if (!moveIntent) return;
+    setMovePending(true);
+    setMoveError(null);
+    void (async () => {
+      const result = await movePositionAction({
+        positionId: moveIntent.childId,
+        newParentPositionId: moveIntent.parentId,
+      });
+      setMovePending(false);
+      if (!result.ok) {
+        setMoveError(result.error);
+        return;
+      }
+      moveDialog.setOpen(false);
+      setMoveIntent(null);
+      refreshAfterMutation();
+    })();
+  }, [moveIntent, moveDialog, refreshAfterMutation]);
+
+  const handleRequestDelete = useCallback(
+    (positionId: string) => {
+      const node = data?.nodes.find((n) => n.positionId === positionId);
+      if (!node) return;
+      setDeleteError(null);
+      void (async () => {
+        // A node with real direct reports deletes its whole subtree; fetch the
+        // descendant count so the confirmation states the blast radius.
+        const hasChildren = node.directReportCount > 0;
+        const size = hasChildren ? await getSubtreeSizeAction(positionId) : null;
+        setDeleteIntent({
+          positionId,
+          title: node.title,
+          descendantCount: size && size.ok ? size.data : 0,
+        });
+        deleteDialog.setOpen(true);
+      })();
+    },
+    [data, deleteDialog]
+  );
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteIntent) return;
+    setDeletePending(true);
+    setDeleteError(null);
+    void (async () => {
+      const result =
+        deleteIntent.descendantCount > 0
+          ? await deletePositionSubtreeAction({ positionId: deleteIntent.positionId })
+          : await deletePositionAction({ positionId: deleteIntent.positionId });
+      setDeletePending(false);
+      if (!result.ok) {
+        setDeleteError(result.error);
+        return;
+      }
+      deleteDialog.setOpen(false);
+      setDeleteIntent(null);
+      refreshAfterMutation();
+    })();
+  }, [deleteIntent, deleteDialog, refreshAfterMutation]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -547,7 +768,19 @@ export function OrganogramView({
         onCollapseAll={handleCollapseAll}
         onFitToView={handleFitToView}
         onResetView={handleResetView}
+        canManage={canManage}
+        arrangeMode={arrangeMode}
+        onArrangeModeChange={handleArrangeModeChange}
       />
+
+      {arrangeMode ? (
+        <p role="status" className="text-muted-foreground text-xs">
+          Arrange mode — drag a card onto another to change who it reports to, use{" "}
+          <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
+          the trash icon to delete, and click a card to edit it. A drag onto empty space just nudges
+          the card; the layout is regenerated on reload.
+        </p>
+      ) : null}
 
       {data.leadership.applied &&
       (data.leadership.hidden.total > 0 || data.leadership.collapsedBelowThreshold > 0) ? (
@@ -644,6 +877,11 @@ export function OrganogramView({
                 familyLegendEntries={familyLegendEntries}
                 matchStateById={matchStateById}
                 centerOnNodeId={centerOnNodeId}
+                arrangeMode={arrangeMode}
+                onReparent={handleReparent}
+                onEditCard={handleEditCard}
+                onAddChild={handleAddChild}
+                onRequestDelete={handleRequestDelete}
               />
             ) : (
               <div className="max-h-[65vh] overflow-y-auto">
@@ -688,6 +926,67 @@ export function OrganogramView({
             filters: urlState.filters,
             showPlanned: urlState.planned,
           }}
+        />
+      ) : null}
+
+      {/* Arrange-mode management dialogs (managers only). Rendered once the
+          form option data is loaded; every mutation is still re-authorized and
+          re-validated server-side regardless of these client controls. */}
+      {canManage && formOptions ? (
+        <PositionFormDialog
+          open={formOpen}
+          onOpenChange={setFormOpen}
+          position={formEditPosition}
+          departments={formOptions.departments}
+          jobGrades={formOptions.jobGrades}
+          jobFamilies={formOptions.jobFamilies}
+          careerTracks={formOptions.careerTracks}
+          levelMappingEntries={formOptions.levelMappingEntries}
+          allPositions={formOptions.allPositions}
+          initialDepartmentId={formInitialDepartmentId}
+          initialReportsToPositionId={formInitialReportsToId}
+          onSaved={refreshAfterMutation}
+        />
+      ) : null}
+
+      {moveIntent ? (
+        <ConfirmDialog
+          open={moveDialog.open}
+          onOpenChange={(open) => {
+            moveDialog.setOpen(open);
+            if (!open) setMoveIntent(null);
+          }}
+          title="Change reporting line?"
+          description={`${moveIntent.childTitle} will report to ${moveIntent.parentTitle}.${
+            moveIntent.affectedCount > 0
+              ? ` ${moveIntent.affectedCount} position${moveIntent.affectedCount === 1 ? "" : "s"} beneath it will have their level recalculated.`
+              : ""
+          }`}
+          confirmLabel="Move"
+          pending={movePending}
+          errorMessage={moveError}
+          onConfirm={confirmMove}
+        />
+      ) : null}
+
+      {deleteIntent ? (
+        <ConfirmDialog
+          open={deleteDialog.open}
+          onOpenChange={(open) => {
+            deleteDialog.setOpen(open);
+            if (!open) setDeleteIntent(null);
+          }}
+          title={deleteIntent.descendantCount > 0 ? "Delete this branch?" : "Delete this position?"}
+          description={
+            deleteIntent.descendantCount > 0
+              ? `${deleteIntent.title} and everything reporting to it — ${deleteIntent.descendantCount + 1} positions in total — will be permanently removed. This cannot be undone, and is only possible if no one in the branch is or was assigned; otherwise deactivate it instead.`
+              : `${deleteIntent.title} will be permanently removed. This cannot be undone. A position can only be deleted while no one is or was assigned to it — otherwise deactivate it instead.`
+          }
+          confirmLabel={deleteIntent.descendantCount > 0 ? "Delete branch" : "Delete"}
+          destructive
+          pending={deletePending}
+          errorMessage={deleteError}
+          onConfirm={confirmDelete}
         />
       ) : null}
     </div>

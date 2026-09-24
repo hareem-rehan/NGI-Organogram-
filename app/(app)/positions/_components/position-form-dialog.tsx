@@ -31,6 +31,13 @@ interface PositionFormDialogProps {
   levelMappingEntries: readonly LevelMappingEntry[];
   /** Only relevant when creating (used to populate the Reports-To combobox and to detect whether a root already exists). */
   allPositions: readonly Position[];
+  /**
+   * Create-mode prefill (ignored when editing). Used by the organogram's
+   * "add a direct report" action to open the form already scoped to the
+   * parent's department and reporting to it. Both still fully editable.
+   */
+  initialDepartmentId?: string | null;
+  initialReportsToPositionId?: string | null;
   onSaved: () => void;
 }
 
@@ -124,6 +131,8 @@ export function PositionFormDialog({
   careerTracks,
   levelMappingEntries,
   allPositions,
+  initialDepartmentId,
+  initialReportsToPositionId,
   onSaved,
 }: PositionFormDialogProps) {
   const isEdit = position !== null;
@@ -161,6 +170,10 @@ export function PositionFormDialog({
   departmentsRef.current = departments;
   const careerTracksRef = useRef(careerTracks);
   careerTracksRef.current = careerTracks;
+  const initialDepartmentIdRef = useRef(initialDepartmentId);
+  initialDepartmentIdRef.current = initialDepartmentId;
+  const initialReportsToPositionIdRef = useRef(initialReportsToPositionId);
+  initialReportsToPositionIdRef.current = initialReportsToPositionId;
 
   useEffect(() => {
     if (open && !wasOpen.current) {
@@ -175,12 +188,20 @@ export function PositionFormDialog({
         : undefined;
       reset({
         title: currentPosition?.title ?? "",
-        departmentId: currentPosition?.departmentId ?? currentDepartments[0]?.id ?? "",
+        // Create-mode prefill (add-a-report from the organogram) wins over the
+        // first-department default; editing always uses the position's own.
+        departmentId:
+          currentPosition?.departmentId ??
+          initialDepartmentIdRef.current ??
+          currentDepartments[0]?.id ??
+          "",
         jobFamilyId: currentPosition?.jobFamilyId ?? null,
         careerTrackKind: currentTrack?.kind ?? null,
         jobGradeId: currentPosition?.jobGradeId ?? null,
         description: currentPosition?.description ?? null,
-        primaryReportsToPositionId: null,
+        primaryReportsToPositionId: currentPosition
+          ? null
+          : (initialReportsToPositionIdRef.current ?? null),
       });
     }
     wasOpen.current = open;

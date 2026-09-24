@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const { getOrganogramActionMock, searchParamsMock } = vi.hoisted(() => ({
   getOrganogramActionMock: vi.fn(),
@@ -8,6 +9,25 @@ const { getOrganogramActionMock, searchParamsMock } = vi.hoisted(() => ({
 
 vi.mock("@/app/(app)/organogram/actions", () => ({
   getOrganogramAction: getOrganogramActionMock,
+}));
+
+// Arrange-mode wiring imports the Positions server actions (directly, and via
+// the shared PositionFormDialog). Stub the whole module so the client test
+// never pulls the server-only service chain, and list actions resolve empty.
+vi.mock("@/app/(app)/positions/actions", () => ({
+  createPositionAction: vi.fn(),
+  updatePositionAction: vi.fn(),
+  movePositionAction: vi.fn(),
+  deletePositionAction: vi.fn(),
+  deletePositionSubtreeAction: vi.fn(),
+  getSubtreeSizeAction: vi.fn(async () => ({ ok: true, data: 0 })),
+  listAllPositionsAction: vi.fn(async () => ({ ok: true, data: [] })),
+  listDepartmentOptionsAction: vi.fn(async () => ({ ok: true, data: [] })),
+  listJobGradeOptionsAction: vi.fn(async () => ({ ok: true, data: [] })),
+  listPositionCareerOptionsAction: vi.fn(async () => ({
+    ok: true,
+    data: { jobFamilies: [], careerTracks: [], levelMappingEntries: [] },
+  })),
 }));
 
 vi.mock("@/app/(app)/organogram/export-actions", () => ({
@@ -31,7 +51,47 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { OrganogramView } from "./organogram-view";
+import { listDepartmentOptionsAction } from "@/app/(app)/positions/actions";
 import type { OrganogramChartData } from "@/lib/services/organogram.service";
+import type { OrganogramNode } from "@/lib/domain/organogram";
+
+/** A minimal single-root org so the toolbar (and thus the Arrange control) renders. */
+function rootedOrg(): OrganogramChartData {
+  const root: OrganogramNode = {
+    positionId: "root",
+    positionCode: "ROOT",
+    title: "CEO",
+    departmentId: "dept-1",
+    departmentName: "Engineering",
+    departmentCode: "ENG",
+    departmentColor: "#16a34a",
+    jobGradeId: null,
+    jobGradeName: null,
+    jobGradeCode: null,
+    jobGradeLevel: null,
+    jobFamilyId: null,
+    jobFamilyName: null,
+    organizationalLevel: 1,
+    positionStatus: "ACTIVE",
+    occupancyStatus: "vacant",
+    occupantDisplayName: null,
+    occupantEmployeeId: null,
+    directReportCount: 0,
+    primaryReportsToPositionId: null,
+    hasChildren: false,
+    isPlanned: false,
+    isActive: true,
+  };
+  return makeData({
+    nodes: [root],
+    safety: {
+      hasRoot: true,
+      extraRootCount: 0,
+      cyclePositionCount: 0,
+      disconnectedPositionCount: 0,
+    },
+  });
+}
 
 function makeData(overrides: Partial<OrganogramChartData> = {}): OrganogramChartData {
   return {
@@ -271,5 +331,36 @@ describe("OrganogramView", () => {
     expect(
       screen.getByRole("button", { name: /return to full company view/i })
     ).toBeInTheDocument();
+  });
+  it("offers the Arrange control to managers only", async () => {
+    getOrganogramActionMock.mockResolvedValue({ ok: true, data: rootedOrg() });
+    const { unmount } = render(
+      <OrganogramView canManage={true} canViewEmployeeDetails={true} canExport={true} />
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^arrange$/i })).toBeInTheDocument()
+    );
+    unmount();
+
+    getOrganogramActionMock.mockResolvedValue({ ok: true, data: rootedOrg() });
+    render(<OrganogramView canManage={false} canViewEmployeeDetails={true} canExport={false} />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Expand All" })).toBeInTheDocument()
+    );
+    expect(screen.queryByRole("button", { name: /^arrange$/i })).not.toBeInTheDocument();
+  });
+
+  it("entering Arrange mode reveals the guidance and loads the Position-form options", async () => {
+    const user = userEvent.setup();
+    getOrganogramActionMock.mockResolvedValue({ ok: true, data: rootedOrg() });
+    render(<OrganogramView canManage={true} canViewEmployeeDetails={true} canExport={true} />);
+
+    const arrange = await screen.findByRole("button", { name: /^arrange$/i });
+    await user.click(arrange);
+
+    expect(screen.getByText(/drag a card onto another/i)).toBeInTheDocument();
+    // The form options are loaded lazily on first entry, re-authorized server-side.
+    await waitFor(() => expect(listDepartmentOptionsAction).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: /arranging/i })).toBeInTheDocument();
   });
 });

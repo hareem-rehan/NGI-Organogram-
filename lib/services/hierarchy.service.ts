@@ -468,6 +468,96 @@ export async function deletePosition(
   });
 }
 
+export interface DeleteSubtreeResult {
+  /** Total positions removed (the target plus every descendant). */
+  deletedCount: number;
+}
+
+/**
+ * Hard-deletes a position together with its ENTIRE subtree — every
+ * descendant, in one transaction (CLAUDE.md §9). This is the organogram
+ * card's "delete a wrong branch" action; a childless target simply deletes
+ * itself. Distinct from `deletePosition`, which refuses any position that
+ * still has direct reports.
+ *
+ * Non-destructive of employment history (docs/DECISIONS.md D20): if ANY
+ * position anywhere in the subtree has a current or past assignment, the
+ * whole delete is refused and nothing is removed — that branch must be
+ * reassigned/deactivated first. So this can only ever remove planned/vacant
+ * scaffolding, never a seat someone has held.
+ *
+ * Deletion runs deepest-first so the self-referencing
+ * `primaryReportsToPositionId` FK (ON DELETE RESTRICT) is never violated
+ * mid-transaction, and each removal writes its own DELETED audit event with
+ * a before-snapshot (the only remaining record of the removed row).
+ */
+export async function deletePositionSubtree(
+  id: string,
+  companyId: string,
+  actor: AuditActor = "SYSTEM",
+  db: DbClient = prisma
+): Promise<DeleteSubtreeResult> {
+  return withTransaction(db, async (tx) => {
+    const root = await findPositionById(id, companyId, tx);
+    if (!root) throw new NotFoundError("Position", id);
+
+    // Descendants (root excluded), each with its level; add the root so the
+    // whole branch is handled as one set.
+    const descendants = await getPositionSubtree(id, companyId, tx);
+    const members = [
+      { id: root.id, organizationalLevel: root.organizationalLevel },
+      ...descendants.map((d) => ({ id: d.id, organizationalLevel: d.organizationalLevel })),
+    ];
+    const memberIds = members.map((m) => m.id);
+
+    // Refuse if anyone in the branch is or was assigned — assignment history
+    // is kept (PositionAssignment → Position is RESTRICT). A held seat is
+    // deactivated, not deleted, so the history stays resolvable.
+    const assignmentCount = await tx.positionAssignment.count({
+      where: { positionId: { in: memberIds } },
+    });
+    if (assignmentCount > 0) {
+      throw new UnsafeMutationError(
+        `${root.title} cannot be deleted: ${assignmentCount} position${assignmentCount === 1 ? "" : "s"} in this branch ${assignmentCount === 1 ? "has" : "have"} employment history (someone is or was assigned). Reassign or deactivate ${assignmentCount === 1 ? "it" : "them"} first, or deactivate this branch instead.`
+      );
+    }
+
+    // Full rows for the before-snapshots, keyed for the audit loop.
+    const rows = await tx.position.findMany({ where: { id: { in: memberIds }, companyId } });
+    const rowById = new Map(rows.map((row) => [row.id, row]));
+
+    // Deepest-first: a parent is never deleted while a child still points at
+    // it, so the self-FK RESTRICT is satisfied every step.
+    const orderedIds = [...members]
+      .sort((a, b) => b.organizationalLevel - a.organizationalLevel)
+      .map((m) => m.id);
+
+    for (const memberId of orderedIds) {
+      const before = rowById.get(memberId);
+      try {
+        await tx.position.delete({ where: { id: memberId } });
+      } catch (error) {
+        throw translateWriteError(error, before?.positionCode ?? memberId, false);
+      }
+      await recordAuditEvent(
+        {
+          companyId,
+          actor,
+          action: "DELETED",
+          category: "POSITION",
+          entityType: "Position",
+          entityId: memberId,
+          entityDisplayReference: before?.positionCode ?? memberId,
+          before,
+        },
+        tx
+      );
+    }
+
+    return { deletedCount: memberIds.length };
+  });
+}
+
 export async function getRootPosition(
   companyId: string,
   db: DbClient = prisma
