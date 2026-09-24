@@ -6,7 +6,12 @@ import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
 import type { DbClient } from "@/lib/repositories/types";
 import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
-import { ConflictError, DomainValidationError } from "@/lib/domain/errors";
+import {
+  ConflictError,
+  DomainValidationError,
+  NotFoundError,
+  UnsafeMutationError,
+} from "@/lib/domain/errors";
 import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service";
 
 const SCALE_BY_CODE = new Map(JOB_GRADE_SCALE.map((g) => [g.code, g] as const));
@@ -160,5 +165,191 @@ export async function provisionStandardLevels(
     }
 
     return { created, alreadyExisted: existingCodes.size };
+  });
+}
+
+/** Positions + career-matrix titles referencing the given grade ids, in one transaction-safe pair of counts. */
+async function countLevelReferences(
+  companyId: string,
+  gradeIds: string[],
+  tx: DbClient
+): Promise<{ positionCount: number; titleCount: number }> {
+  if (gradeIds.length === 0) return { positionCount: 0, titleCount: 0 };
+  const [positionCount, titleCount] = await Promise.all([
+    tx.position.count({ where: { companyId, jobGradeId: { in: gradeIds } } }),
+    tx.levelMappingEntry.count({ where: { companyId, jobGradeId: { in: gradeIds } } }),
+  ]);
+  return { positionCount, titleCount };
+}
+
+/**
+ * Adds ONE level from the standard scale as a company-wide grade
+ * (departmentId = null), so a company can bring in just the levels it uses
+ * instead of the whole scale. Idempotent: if a company-wide grade for the
+ * code already exists it is returned unchanged. Only known scale codes are
+ * accepted — an arbitrary string would pollute the picker and every level
+ * comparison.
+ */
+export async function provisionStandardLevel(
+  companyId: string,
+  rawCode: string,
+  actor: AuditActor,
+  db: DbClient = prisma
+): Promise<JobGrade> {
+  const code = normalizeGradeCode(rawCode);
+  const scale = SCALE_BY_CODE.get(code);
+  if (!scale) {
+    const first = JOB_GRADE_SCALE[0]!.code;
+    const last = JOB_GRADE_SCALE[JOB_GRADE_SCALE.length - 1]!.code;
+    throw new DomainValidationError(
+      `"${rawCode}" is not a recognized level. Choose one of ${first}–${last}.`
+    );
+  }
+  return withTransaction(db, async (tx) => {
+    const existing = await tx.jobGrade.findFirst({
+      where: { companyId, departmentId: null, code },
+    });
+    if (existing) return existing;
+
+    let created: JobGrade;
+    try {
+      created = await tx.jobGrade.create({
+        data: {
+          companyId,
+          departmentId: null,
+          code,
+          name: scale.name,
+          displayOrder: scale.level,
+          status: "ACTIVE",
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new ConflictError(`Level ${code} is already set up for this company.`);
+      }
+      throw error;
+    }
+
+    await recordAuditEvent(
+      {
+        companyId,
+        actor,
+        action: "CREATED",
+        category: "COMPANY_SETTINGS",
+        entityType: "JobGrade",
+        entityId: created.id,
+        entityDisplayReference: created.code,
+        after: created,
+      },
+      tx
+    );
+    return created;
+  });
+}
+
+/**
+ * Removes a level by CODE — every grade of that code in the company
+ * (company-wide and any per-department duplicates), in one transaction. The
+ * Career Framework "Levels" panel is keyed by code (matching the pickers, which
+ * dedupe by code), so removing "L9" should clear it everywhere. Refused if any
+ * position or career-matrix title still references the level; the caller is told
+ * to reassign those first. Position.jobGrade / LevelMappingEntry.jobGrade are
+ * ON DELETE RESTRICT, so this pre-check turns the raw FK error into a clear
+ * message and is backed by the database regardless.
+ */
+export async function deleteLevelByCode(
+  companyId: string,
+  rawCode: string,
+  actor: AuditActor,
+  db: DbClient = prisma
+): Promise<{ deletedCount: number }> {
+  const code = normalizeGradeCode(rawCode);
+  return withTransaction(db, async (tx) => {
+    const grades = await tx.jobGrade.findMany({ where: { companyId, code } });
+    if (grades.length === 0) throw new NotFoundError("JobGrade", code);
+    const gradeIds = grades.map((g) => g.id);
+
+    const { positionCount, titleCount } = await countLevelReferences(companyId, gradeIds, tx);
+    if (positionCount > 0 || titleCount > 0) {
+      const parts = [
+        positionCount > 0 ? `${positionCount} position${positionCount === 1 ? "" : "s"}` : null,
+        titleCount > 0 ? `${titleCount} career-matrix title${titleCount === 1 ? "" : "s"}` : null,
+      ].filter(Boolean);
+      throw new UnsafeMutationError(
+        `Level ${code} is still in use by ${parts.join(" and ")}, so it cannot be removed. Change those to a different level first.`
+      );
+    }
+
+    await tx.jobGrade.deleteMany({ where: { companyId, code } });
+    await recordAuditEvent(
+      {
+        companyId,
+        actor,
+        action: "DELETED",
+        category: "COMPANY_SETTINGS",
+        entityType: "JobGrade",
+        entityDisplayReference: code,
+        metadata: { code, removedGradeIds: gradeIds },
+      },
+      tx
+    );
+    return { deletedCount: grades.length };
+  });
+}
+
+/**
+ * Removes every level nothing references — a one-click tidy of the standard
+ * scale down to what the company actually uses. Groups the company's grades by
+ * code and deletes each code whose grades have zero positions and zero
+ * career-matrix titles, all in one transaction. Returns the codes removed (so
+ * the UI can say what happened); a level in use is simply left in place.
+ */
+export async function removeUnusedLevels(
+  companyId: string,
+  actor: AuditActor,
+  db: DbClient = prisma
+): Promise<{ removedCodes: string[] }> {
+  return withTransaction(db, async (tx) => {
+    const grades = await tx.jobGrade.findMany({ where: { companyId } });
+    if (grades.length === 0) return { removedCodes: [] };
+
+    // Group grade ids by code, then keep only codes referenced by nothing.
+    const idsByCode = new Map<string, string[]>();
+    for (const g of grades) {
+      const list = idsByCode.get(g.code) ?? [];
+      list.push(g.id);
+      idsByCode.set(g.code, list);
+    }
+
+    const removedCodes: string[] = [];
+    const removedIds: string[] = [];
+    for (const [code, ids] of idsByCode) {
+      const { positionCount, titleCount } = await countLevelReferences(companyId, ids, tx);
+      if (positionCount === 0 && titleCount === 0) {
+        removedCodes.push(code);
+        removedIds.push(...ids);
+      }
+    }
+
+    if (removedIds.length === 0) return { removedCodes: [] };
+
+    await tx.jobGrade.deleteMany({ where: { companyId, id: { in: removedIds } } });
+    removedCodes.sort();
+    await recordAuditEvent(
+      {
+        companyId,
+        actor,
+        action: "DELETED",
+        category: "COMPANY_SETTINGS",
+        entityType: "JobGrade",
+        entityDisplayReference: `Unused levels removed (${removedCodes.length}: ${removedCodes.join(", ")})`,
+        metadata: { codes: removedCodes, removedGradeIds: removedIds },
+      },
+      tx
+    );
+    return { removedCodes };
   });
 }
