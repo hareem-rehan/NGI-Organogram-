@@ -18,6 +18,7 @@ const {
     archivePosition: vi.fn(),
     activatePosition: vi.fn(),
     deletePosition: vi.fn(),
+    deletePositionSubtree: vi.fn(),
   },
   positionRepoMocks: {
     searchPositions: vi.fn(),
@@ -51,6 +52,7 @@ import {
   archivePositionAction,
   createPositionAction,
   deletePositionAction,
+  deletePositionSubtreeAction,
   getSubtreeSizeAction,
   listAllPositionsAction,
   listDepartmentOptionsAction,
@@ -361,5 +363,41 @@ describe("deletePositionAction — authorization and validation", () => {
 
     expect(result.ok).toBe(false);
     expect(serviceMocks.deletePosition).not.toHaveBeenCalled();
+  });
+});
+
+describe("deletePositionSubtreeAction — authorization and validation", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("requires positions:manage, passes the session company, and returns the deleted count", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.deletePositionSubtree.mockResolvedValue({ deletedCount: 4 });
+
+    const result = await deletePositionSubtreeAction({ positionId: VALID_UUID });
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    // The service is always handed the SESSION's company, never anything a
+    // client could smuggle in (companyId is not even an accepted field).
+    expect(serviceMocks.deletePositionSubtree.mock.calls[0]?.[1]).toBe(ADMIN_USER.companyId);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.deletedCount).toBe(4);
+  });
+
+  it("a VIEWER cannot subtree-delete — the service is never reached", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+
+    const result = await deletePositionSubtreeAction({ positionId: VALID_UUID });
+
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.deletePositionSubtree).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed id before calling the service", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+
+    const result = await deletePositionSubtreeAction({ positionId: "not-a-uuid" });
+
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.deletePositionSubtree).not.toHaveBeenCalled();
   });
 });

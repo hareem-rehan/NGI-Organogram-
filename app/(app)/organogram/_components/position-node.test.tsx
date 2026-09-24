@@ -389,3 +389,45 @@ describe("PositionNode — displayed vs. real report counts", () => {
     expect(screen.getByText(/2 direct reports/)).toBeInTheDocument();
   });
 });
+
+describe("PositionNode — arrange mode", () => {
+  it("read-only by default: no Add/Delete controls, and a click selects (opens details)", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onEdit = vi.fn();
+    renderNode({ onSelect, onEdit });
+
+    expect(screen.queryByRole("button", { name: /add a report/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^delete /i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /VP Engineering/ }));
+    expect(onSelect).toHaveBeenCalledWith("pos-1");
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it("arrange mode: shows Add/Delete, and a card click opens the Edit form instead of details", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onEdit = vi.fn();
+    const onAddChild = vi.fn();
+    const onRequestDelete = vi.fn();
+    renderNode({ arrangeMode: true, onSelect, onEdit, onAddChild, onRequestDelete });
+
+    await user.click(screen.getByRole("button", { name: /edit vp engineering/i }));
+    expect(onEdit).toHaveBeenCalledWith("pos-1");
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /add a report to vp engineering/i }));
+    expect(onAddChild).toHaveBeenCalledWith("pos-1");
+
+    await user.click(screen.getByRole("button", { name: /^delete vp engineering$/i }));
+    expect(onRequestDelete).toHaveBeenCalledWith("pos-1");
+  });
+
+  it("arrange mode: hides the Delete control when deletion is not offered (e.g. the root)", () => {
+    renderNode({ arrangeMode: true, onAddChild: vi.fn(), onRequestDelete: undefined });
+    // Add is still available; delete is not offered for this card.
+    expect(screen.getByRole("button", { name: /add a report/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^delete /i })).not.toBeInTheDocument();
+  });
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { Maximize, RefreshCw } from "lucide-react";
+import { Maximize, Pencil, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,14 @@ interface OrganogramToolbarProps {
   onCollapseAll: () => void;
   onFitToView: () => void;
   onResetView: () => void;
+  /**
+   * Arrange mode (managers only). Off by default so the chart stays a safe,
+   * read-only view; on, cards can be dragged to re-parent and gain +/delete/
+   * edit controls (docs/DECISIONS.md D21). Only offered in the Visual view.
+   */
+  canManage: boolean;
+  arrangeMode: boolean;
+  onArrangeModeChange: (value: boolean) => void;
 }
 
 export function OrganogramToolbar({
@@ -32,6 +40,9 @@ export function OrganogramToolbar({
   onCollapseAll,
   onFitToView,
   onResetView,
+  canManage,
+  arrangeMode,
+  onArrangeModeChange,
 }: OrganogramToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b pb-3">
@@ -81,6 +92,19 @@ export function OrganogramToolbar({
             <RefreshCw aria-hidden="true" className="size-4" />
             Reset View
           </Button>
+
+          {canManage ? (
+            <Button
+              type="button"
+              size="sm"
+              variant={arrangeMode ? "default" : "outline"}
+              aria-pressed={arrangeMode}
+              onClick={() => onArrangeModeChange(!arrangeMode)}
+            >
+              <Pencil aria-hidden="true" className="size-4" />
+              {arrangeMode ? "Arranging" : "Arrange"}
+            </Button>
+          ) : null}
 
           <div className="bg-border mx-1 h-6 w-px" aria-hidden="true" />
 

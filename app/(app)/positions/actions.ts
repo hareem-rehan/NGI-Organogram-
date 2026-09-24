@@ -20,8 +20,10 @@ import {
   activatePosition,
   createPosition,
   deletePosition,
+  deletePositionSubtree,
   movePosition,
   updatePosition,
+  type DeleteSubtreeResult,
 } from "@/lib/services/hierarchy.service";
 import {
   getPositionSubtree,
@@ -255,5 +257,23 @@ export async function deletePositionAction(input: unknown): Promise<ActionResult
     const { positionId } = deletePositionSchema.parse(input);
     await deletePosition(positionId, user.companyId, toAuditActor(user));
     return null;
+  });
+}
+
+/**
+ * Deletes a position AND its entire subtree (the organogram card's "delete
+ * a wrong branch" action). Re-authorized and re-validated here regardless
+ * of the client (CLAUDE.md §1.8); the service refuses the delete if any
+ * position in the branch has employment history, and runs the whole removal
+ * in one transaction, so it can never orphan a report or lose an assignment
+ * record. The count is surfaced so the UI can confirm the blast radius.
+ */
+export async function deletePositionSubtreeAction(
+  input: unknown
+): Promise<ActionResult<DeleteSubtreeResult>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { positionId } = deletePositionSchema.parse(input);
+    return deletePositionSubtree(positionId, user.companyId, toAuditActor(user));
   });
 }

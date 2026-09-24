@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,17 @@ export interface PositionNodeData extends Record<string, unknown> {
    * canvas resolves it per node so the card just paints it. Null → neutral.
    */
   cardColor?: FamilyColor | null;
+  /**
+   * Arrange mode (managers only, off by default — docs/DECISIONS.md D21).
+   * When on, a real position card clicks through to its Edit form instead of
+   * the details panel, and shows inline Add-report / Delete controls. Never
+   * applies to the synthetic department heading. The three callbacks are only
+   * invoked while `arrangeMode` is true.
+   */
+  arrangeMode?: boolean;
+  onEdit?: (positionId: string) => void;
+  onAddChild?: (positionId: string) => void;
+  onRequestDelete?: (positionId: string) => void;
 }
 
 /**
@@ -126,6 +137,10 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
     onSelect,
     matchState = "none",
     cardColor = null,
+    arrangeMode = false,
+    onEdit,
+    onAddChild,
+    onRequestDelete,
   } = data;
 
   if (node.kind === "department") return <DepartmentNodeCard data={data} />;
@@ -167,7 +182,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // inherited value at this element so the buttons below actually
         // receive events — see e2e/organogram.spec.ts, which caught this
         // as a real click-through-to-the-pane failure before this fix.
-        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border shadow-sm transition-colors",
+        "pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm transition-colors",
         // Neutral card background only when no colour fill applies.
         !cardBackground && "bg-background",
         // Selection/search override the border with a stronger ring; otherwise
@@ -195,17 +210,57 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
       }}
     >
       <Handle type="target" position={Position.Top} className="!bg-border !border-none" />
+      {arrangeMode ? (
+        // Inline management controls (managers only, arrange mode).
+        // `nodrag` keeps a click on these from starting a node drag, and
+        // stopPropagation keeps it from also triggering the card's Edit
+        // click behind them.
+        <div className="nodrag absolute top-1 right-1 z-10 flex gap-1">
+          <button
+            type="button"
+            aria-label={`Add a report to ${node.title}`}
+            title="Add a direct report"
+            onClick={(event) => {
+              event.stopPropagation();
+              onAddChild?.(node.positionId);
+            }}
+            className="border-border bg-background/90 text-muted-foreground hover:text-foreground focus-visible:ring-ring flex size-6 items-center justify-center rounded border shadow-sm outline-none focus-visible:ring-2"
+          >
+            <Plus aria-hidden="true" className="size-3.5" />
+          </button>
+          {onRequestDelete ? (
+            <button
+              type="button"
+              aria-label={`Delete ${node.title}`}
+              title="Delete this position"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRequestDelete(node.positionId);
+              }}
+              className="border-destructive/30 bg-background/90 text-destructive hover:bg-destructive/10 focus-visible:ring-destructive flex size-6 items-center justify-center rounded border shadow-sm outline-none focus-visible:ring-2"
+            >
+              <Trash2 aria-hidden="true" className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <button
         type="button"
-        aria-pressed={isSelected}
+        aria-pressed={arrangeMode ? undefined : isSelected}
         // Leads with what the card now shows visually, but deliberately
         // keeps the department and organizational level: they are useful
         // orientation for a screen-reader user, who cannot see that the
         // card sits underneath its department heading. Removing visual
         // clutter was the request; removing context from assistive tech
-        // was not.
-        aria-label={`${node.title}. ${occupantName ?? "Vacant"}.${node.jobGradeCode ? ` Level ${node.jobGradeCode}.` : ""} ${node.departmentName}, organizational level ${node.organizationalLevel}.${node.positionStatus !== "ACTIVE" ? ` ${node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}.` : ""}${matchStateLabel}`}
-        onClick={() => onSelect(node.positionId)}
+        // was not. In arrange mode the click opens the Edit form, so the
+        // label says so.
+        aria-label={`${arrangeMode ? `Edit ${node.title}` : node.title}. ${occupantName ?? "Vacant"}.${node.jobGradeCode ? ` Level ${node.jobGradeCode}.` : ""} ${node.departmentName}, organizational level ${node.organizationalLevel}.${node.positionStatus !== "ACTIVE" ? ` ${node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}.` : ""}${matchStateLabel}`}
+        onClick={() => (arrangeMode ? onEdit?.(node.positionId) : onSelect(node.positionId))}
+        // Deliberately NOT `nodrag`: in arrange mode the whole card body is the
+        // drag surface, and React Flow still fires this click when the pointer
+        // is released without moving — so a click edits and a press-drag
+        // re-parents, sharing one surface. The +/Delete/collapse controls stay
+        // `nodrag` so they never start a drag.
         className="focus-visible:ring-ring flex flex-1 flex-col rounded-t-[calc(0.5rem-2px)] p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         {/* Compact leadership card (Demo 1 feedback): role, then the
@@ -252,7 +307,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
                 ? `Expand ${node.title}, ${hiddenDescendantCount} hidden position${hiddenDescendantCount === 1 ? "" : "s"}`
                 : `Collapse ${node.title}`
             }
-            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex items-center gap-1 rounded text-xs outline-none focus-visible:ring-2"
+            className="nodrag text-muted-foreground hover:text-foreground focus-visible:ring-ring flex items-center gap-1 rounded text-xs outline-none focus-visible:ring-2"
           >
             {isCollapsed ? (
               <ChevronRight aria-hidden="true" className="size-3.5" />

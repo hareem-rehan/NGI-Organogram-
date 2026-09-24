@@ -5,6 +5,7 @@ import {
   archivePosition,
   createPosition,
   deletePosition,
+  deletePositionSubtree,
   movePosition,
   updatePosition,
 } from "@/lib/services/hierarchy.service";
@@ -349,6 +350,97 @@ describe("Position hierarchy", () => {
     expect(events[0]?.entityDisplayReference).toBe("POS-DELETE-ME");
     expect(JSON.stringify(events[0]?.beforeData)).toContain("Temporary Role");
     expect(events[0]?.afterData).toBeNull();
+  });
+
+  it("deletePositionSubtree removes the whole branch (deepest-first) and audits each removal", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const branch = await makeChildPosition(company.id, dept.id, root.id, 1, {
+      positionCode: "POS-BR",
+    });
+    const leafA = await makeChildPosition(company.id, dept.id, branch.id, 2, {
+      positionCode: "POS-LA",
+    });
+    const leafB = await makeChildPosition(company.id, dept.id, branch.id, 2, {
+      positionCode: "POS-LB",
+    });
+    // A sibling branch untouched by the delete.
+    const sibling = await makeChildPosition(company.id, dept.id, root.id, 1, {
+      positionCode: "POS-SIB",
+    });
+
+    const result = await deletePositionSubtree(branch.id, company.id, "SYSTEM");
+
+    expect(result.deletedCount).toBe(3); // branch + 2 leaves
+    for (const id of [branch.id, leafA.id, leafB.id]) {
+      await expect(testPrisma.position.findUnique({ where: { id } })).resolves.toBeNull();
+    }
+    // Root and the sibling branch are untouched.
+    await expect(
+      testPrisma.position.findUnique({ where: { id: root.id } })
+    ).resolves.not.toBeNull();
+    await expect(
+      testPrisma.position.findUnique({ where: { id: sibling.id } })
+    ).resolves.not.toBeNull();
+
+    const events = await testPrisma.auditEvent.findMany({
+      where: { companyId: company.id, action: "DELETED", entityType: "Position" },
+    });
+    expect(events).toHaveLength(3);
+    expect(new Set(events.map((e) => e.entityId))).toEqual(
+      new Set([branch.id, leafA.id, leafB.id])
+    );
+  });
+
+  it("deletePositionSubtree deletes a childless target on its own", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const leaf = await makeChildPosition(company.id, dept.id, root.id, 1, {
+      positionCode: "POS-SOLO",
+    });
+
+    const result = await deletePositionSubtree(leaf.id, company.id, "SYSTEM");
+
+    expect(result.deletedCount).toBe(1);
+    await expect(testPrisma.position.findUnique({ where: { id: leaf.id } })).resolves.toBeNull();
+  });
+
+  it("deletePositionSubtree refuses (and changes nothing) when any branch position has employment history", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const branch = await makeChildPosition(company.id, dept.id, root.id, 1, {
+      positionCode: "POS-BR2",
+    });
+    const leaf = await makeChildPosition(company.id, dept.id, branch.id, 2, {
+      positionCode: "POS-HELD",
+    });
+    const employee = await makeEmployee(company.id);
+    await testPrisma.positionAssignment.create({
+      data: {
+        companyId: company.id,
+        employeeId: employee.id,
+        positionId: leaf.id,
+        isPrimary: true,
+        startDate: new Date("2024-01-01"),
+        endDate: null,
+      },
+    });
+
+    await expect(deletePositionSubtree(branch.id, company.id)).rejects.toBeInstanceOf(
+      UnsafeMutationError
+    );
+    // Full rollback: the whole branch (including the childless branch node)
+    // is still present, and nothing was audited.
+    for (const id of [branch.id, leaf.id]) {
+      await expect(testPrisma.position.findUnique({ where: { id } })).resolves.not.toBeNull();
+    }
+    const events = await testPrisma.auditEvent.findMany({
+      where: { companyId: company.id, action: "DELETED" },
+    });
+    expect(events).toEqual([]);
   });
 
   it("writes no audit event when a position delete is refused", async () => {
