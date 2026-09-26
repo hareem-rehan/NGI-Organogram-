@@ -13,8 +13,10 @@ import {
   getSettingsAction,
   updateCompanyProfileAction,
   updateSettingsAction,
+  type CompanyLevelsPayload,
   type SettingsPagePayload,
 } from "@/app/(app)/settings/actions";
+import { LevelsManager } from "@/app/(app)/settings/_components/levels-manager";
 
 function SavedNotice({ show }: { show: boolean }) {
   if (!show) return null;
@@ -25,7 +27,7 @@ function SavedNotice({ show }: { show: boolean }) {
   );
 }
 
-export function SettingsView() {
+export function SettingsView({ initialLevels }: { initialLevels: CompanyLevelsPayload }) {
   const [payload, setPayload] = useState<SettingsPagePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +65,10 @@ export function SettingsView() {
     <div className="flex flex-col gap-8">
       <CompanyProfileSection company={payload.company} onSaved={refreshSilently} />
       <OrganogramDefaultsSection settings={payload.settings} onSaved={refreshSilently} />
+      <LevelsManager
+        initialJobGrades={initialLevels.jobGrades}
+        initialLevelUsageByCode={initialLevels.levelUsageByCode}
+      />
       <ExportDefaultsSection settings={payload.settings} onSaved={refreshSilently} />
       <AuthInfoSection auth={payload.auth} />
     </div>

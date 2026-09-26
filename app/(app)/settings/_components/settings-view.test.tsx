@@ -13,9 +13,17 @@ vi.mock("@/app/(app)/settings/actions", () => ({
   getSettingsAction: getSettingsActionMock,
   updateCompanyProfileAction: updateCompanyProfileActionMock,
   updateSettingsAction: updateSettingsActionMock,
+  // Consumed by the LevelsManager section (self-contained; not exercised here).
+  getCompanyLevelsAction: vi.fn(),
+  provisionStandardLevelsAction: vi.fn(),
+  addLevelAction: vi.fn(),
+  deleteLevelAction: vi.fn(),
+  removeUnusedLevelsAction: vi.fn(),
 }));
 
 import { SettingsView } from "./settings-view";
+
+const LEVELS = { jobGrades: [], levelUsageByCode: {} };
 
 const SAMPLE_PAYLOAD = {
   company: {
@@ -54,7 +62,7 @@ const SAMPLE_PAYLOAD = {
 describe("SettingsView", () => {
   it("renders the company profile, organogram/export defaults, and read-only auth info", async () => {
     getSettingsActionMock.mockResolvedValue({ ok: true, data: SAMPLE_PAYLOAD });
-    render(<SettingsView />);
+    render(<SettingsView initialLevels={LEVELS} />);
     await waitFor(() => expect(screen.getByDisplayValue("Northwind")).toBeInTheDocument());
     expect(screen.getByText(/company code: nw/i)).toBeInTheDocument();
     expect(screen.getByText("Company Account")).toBeInTheDocument();
@@ -65,7 +73,7 @@ describe("SettingsView", () => {
     getSettingsActionMock.mockResolvedValue({ ok: true, data: SAMPLE_PAYLOAD });
     updateCompanyProfileActionMock.mockResolvedValue({ ok: true, data: SAMPLE_PAYLOAD.company });
     const user = userEvent.setup();
-    render(<SettingsView />);
+    render(<SettingsView initialLevels={LEVELS} />);
     await waitFor(() => expect(screen.getByDisplayValue("Northwind")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: /save profile/i }));
@@ -80,7 +88,7 @@ describe("SettingsView", () => {
       error: "This record was changed by someone else. Reload and try again.",
     });
     const user = userEvent.setup();
-    render(<SettingsView />);
+    render(<SettingsView initialLevels={LEVELS} />);
     await waitFor(() => expect(screen.getByDisplayValue("Northwind")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: /save organogram defaults/i }));
@@ -89,7 +97,7 @@ describe("SettingsView", () => {
 
   it("never renders an editable field for the SSO client secret or any token", async () => {
     getSettingsActionMock.mockResolvedValue({ ok: true, data: SAMPLE_PAYLOAD });
-    render(<SettingsView />);
+    render(<SettingsView initialLevels={LEVELS} />);
     await waitFor(() => expect(screen.getByDisplayValue("Northwind")).toBeInTheDocument());
     expect(screen.queryByText(/client secret/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/access token/i)).not.toBeInTheDocument();
