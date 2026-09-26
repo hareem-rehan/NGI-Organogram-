@@ -236,7 +236,8 @@ describe("PositionFormDialog", () => {
     expect(within(trackSelect).getByRole("option", { name: /^manager$/i })).toBeInTheDocument();
 
     await user.selectOptions(trackSelect, "MANAGER");
-    await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
+    // The Level picker works in level codes (the full standard scale).
+    await user.selectOptions(screen.getByLabelText(/^level$/i), "L7");
 
     await user.type(screen.getByLabelText(/title/i), "Engineering Manager");
     await user.click(screen.getByRole("button", { name: /create position/i }));
@@ -248,9 +249,21 @@ describe("PositionFormDialog", () => {
         departmentId: DEPARTMENT_ID,
         jobFamilyId: FAMILY_ID,
         careerTrackKind: "MANAGER",
-        jobGradeId: L7_ID,
+        jobGradeCode: "L7",
       })
     );
+  });
+
+  it("offers the full standard scale (L2–L18) even when no levels are set up", () => {
+    renderForm({ jobGrades: [] });
+    const levelSelect = screen.getByLabelText(/^level$/i);
+    // Every standard level is selectable, not just the ones that exist.
+    expect(within(levelSelect).getByRole("option", { name: /^L2\b/ })).toBeInTheDocument();
+    expect(
+      within(levelSelect).getByRole("option", { name: /L18\s*—\s*C Suite/ })
+    ).toBeInTheDocument();
+    // "No level" plus the 17 scale levels.
+    expect(within(levelSelect).getAllByRole("option")).toHaveLength(18);
   });
 
   it("suggests titles from the (family, level) matrix cell regardless of ladder", async () => {
@@ -263,7 +276,7 @@ describe("PositionFormDialog", () => {
     });
 
     await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
-    await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
+    await user.selectOptions(screen.getByLabelText(/^level$/i), "L7");
     const suggestion = document.querySelector(
       '#position-title-suggestions option[value="Principal Software Engineer"]'
     );
@@ -295,7 +308,7 @@ describe("PositionFormDialog", () => {
   it("no longer renders a per-department Level name field", async () => {
     const user = userEvent.setup();
     renderForm({ jobGrades: [L7_GRADE] });
-    await user.selectOptions(screen.getByLabelText(/^level$/i), L7_ID);
+    await user.selectOptions(screen.getByLabelText(/^level$/i), "L7");
     expect(screen.queryByLabelText(/level name/i)).not.toBeInTheDocument();
   });
 

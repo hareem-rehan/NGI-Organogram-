@@ -18,6 +18,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
 import { createPositionAction, updatePositionAction } from "@/app/(app)/positions/actions";
 
 interface PositionFormDialogProps {
@@ -47,7 +48,13 @@ interface FormValues {
   jobFamilyId: string | null;
   /** Plain IC/Manager choice; resolved to a track (created if needed) on submit. */
   careerTrackKind: "IC" | "MANAGER" | null;
-  jobGradeId: string | null;
+  /**
+   * The chosen level CODE (e.g. "L7"), from the full standard scale — not a
+   * grade id. The action resolves it to a job grade for the department,
+   * creating the grade on first use, so the picker can offer every level even
+   * when the company hasn't set them all up. Null = no level.
+   */
+  jobGradeCode: string | null;
   description: string | null;
   primaryReportsToPositionId: string | null;
 }
@@ -154,7 +161,7 @@ export function PositionFormDialog({
       departmentId: "",
       jobFamilyId: null,
       careerTrackKind: null,
-      jobGradeId: null,
+      jobGradeCode: null,
       description: null,
       primaryReportsToPositionId: null,
     },
@@ -170,6 +177,8 @@ export function PositionFormDialog({
   departmentsRef.current = departments;
   const careerTracksRef = useRef(careerTracks);
   careerTracksRef.current = careerTracks;
+  const jobGradesRef = useRef(jobGrades);
+  jobGradesRef.current = jobGrades;
   const initialDepartmentIdRef = useRef(initialDepartmentId);
   initialDepartmentIdRef.current = initialDepartmentId;
   const initialReportsToPositionIdRef = useRef(initialReportsToPositionId);
@@ -197,7 +206,11 @@ export function PositionFormDialog({
           "",
         jobFamilyId: currentPosition?.jobFamilyId ?? null,
         careerTrackKind: currentTrack?.kind ?? null,
-        jobGradeId: currentPosition?.jobGradeId ?? null,
+        // The position stores a grade id; the picker works in level codes, so
+        // map the id back to its code for editing.
+        jobGradeCode: currentPosition?.jobGradeId
+          ? (jobGradesRef.current.find((g) => g.id === currentPosition.jobGradeId)?.code ?? null)
+          : null,
         description: currentPosition?.description ?? null,
         primaryReportsToPositionId: currentPosition
           ? null
@@ -219,24 +232,34 @@ export function PositionFormDialog({
   const departmentId = watch("departmentId");
   const jobFamilyId = watch("jobFamilyId");
   const careerTrackKind = watch("careerTrackKind");
-  const jobGradeId = watch("jobGradeId");
+  const jobGradeCode = watch("jobGradeCode");
   const primaryReportsToPositionId = watch("primaryReportsToPositionId");
 
   const hasRoot = allPositions.some((candidate) => candidate.primaryReportsToPositionId === null);
 
-  // Level options: the company's levels, each shown as its code plus the
-  // level's role name (e.g. "L7 — Lead / Principal") so the picker reads as
-  // the career ladder, not opaque codes. One option per code, preferring
-  // the shared (company-wide) grade over any per-department duplicate,
-  // sorted by the grade's own numeric rank.
-  const gradeOptions = useMemo(() => {
-    const byCode = new Map<string, JobGrade>();
+  // Level options: the WHOLE standard scale (L2–L18), so any level can be
+  // assigned even before it has been set up in Settings — the action creates
+  // the grade for this department on first use. Each option reads as its code
+  // plus the level's role name; a company that has renamed a level keeps that
+  // name (existing grade name overrides the scale default).
+  const gradeNameByCode = useMemo(() => {
+    const byCode = new Map<string, string>();
     for (const g of jobGrades) {
-      const existing = byCode.get(g.code);
-      if (!existing || (existing.departmentId && !g.departmentId)) byCode.set(g.code, g);
+      // Prefer a shared (company-wide) grade's name over a per-department one.
+      if (!byCode.has(g.code) || !g.departmentId) {
+        if (g.name) byCode.set(g.code, g.name);
+      }
     }
-    return [...byCode.values()].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+    return byCode;
   }, [jobGrades]);
+  const levelOptions = useMemo(
+    () =>
+      JOB_GRADE_SCALE.map((s) => ({
+        code: s.code,
+        label: `${s.code} — ${gradeNameByCode.get(s.code) ?? s.name}`,
+      })),
+    [gradeNameByCode]
+  );
 
   // Sub-divisions in the selected department. Optional — a position need
   // not be classified.
@@ -246,15 +269,17 @@ export function PositionFormDialog({
   );
 
   // Titles configured for the chosen (family, level) cell of the career
-  // matrix — offered as suggestions, never enforced. Track is a plain
-  // IC/Manager choice here (resolved server-side), so suggestions are keyed
-  // by family + level only.
+  // matrix — offered as suggestions, never enforced. The picker works in level
+  // codes, so match an entry by the code of the grade it points at.
+  const gradeCodeById = useMemo(() => new Map(jobGrades.map((g) => [g.id, g.code])), [jobGrades]);
   const titleSuggestions = useMemo(() => {
-    if (!jobFamilyId || !jobGradeId) return [];
+    if (!jobFamilyId || !jobGradeCode) return [];
     return levelMappingEntries
-      .filter((e) => e.jobFamilyId === jobFamilyId && e.jobGradeId === jobGradeId)
+      .filter(
+        (e) => e.jobFamilyId === jobFamilyId && gradeCodeById.get(e.jobGradeId) === jobGradeCode
+      )
       .map((e) => e.title);
-  }, [levelMappingEntries, jobFamilyId, jobGradeId]);
+  }, [levelMappingEntries, jobFamilyId, jobGradeCode, gradeCodeById]);
 
   const jobFamilyNameById = useMemo(
     () => new Map(jobFamilies.map((f) => [f.id, f.name])),
@@ -273,7 +298,9 @@ export function PositionFormDialog({
             positionId: position.id,
             title: values.title,
             departmentId: values.departmentId,
-            jobGradeId: values.jobGradeId,
+            // Send the level CODE; the action resolves it to a grade for the
+            // department (creating it on first use). null clears the level.
+            jobGradeCode: values.jobGradeCode,
             jobFamilyId: values.jobFamilyId,
             careerTrackKind: values.jobFamilyId ? values.careerTrackKind : null,
             description: values.description,
@@ -281,7 +308,7 @@ export function PositionFormDialog({
         : await createPositionAction({
             title: values.title,
             departmentId: values.departmentId,
-            jobGradeId: values.jobGradeId,
+            jobGradeCode: values.jobGradeCode,
             jobFamilyId: values.jobFamilyId,
             careerTrackKind: values.jobFamilyId ? values.careerTrackKind : null,
             description: values.description,
@@ -414,13 +441,13 @@ export function PositionFormDialog({
             {(fieldProps) => (
               <Select
                 {...fieldProps}
-                value={jobGradeId ?? ""}
-                onChange={(event) => setValue("jobGradeId", event.target.value || null)}
+                value={jobGradeCode ?? ""}
+                onChange={(event) => setValue("jobGradeCode", event.target.value || null)}
               >
                 <option value="">No level</option>
-                {gradeOptions.map((grade) => (
-                  <option key={grade.id} value={grade.id}>
-                    {grade.name ? `${grade.code} — ${grade.name}` : grade.code}
+                {levelOptions.map((level) => (
+                  <option key={level.code} value={level.code}>
+                    {level.label}
                   </option>
                 ))}
               </Select>
