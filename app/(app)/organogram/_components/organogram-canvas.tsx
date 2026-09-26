@@ -197,7 +197,7 @@ function CanvasInner({
       const target = getIntersectingNodes(node).find(
         (other) =>
           other.id !== node.id &&
-          (other.data as PositionNodeData | undefined)?.node?.kind !== "department"
+          ((other.data as PositionNodeData | undefined)?.node?.kind ?? "position") === "position"
       );
       if (target) {
         onReparent(node.id, target.id);
@@ -221,6 +221,11 @@ function CanvasInner({
   // (null when unclassified, leaving a neutral card).
   const resolveCardColor = useCallback(
     (node: OrganogramNode): FamilyColor | null => {
+      // A sub-division grouping card always paints in its sub-division colour,
+      // regardless of the active colour mode — it IS a sub-division.
+      if (node.kind === "subdivision") {
+        return node.jobFamilyId ? (familyColorById.get(node.jobFamilyId) ?? null) : null;
+      }
       if (node.kind === "department") {
         return departmentColorById.get(node.departmentId) ?? null;
       }
@@ -243,7 +248,8 @@ function CanvasInner({
         .map((node) => {
           // Only real positions drag, and never the root (it has no manager —
           // re-parenting it would leave the company with no root at all).
-          const isRealPosition = node.kind !== "department";
+          // Synthetic grouping cards (department, sub-division) never drag.
+          const isRealPosition = (node.kind ?? "position") === "position";
           const isRoot = node.primaryReportsToPositionId === null;
           return {
             id: node.positionId,
@@ -292,7 +298,12 @@ function CanvasInner({
     () => visibleNodes.filter((n) => n.kind === "department").length,
     [visibleNodes]
   );
-  const shownPositionCount = visibleNodes.length - shownDepartmentCount;
+  // Real positions only — synthetic grouping cards (department, sub-division)
+  // are counted apart so the tally never overstates how many roles are shown.
+  const shownPositionCount = useMemo(
+    () => visibleNodes.filter((n) => (n.kind ?? "position") === "position").length,
+    [visibleNodes]
+  );
 
   const flowEdges = useMemo<Edge[]>(
     () =>

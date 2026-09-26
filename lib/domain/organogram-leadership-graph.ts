@@ -70,6 +70,63 @@ export interface LeadershipGraph {
  * - `positionStatus: "ACTIVE"` — likewise keeps it out of the
  *   planned/inactive treatments it has no business appearing in.
  */
+/** Synthetic id for a sub-division grouping card, unique per (leading position, family). */
+export const SUBDIVISION_GROUP_ID_PREFIX = "subdiv:";
+export function subdivisionGroupId(leadPositionId: string, jobFamilyId: string): string {
+  return `${SUBDIVISION_GROUP_ID_PREFIX}${leadPositionId}:${jobFamilyId}`;
+}
+export function isSubdivisionGroupId(id: string): boolean {
+  return id.startsWith(SUBDIVISION_GROUP_ID_PREFIX);
+}
+
+/**
+ * A synthetic sub-division card, inserted between a position and its reports
+ * when that position's reports span 2+ sub-divisions (docs/DECISIONS.md D25).
+ * Like the department heading it is pure visual grouping — inert on every
+ * field that describes a real seat — but it carries `jobFamilyId`/name so the
+ * card paints in its sub-division colour (matching the Visily reference) and
+ * `departmentId` so department colouring/focus still resolve.
+ */
+function makeSubdivisionNode(args: {
+  groupId: string;
+  jobFamilyId: string;
+  name: string;
+  parentId: string;
+  departmentId: string;
+  departmentName: string;
+  departmentCode: string;
+  departmentColor: string | null;
+  memberCount: number;
+}): OrganogramNode {
+  return {
+    kind: "subdivision",
+    departmentMemberCount: args.memberCount,
+    positionId: args.groupId,
+    positionCode: args.name,
+    title: args.name,
+    departmentId: args.departmentId,
+    departmentName: args.departmentName,
+    departmentCode: args.departmentCode,
+    departmentColor: args.departmentColor,
+    jobGradeId: null,
+    jobGradeName: null,
+    jobGradeCode: null,
+    jobGradeLevel: null,
+    jobFamilyId: args.jobFamilyId,
+    jobFamilyName: args.name,
+    organizationalLevel: 0,
+    positionStatus: "ACTIVE",
+    occupancyStatus: "occupied",
+    occupantDisplayName: null,
+    occupantEmployeeId: null,
+    directReportCount: 0,
+    primaryReportsToPositionId: args.parentId,
+    hasChildren: false,
+    isPlanned: false,
+    isActive: true,
+  };
+}
+
 function makeDepartmentNode(args: {
   groupId: string;
   departmentId: string;
@@ -106,6 +163,84 @@ function makeDepartmentNode(args: {
     isPlanned: false,
     isActive: true,
   };
+}
+
+/**
+ * Groups a position's reports under synthetic sub-division cards when those
+ * reports span two or more sub-divisions. Returns the nodes with the new
+ * cards appended and the grouped reports re-parented onto them. Positions with
+ * no sub-division, and positions whose reports all share one (or no)
+ * sub-division, are left exactly as they were.
+ */
+function insertSubdivisionTier(baseNodes: readonly OrganogramNode[]): OrganogramNode[] {
+  // Direct children of each node (in the already-parented base tree).
+  const childrenByParent = new Map<string, OrganogramNode[]>();
+  for (const node of baseNodes) {
+    const parentId = node.primaryReportsToPositionId;
+    if (parentId === null) continue;
+    const list = childrenByParent.get(parentId) ?? [];
+    list.push(node);
+    childrenByParent.set(parentId, list);
+  }
+
+  const subdivisionNodes: OrganogramNode[] = [];
+  const reParentTo = new Map<string, string>(); // childPositionId -> subdivision group id
+
+  for (const parent of baseNodes) {
+    // Group only under REAL positions (a department heading's children stay
+    // as positions; a sub-division never nests under another grouping card).
+    if ((parent.kind ?? "position") !== "position") continue;
+
+    const positionChildren = (childrenByParent.get(parent.positionId) ?? []).filter(
+      (c) => (c.kind ?? "position") === "position"
+    );
+
+    // Bucket the reports by sub-division; family-less reports are not bucketed.
+    const byFamily = new Map<string, { name: string; children: OrganogramNode[] }>();
+    for (const child of positionChildren) {
+      if (!child.jobFamilyId) continue;
+      const bucket = byFamily.get(child.jobFamilyId) ?? {
+        name: child.jobFamilyName ?? "Sub-division",
+        children: [],
+      };
+      bucket.children.push(child);
+      byFamily.set(child.jobFamilyId, bucket);
+    }
+
+    // The rule: only when the reports span 2+ distinct sub-divisions.
+    if (byFamily.size < 2) continue;
+
+    // Deterministic order: by sub-division name, then id.
+    const familyEntries = [...byFamily.entries()].sort(
+      (a, b) => a[1].name.localeCompare(b[1].name) || a[0].localeCompare(b[0])
+    );
+    for (const [familyId, bucket] of familyEntries) {
+      const groupId = subdivisionGroupId(parent.positionId, familyId);
+      subdivisionNodes.push(
+        makeSubdivisionNode({
+          groupId,
+          jobFamilyId: familyId,
+          name: bucket.name,
+          parentId: parent.positionId,
+          departmentId: parent.departmentId,
+          departmentName: parent.departmentName,
+          departmentCode: parent.departmentCode,
+          departmentColor: parent.departmentColor,
+          memberCount: bucket.children.length,
+        })
+      );
+      for (const child of bucket.children) reParentTo.set(child.positionId, groupId);
+    }
+  }
+
+  if (subdivisionNodes.length === 0) return [...baseNodes];
+
+  const reParented = baseNodes.map((node) =>
+    reParentTo.has(node.positionId)
+      ? { ...node, primaryReportsToPositionId: reParentTo.get(node.positionId)! }
+      : node
+  );
+  return [...reParented, ...subdivisionNodes];
 }
 
 /**
@@ -196,7 +331,14 @@ export function projectLeadershipGraph(
     })
   );
 
-  const allNodes = [...positionNodes, ...departmentNodes];
+  const baseNodes = [...positionNodes, ...departmentNodes];
+
+  // Insert the sub-division tier: under any position whose reports fall into
+  // 2+ distinct sub-divisions, group each sub-division's reports beneath a
+  // synthetic card (docs/DECISIONS.md D25). Reports with no sub-division stay
+  // directly under the position. One sub-division (or none) → no card, so the
+  // tier never appears where there is nothing to group.
+  const allNodes = insertSubdivisionTier(baseNodes);
 
   const childrenByParent = new Map<string, string[]>();
   for (const node of allNodes) {

@@ -41,10 +41,12 @@ function OutlineNodeRow({
   // name line. See position-node.tsx for why.
   const occupantName = node.occupancyStatus === "occupied" ? node.occupantDisplayName : null;
   const matchState = matchStateById?.get(node.positionId) ?? "none";
-  // The synthetic department tier (lib/domain/organogram-leadership-graph.ts).
-  // Same reasoning as the canvas card: it is a heading, not a seat, so it
-  // shows no occupant and opens no details panel.
+  // The synthetic grouping tiers (department, sub-division) from
+  // lib/domain/organogram-leadership-graph.ts. Same reasoning as the canvas
+  // card: a heading is not a seat, so it shows no occupant and opens no
+  // details panel.
   const isDepartment = node.kind === "department";
+  const isGrouping = isDepartment || node.kind === "subdivision";
 
   return (
     <li>
@@ -72,13 +74,18 @@ function OutlineNodeRow({
         ) : (
           <span aria-hidden="true" className="inline-block size-4 shrink-0" />
         )}
-        {isDepartment ? (
-          <p className="text-foreground flex-1 px-1 text-sm font-bold tracking-wide uppercase">
-            {node.departmentName}
+        {isGrouping ? (
+          <p
+            className={cn(
+              "text-foreground flex-1 px-1 text-sm font-bold",
+              isDepartment ? "tracking-wide uppercase" : "font-semibold"
+            )}
+          >
+            {isDepartment ? node.departmentName : node.title}
             <span className="text-muted-foreground ml-2 text-xs font-normal normal-case">
-              {/* The department's TOTAL role count (every role nested under
-                  the heading), matching the visual chart's card — not just
-                  the one or two roles that hang directly off it. */}
+              {/* The group's TOTAL role count (every role nested under the
+                  heading), matching the visual chart's card — not just the one
+                  or two roles that hang directly off it. */}
               {(() => {
                 const count = node.departmentMemberCount ?? children.length;
                 return `${count} role${count === 1 ? "" : "s"}`;

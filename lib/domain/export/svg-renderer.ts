@@ -37,11 +37,11 @@ export interface SvgRenderNode {
   positionStatus: "PLANNED" | "ACTIVE" | "INACTIVE";
   matchState: "none" | "match" | "context";
   /**
-   * A synthetic department heading rather than a real position
-   * (lib/domain/organogram-leadership-graph.ts). Absent means "position",
-   * so every pre-existing caller keeps its behaviour unchanged.
+   * A synthetic grouping heading (department, or sub-division) rather than a
+   * real position (lib/domain/organogram-leadership-graph.ts). Absent means
+   * "position", so every pre-existing caller keeps its behaviour unchanged.
    */
-  kind?: "position" | "department";
+  kind?: "position" | "department" | "subdivision";
 }
 
 export interface SvgRenderEdge {
@@ -215,6 +215,42 @@ function renderDepartmentCard(
   nameLines.forEach((line, index) => {
     parts.push(
       `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" letter-spacing="0.6" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
+    );
+  });
+  parts.push(
+    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${EXPORT_COLORS.mutedForeground}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
+  );
+  parts.push("</g>");
+  return parts.join("");
+}
+
+/**
+ * A synthetic sub-division grouping card. Like the department heading but
+ * labelled with the sub-division name and always painted in its sub-division
+ * colour (matching the Visily reference), falling back to the department
+ * colour when no family palette entry exists.
+ */
+function renderSubdivisionCard(
+  node: SvgRenderNode,
+  position: SvgLayoutPosition,
+  roleCount: number,
+  familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
+  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
+): string {
+  const family = node.jobFamilyId ? familyColorById?.get(node.jobFamilyId) : undefined;
+  const dc = departmentColorByName?.get(node.departmentName);
+  const accentColor = family?.accent ?? dc?.accent ?? resolveDepartmentColor(node.departmentColor);
+  const bodyFill = family?.fill ?? dc?.fill ?? lightTint(accentColor);
+  const nameLines = wrapText(node.title, 26, 2);
+
+  const parts: string[] = [];
+  parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="1">`);
+  parts.push(
+    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${bodyFill}" stroke="${accentColor}" stroke-width="1.5" />`
+  );
+  nameLines.forEach((line, index) => {
+    parts.push(
+      `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
     );
   });
   parts.push(
@@ -511,20 +547,30 @@ export function renderOrganogramSvg(
       const pos = positions.get(node.positionId);
       if (!pos) return "";
       const at = { x: pos.x - minX, y: pos.y - minY };
-      return node.kind === "department"
-        ? renderDepartmentCard(
-            node,
-            at,
-            childCountByParent.get(node.positionId) ?? 0,
-            options.departmentColorByName
-          )
-        : renderNodeCard(
-            node,
-            at,
-            options.colorMode ?? "department",
-            options.familyColorById,
-            options.departmentColorByName
-          );
+      if (node.kind === "department") {
+        return renderDepartmentCard(
+          node,
+          at,
+          childCountByParent.get(node.positionId) ?? 0,
+          options.departmentColorByName
+        );
+      }
+      if (node.kind === "subdivision") {
+        return renderSubdivisionCard(
+          node,
+          at,
+          childCountByParent.get(node.positionId) ?? 0,
+          options.familyColorById,
+          options.departmentColorByName
+        );
+      }
+      return renderNodeCard(
+        node,
+        at,
+        options.colorMode ?? "department",
+        options.familyColorById,
+        options.departmentColorByName
+      );
     })
     .join("");
 

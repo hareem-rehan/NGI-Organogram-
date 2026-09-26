@@ -127,6 +127,57 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
   );
 }
 
+/**
+ * A synthetic sub-division grouping card, shown under a position whose reports
+ * span 2+ sub-divisions (docs/DECISIONS.md D25). Styled like the department
+ * heading — a filled, colour-coded grouping box whose whole surface is the
+ * expand/collapse control — but labelled with the sub-division name (not
+ * uppercased, since these are names like "UI/UX") and painted in its
+ * sub-division colour. Not selectable/editable: it is grouping, not a seat.
+ */
+function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
+  const { node, isCollapsed, onToggleCollapse } = data;
+  const roleCount = node.departmentMemberCount ?? node.displayChildCount ?? node.directReportCount;
+  const fill = data.cardColor?.fill;
+  const border = data.cardColor?.accent ?? "var(--color-primary)";
+
+  return (
+    <div
+      className={cn(
+        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        !fill && "bg-muted"
+      )}
+      style={{ width: NODE_WIDTH, height: NODE_HEIGHT, borderColor: border, backgroundColor: fill }}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-border !border-none" />
+      <button
+        type="button"
+        onClick={() => onToggleCollapse(node.positionId)}
+        aria-expanded={!isCollapsed}
+        aria-label={`${node.title} sub-division, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
+        className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          {node.hasChildren ? (
+            isCollapsed ? (
+              <ChevronRight aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+            ) : (
+              <ChevronDown aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+            )
+          ) : null}
+          <p className="text-foreground line-clamp-2 text-sm leading-tight font-semibold">
+            {node.title}
+          </p>
+        </div>
+        <p className="text-muted-foreground mt-1 truncate text-xs">
+          {roleCount} role{roleCount === 1 ? "" : "s"}
+        </p>
+      </button>
+      <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />
+    </div>
+  );
+}
+
 function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData }) {
   const {
     node,
@@ -144,6 +195,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
   } = data;
 
   if (node.kind === "department") return <DepartmentNodeCard data={data} />;
+  if (node.kind === "subdivision") return <SubdivisionNodeCard data={data} />;
 
   // Fully colour-filled from the resolved palette colour (exact reference
   // colours), with a thin same-hue border and no left accent bar, so the card

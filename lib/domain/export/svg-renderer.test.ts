@@ -638,3 +638,34 @@ describe("renderOrganogramSvg — department tier", () => {
     expect(svg).toContain('fill="#ccebd7"'); // lightTint("#16a34a")
   });
 });
+
+describe("renderOrganogramSvg — sub-division grouping card", () => {
+  it("renders a sub-division heading in its family colour with a role count", () => {
+    const positions = new Map([["subdiv:head:fam-uiux", { x: 0, y: 0 }]]);
+    const result = renderOrganogramSvg(
+      [
+        node({
+          positionId: "subdiv:head:fam-uiux",
+          kind: "subdivision",
+          title: "UI/UX",
+          jobFamilyId: "fam-uiux",
+          jobFamilyName: "UI/UX",
+        }),
+      ],
+      [],
+      positions,
+      METADATA,
+      {
+        ...BASE_OPTIONS,
+        colorMode: "department",
+        familyColorById: new Map([["fam-uiux", { fill: "#b6e5ff", accent: "#3aa4e8" }]]),
+      }
+    );
+    // Painted in the sub-division colour even though colour mode is "department".
+    expect(result.svg).toContain('fill="#b6e5ff"');
+    expect(result.svg).toContain('stroke="#3aa4e8"');
+    // Labelled with the sub-division name, not treated as a person card.
+    expect(result.svg).toContain("UI/UX");
+    expect(result.svg).not.toContain("Vacant");
+  });
+});

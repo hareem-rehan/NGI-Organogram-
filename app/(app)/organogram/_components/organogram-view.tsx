@@ -414,7 +414,7 @@ export function OrganogramView({
    * mean something.
    */
   const positionNodes = useMemo(
-    () => (data ? data.nodes.filter((n) => n.kind !== "department") : []),
+    () => (data ? data.nodes.filter((n) => (n.kind ?? "position") === "position") : []),
     [data]
   );
 
