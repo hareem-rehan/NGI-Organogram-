@@ -183,6 +183,27 @@ function insertSubdivisionTier(baseNodes: readonly OrganogramNode[]): Organogram
     childrenByParent.set(parentId, list);
   }
 
+  // Total real positions in the subtree rooted at a position (inclusive) —
+  // used so a sub-division card shows how big the whole sub-division is, every
+  // role nested beneath it, not just the reports that hang directly off it.
+  // Bounded and cycle-guarded (the input is already cycle-free).
+  function countNestedPositions(rootId: string): number {
+    let total = 0;
+    const stack = [rootId];
+    const seen = new Set<string>();
+    let guard = baseNodes.length + 1;
+    while (stack.length > 0 && guard-- > 0) {
+      const id = stack.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      total += 1; // the node itself (always a real position here)
+      for (const child of childrenByParent.get(id) ?? []) {
+        if ((child.kind ?? "position") === "position") stack.push(child.positionId);
+      }
+    }
+    return total;
+  }
+
   const subdivisionNodes: OrganogramNode[] = [];
   const reParentTo = new Map<string, string>(); // childPositionId -> subdivision group id
 
@@ -226,7 +247,12 @@ function insertSubdivisionTier(baseNodes: readonly OrganogramNode[]): Organogram
           departmentName: parent.departmentName,
           departmentCode: parent.departmentCode,
           departmentColor: parent.departmentColor,
-          memberCount: bucket.children.length,
+          // Total roles nested under this sub-division (each grouped report
+          // plus everyone beneath it), matching how a department heading counts.
+          memberCount: bucket.children.reduce(
+            (sum, child) => sum + countNestedPositions(child.positionId),
+            0
+          ),
         })
       );
       for (const child of bucket.children) reParentTo.set(child.positionId, groupId);

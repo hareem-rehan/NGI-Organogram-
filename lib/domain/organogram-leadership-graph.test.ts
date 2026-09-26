@@ -533,6 +533,50 @@ describe("projectLeadershipGraph — sub-division tier", () => {
     expect(byId(result, "r2").primaryReportsToPositionId).toBe("head");
   });
 
+  it("counts the TOTAL roles nested under a sub-division card, not just direct reports", () => {
+    // head leads DevOps + QA. The DevOps lead (r0) has its own report (r0a),
+    // so the DevOps card should read 2 roles (lead + nested), QA 1.
+    const nodes: OrganogramNode[] = [
+      ceo(),
+      node({
+        positionId: "head",
+        title: "Head of Eng",
+        departmentId: ENG,
+        primaryReportsToPositionId: "ceo",
+        jobFamilyId: null,
+      }),
+      node({
+        positionId: "r0",
+        title: "DevOps Lead",
+        departmentId: ENG,
+        primaryReportsToPositionId: "head",
+        jobFamilyId: DEVOPS,
+        jobFamilyName: "DevOps",
+      }),
+      node({
+        positionId: "r0a",
+        title: "DevOps Engineer",
+        departmentId: ENG,
+        primaryReportsToPositionId: "r0",
+        jobFamilyId: DEVOPS,
+        jobFamilyName: "DevOps",
+      }),
+      node({
+        positionId: "r1",
+        title: "QA Lead",
+        departmentId: ENG,
+        primaryReportsToPositionId: "head",
+        jobFamilyId: QA,
+        jobFamilyName: "QA",
+      }),
+    ];
+    const result = projectLeadershipGraph(nodes, opts(), engDepts);
+    expect(byId(result, subdivisionGroupId("head", DEVOPS)).departmentMemberCount).toBe(2);
+    expect(byId(result, subdivisionGroupId("head", QA)).departmentMemberCount).toBe(1);
+    // The nested engineer stays under its own lead, not re-parented to the card.
+    expect(byId(result, "r0a").primaryReportsToPositionId).toBe("r0");
+  });
+
   it("counts sub-division cards apart from real positions in the summary", () => {
     const result = projectLeadershipGraph(
       withHeadAndReports([DEVOPS, DEVOPS, QA]),
