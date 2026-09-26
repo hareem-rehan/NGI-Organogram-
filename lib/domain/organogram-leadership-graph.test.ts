@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { OrganogramNode } from "./organogram";
-import { projectLeadershipGraph } from "./organogram-leadership-graph";
+import { projectLeadershipGraph, subdivisionGroupId } from "./organogram-leadership-graph";
 import {
   departmentGroupId,
   DEFAULT_LEADERSHIP_VIEW_OPTIONS,
@@ -452,5 +452,95 @@ describe("projectLeadershipGraph — empty departments", () => {
     // No dangling edge: an empty department has an edge from the root but none below it.
     expect(result.edges.some((e) => e.targetPositionId === departmentGroupId(ENG))).toBe(true);
     expect(result.edges.some((e) => e.sourcePositionId === departmentGroupId(ENG))).toBe(false);
+  });
+});
+
+describe("projectLeadershipGraph — sub-division tier", () => {
+  const DEVOPS = "fam-devops";
+  const QA = "fam-qa";
+  const engDepts = [{ id: ENG, name: "Engineering", code: "ENG", color: null }];
+
+  function withHeadAndReports(reportFamilies: (string | null)[]): OrganogramNode[] {
+    const reports = reportFamilies.map((fam, i) =>
+      node({
+        positionId: `r${i}`,
+        title: `Report ${i}`,
+        departmentId: ENG,
+        primaryReportsToPositionId: "head",
+        jobFamilyId: fam,
+        jobFamilyName: fam === DEVOPS ? "DevOps" : fam === QA ? "QA" : null,
+      })
+    );
+    return [
+      ceo(),
+      node({
+        positionId: "head",
+        title: "Head of Eng",
+        departmentId: ENG,
+        primaryReportsToPositionId: "ceo",
+        jobFamilyId: null,
+      }),
+      ...reports,
+    ];
+  }
+
+  it("inserts a sub-division card per family when a position's reports span 2+ sub-divisions", () => {
+    const result = projectLeadershipGraph(
+      withHeadAndReports([DEVOPS, DEVOPS, QA]),
+      opts(),
+      engDepts
+    );
+    const devopsId = subdivisionGroupId("head", DEVOPS);
+    const qaId = subdivisionGroupId("head", QA);
+
+    const devops = byId(result, devopsId);
+    const qa = byId(result, qaId);
+    expect(devops.kind).toBe("subdivision");
+    expect(qa.kind).toBe("subdivision");
+    expect(devops.jobFamilyId).toBe(DEVOPS);
+    expect(devops.title).toBe("DevOps");
+    // Cards hang off the leading position.
+    expect(devops.primaryReportsToPositionId).toBe("head");
+    expect(qa.primaryReportsToPositionId).toBe("head");
+    // Reports are re-parented under their family's card.
+    expect(byId(result, "r0").primaryReportsToPositionId).toBe(devopsId);
+    expect(byId(result, "r1").primaryReportsToPositionId).toBe(devopsId);
+    expect(byId(result, "r2").primaryReportsToPositionId).toBe(qaId);
+    // Grouped counts.
+    expect(devops.departmentMemberCount).toBe(2);
+    expect(qa.departmentMemberCount).toBe(1);
+  });
+
+  it("does NOT insert a card when all reports share one sub-division", () => {
+    const result = projectLeadershipGraph(withHeadAndReports([DEVOPS, DEVOPS]), opts(), engDepts);
+    expect(result.nodes.some((n) => n.kind === "subdivision")).toBe(false);
+    // Reports stay directly under the head.
+    expect(byId(result, "r0").primaryReportsToPositionId).toBe("head");
+    expect(byId(result, "r1").primaryReportsToPositionId).toBe("head");
+  });
+
+  it("does NOT insert a card when reports have no sub-division at all", () => {
+    const result = projectLeadershipGraph(withHeadAndReports([null, null]), opts(), engDepts);
+    expect(result.nodes.some((n) => n.kind === "subdivision")).toBe(false);
+    expect(byId(result, "r0").primaryReportsToPositionId).toBe("head");
+  });
+
+  it("leaves family-less reports directly under the manager while grouping the classified ones", () => {
+    const result = projectLeadershipGraph(withHeadAndReports([DEVOPS, QA, null]), opts(), engDepts);
+    // Two families → two cards; the family-less report stays under the head.
+    expect(byId(result, "r0").primaryReportsToPositionId).toBe(subdivisionGroupId("head", DEVOPS));
+    expect(byId(result, "r1").primaryReportsToPositionId).toBe(subdivisionGroupId("head", QA));
+    expect(byId(result, "r2").primaryReportsToPositionId).toBe("head");
+  });
+
+  it("counts sub-division cards apart from real positions in the summary", () => {
+    const result = projectLeadershipGraph(
+      withHeadAndReports([DEVOPS, DEVOPS, QA]),
+      opts(),
+      engDepts
+    );
+    // ceo + head + 3 reports = 5 real positions; sub-division cards are separate.
+    expect(result.summary.shownPositionCount).toBe(5);
+    expect(result.nodes.filter((n) => n.kind === "subdivision")).toHaveLength(2);
   });
 });

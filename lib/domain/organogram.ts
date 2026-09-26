@@ -112,13 +112,16 @@ export interface OrganogramNode {
   jobFamilyId: string | null;
   jobFamilyName: string | null;
   /**
-   * Distinguishes a real Position card from the SYNTHETIC department
-   * grouping card the leadership view inserts below the root
-   * (lib/domain/organogram-leadership-graph.ts). Nothing
-   * `buildOrganogramGraph` produces ever carries it — the raw graph is
-   * positions and nothing else — so `undefined` means "position".
+   * Distinguishes a real Position card from the SYNTHETIC grouping cards the
+   * leadership view inserts (lib/domain/organogram-leadership-graph.ts):
+   * `"department"` below the root, and `"subdivision"` under a position whose
+   * reports span 2+ sub-divisions. Nothing `buildOrganogramGraph` produces
+   * ever carries it — the raw graph is positions and nothing else — so
+   * `undefined` means "position". Both synthetic kinds are visual grouping
+   * only: they never change reporting or count as organizational levels
+   * (CLAUDE.md §2).
    */
-  kind?: "position" | "department";
+  kind?: "position" | "department" | "subdivision";
   /**
    * Tier in the DISPLAYED tree, root = 1. Deliberately a separate field
    * from `organizationalLevel`, not a replacement for it: the department
@@ -138,13 +141,12 @@ export interface OrganogramNode {
    */
   displayChildCount?: number;
   /**
-   * For a department GROUPING node only (`kind: "department"`): the total
-   * number of roles that belong to the department in the displayed view —
-   * every position nested anywhere beneath the heading, not just its
-   * direct children. This is what the department box shows ("23 roles"),
-   * because a department heading answers "how big is this department?",
-   * not "how many roles hang directly off the box?". Absent on position
-   * nodes and on the raw graph.
+   * For a GROUPING node only (`kind: "department"` or `"subdivision"`): the
+   * total number of roles nested anywhere beneath the heading, not just its
+   * direct children. This is what the grouping box shows ("23 roles"),
+   * because a heading answers "how big is this group?", not "how many roles
+   * hang directly off the box?". Absent on position nodes and on the raw
+   * graph.
    */
   departmentMemberCount?: number;
   organizationalLevel: number;

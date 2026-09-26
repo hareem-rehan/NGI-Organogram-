@@ -431,3 +431,42 @@ describe("PositionNode — arrange mode", () => {
     expect(screen.queryByRole("button", { name: /^delete /i })).not.toBeInTheDocument();
   });
 });
+
+describe("PositionNode — sub-division tier", () => {
+  function renderSubdivision(nodeOverrides: Partial<OrganogramNode> = {}, data = {}) {
+    return renderNode({
+      node: makeNode({
+        kind: "subdivision",
+        positionId: "subdiv:head:fam-uiux",
+        title: "UI/UX",
+        jobFamilyId: "fam-uiux",
+        jobFamilyName: "UI/UX",
+        hasChildren: true,
+        departmentMemberCount: 2,
+        displayChildCount: 2,
+        ...nodeOverrides,
+      }),
+      ...data,
+    });
+  }
+
+  it("renders the sub-division name and how many roles sit under it", () => {
+    renderSubdivision();
+    expect(screen.getByText("UI/UX")).toBeInTheDocument();
+    expect(screen.getByText("2 roles")).toBeInTheDocument();
+  });
+
+  it("is a grouping heading (expand/collapse), never selectable and shows no occupancy", async () => {
+    const onToggleCollapse = vi.fn();
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    renderSubdivision({}, { onToggleCollapse, onSelect });
+
+    // The whole card is the expand/collapse control.
+    await user.click(screen.getByRole("button", { name: /UI\/UX sub-division/i }));
+    expect(onToggleCollapse).toHaveBeenCalledWith("subdiv:head:fam-uiux");
+    expect(onSelect).not.toHaveBeenCalled();
+    // No occupant / vacant treatment on a grouping card.
+    expect(screen.queryByText(/vacant/i)).not.toBeInTheDocument();
+  });
+});
