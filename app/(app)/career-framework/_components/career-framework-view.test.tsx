@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   CareerTrack,
@@ -18,20 +18,19 @@ vi.mock("@/app/(app)/career-framework/actions", () => ({
   createJobFamilyAction: vi.fn(),
   updateJobFamilyAction: vi.fn(),
   createLevelMappingEntryAction: vi.fn(),
-  provisionStandardLevelsAction: vi.fn(),
-  addLevelAction: vi.fn(),
-  deleteLevelAction: vi.fn(),
-  removeUnusedLevelsAction: vi.fn(),
+}));
+
+// next/link renders a plain anchor in tests.
+vi.mock("next/link", () => ({
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
 }));
 
 import { CareerFrameworkView } from "./career-framework-view";
 import {
-  addLevelAction,
   addManagerLadderAction,
-  deleteLevelAction,
   getCareerFrameworkAction,
-  provisionStandardLevelsAction,
-  removeUnusedLevelsAction,
 } from "@/app/(app)/career-framework/actions";
 
 const DEPT: Department = {
@@ -124,7 +123,6 @@ function renderView(overrides: Partial<Parameters<typeof CareerFrameworkView>[0]
       ]}
       departments={[DEPT]}
       jobGrades={[L7]}
-      initialLevelUsageByCode={{ L7: { positionCount: 0, titleCount: 2 } }}
       {...overrides}
     />
   );
@@ -137,34 +135,31 @@ describe("CareerFrameworkView", () => {
     expect(screen.getByRole("button", { name: /add sub-division/i })).toBeInTheDocument();
   });
 
-  it("renders the matrix with IC and Manager columns and the mapped titles", () => {
+  it("lists titles under IC and Manager columns for a dual-ladder family", () => {
     renderView();
     expect(screen.getByRole("heading", { name: "Software Engineering" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("columnheader", { name: /individual contributor/i })
-    ).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /manager/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /individual contributor/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^manager$/i })).toBeInTheDocument();
     expect(screen.getByText("Principal Software Engineer")).toBeInTheDocument();
     expect(screen.getByText("Tech Lead")).toBeInTheDocument();
   });
 
-  it("shows the level as a bare code (L7), never a combined label", () => {
+  it("does not show levels anywhere on this page (levels moved to Settings)", () => {
     renderView();
-    const row = screen.getByRole("cell", { name: "L7" }).closest("tr")!;
-    expect(within(row).getByText("Principal Software Engineer")).toBeInTheDocument();
-    // No descriptive suffix like "L7 - Principal" anywhere.
-    expect(screen.queryByText(/L7\s*[-—]\s*\w/)).not.toBeInTheDocument();
+    // No level code on the page, no Levels-management panel/picker.
+    expect(screen.queryByText("L7")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Levels$/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/add a level/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /remove level/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /set up standard levels/i })
+    ).not.toBeInTheDocument();
   });
 
-  it("lets an IC-L7 and a Manager-L7 title coexist with no reporting relationship implied", () => {
+  it("shows IC and Manager titles with no reporting control on the career screen", () => {
     renderView();
-    // Both live on the same L7 row, in different track columns. The
-    // component renders no reporting affordance at all.
-    const row = screen.getByRole("cell", { name: "L7" }).closest("tr")!;
-    expect(within(row).getByText("Principal Software Engineer")).toBeInTheDocument();
-    expect(within(row).getByText("Tech Lead")).toBeInTheDocument();
-    // The matrix offers no reporting control at all — no Reports-To field
-    // or combobox is rendered anywhere on this career screen.
+    expect(screen.getByText("Principal Software Engineer")).toBeInTheDocument();
+    expect(screen.getByText("Tech Lead")).toBeInTheDocument();
     expect(screen.queryByLabelText(/reports to/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /reports to/i })).not.toBeInTheDocument();
   });
@@ -180,20 +175,17 @@ describe("CareerFrameworkView", () => {
     expect(screen.getByText("Principal Software Engineer")).toBeInTheDocument();
   });
 
-  it("single-ladder family: one neutral Title column, no IC/Manager framing", () => {
+  it("single-ladder family: one neutral 'Titles' column, no IC/Manager framing", () => {
     renderView({
       initialCareerTracks: [IC],
       initialLevelMappingEntries: [entry("e-ic", IC.id, L7.id, "Principal Software Engineer")],
     });
-    // A single, neutrally-labelled column — no "Individual Contributor" or
-    // "Manager" column headers forced on the user.
-    expect(screen.getByRole("columnheader", { name: /^title$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^titles$/i })).toBeInTheDocument();
     expect(
-      screen.queryByRole("columnheader", { name: /individual contributor/i })
+      screen.queryByRole("heading", { name: /individual contributor/i })
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: /^manager$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^manager$/i })).not.toBeInTheDocument();
     expect(screen.getByText("Principal Software Engineer")).toBeInTheDocument();
-    // Offers the optional escalation to a parallel manager ladder.
     expect(screen.getByRole("button", { name: /add manager ladder/i })).toBeInTheDocument();
   });
 
@@ -210,7 +202,6 @@ describe("CareerFrameworkView", () => {
         careerTracks: [IC, MGR],
         levelMappingEntries: [],
         jobGrades: [L7],
-        levelUsageByCode: { L7: { positionCount: 0, titleCount: 0 } },
       },
     });
     renderView({ initialCareerTracks: [IC], initialLevelMappingEntries: [] });
@@ -219,154 +210,16 @@ describe("CareerFrameworkView", () => {
     expect(addManagerLadderAction).toHaveBeenCalledWith({ jobFamilyId: FAMILY.id });
   });
 
-  it("dual-ladder family: no 'add manager ladder' button; the manager column is removable", () => {
+  it("dual-ladder family: no 'add manager ladder' button; the manager ladder is removable", () => {
     renderView(); // default has IC + MGR
     expect(screen.queryByRole("button", { name: /add manager ladder/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /remove manager ladder/i })).toBeInTheDocument();
   });
 
-  it("offers a one-click 'set up standard levels' action when no levels exist yet", () => {
-    renderView({ jobGrades: [] });
-    expect(screen.getByText(/no levels set up yet/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /set up standard levels/i })).toBeInTheDocument();
-  });
-
-  it("does not show the levels setup prompt once levels exist", () => {
-    renderView({ jobGrades: [L7] });
-    expect(screen.queryByText(/no levels set up yet/i)).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /set up standard levels/i })
-    ).not.toBeInTheDocument();
-  });
-
-  it("hides the levels setup action in read-only mode even with no levels", () => {
-    renderView({ jobGrades: [], canManage: false });
-    // The explanatory prompt still shows, but a viewer gets no action.
-    expect(screen.getByText(/no levels set up yet/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /set up standard levels/i })
-    ).not.toBeInTheDocument();
-  });
-
-  it("provisions the scale and refreshes the levels from the server on click", async () => {
-    const user = userEvent.setup();
-    vi.mocked(provisionStandardLevelsAction).mockResolvedValue({ ok: true, data: { created: 17 } });
-    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
-      ok: true,
-      data: {
-        jobFamilies: [FAMILY],
-        careerTracks: [IC, MGR],
-        levelMappingEntries: [],
-        jobGrades: [L7],
-        levelUsageByCode: { L7: { positionCount: 0, titleCount: 0 } },
-      },
-    });
-
+  it("points to Settings and disables Add-title when no levels exist yet", () => {
     renderView({ jobGrades: [], initialLevelMappingEntries: [] });
-    await user.click(screen.getByRole("button", { name: /set up standard levels/i }));
-
-    expect(provisionStandardLevelsAction).toHaveBeenCalledTimes(1);
-    // After the refetch the prompt is gone, because the server now reports levels.
-    await waitFor(() =>
-      expect(screen.queryByText(/no levels set up yet/i)).not.toBeInTheDocument()
-    );
-  });
-});
-
-describe("CareerFrameworkView — Levels panel (usage-aware curation)", () => {
-  const L9 = grade("g-l9", "L9", 9);
-
-  it("lists each level with its usage, marking an unused one and disabling its removal guard only when used", () => {
-    renderView({
-      jobGrades: [L7, L9],
-      // L7 is used by 2 titles; L9 is used by nothing.
-      initialLevelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
-    });
-
-    // Used level: shows the count, no "Unused" badge, Remove disabled.
-    const l7Remove = screen.getByRole("button", { name: /remove level l7/i });
-    expect(l7Remove).toBeDisabled();
-    expect(screen.getByText(/2 titles/i)).toBeInTheDocument();
-
-    // Unused level: shows an "Unused" badge, Remove enabled.
-    expect(screen.getByText("Unused")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /remove level l9/i })).toBeEnabled();
-  });
-
-  it("removes a single unused level by code", async () => {
-    const user = userEvent.setup();
-    vi.mocked(deleteLevelAction).mockResolvedValue({ ok: true, data: { deletedCount: 1 } });
-    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
-      ok: true,
-      data: {
-        jobFamilies: [FAMILY],
-        careerTracks: [IC, MGR],
-        levelMappingEntries: [],
-        jobGrades: [L7],
-        levelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
-      },
-    });
-    renderView({
-      jobGrades: [L7, L9],
-      initialLevelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
-    });
-
-    await user.click(screen.getByRole("button", { name: /remove level l9/i }));
-    expect(deleteLevelAction).toHaveBeenCalledWith({ code: "L9" });
-  });
-
-  it("offers a one-click 'Remove N unused levels' and calls the bulk action", async () => {
-    const user = userEvent.setup();
-    vi.mocked(removeUnusedLevelsAction).mockResolvedValue({
-      ok: true,
-      data: { removedCodes: ["L9"] },
-    });
-    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
-      ok: true,
-      data: {
-        jobFamilies: [FAMILY],
-        careerTracks: [IC, MGR],
-        levelMappingEntries: [],
-        jobGrades: [L7],
-        levelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
-      },
-    });
-    renderView({
-      jobGrades: [L7, L9],
-      initialLevelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
-    });
-
-    await user.click(screen.getByRole("button", { name: /remove 1 unused level/i }));
-    expect(removeUnusedLevelsAction).toHaveBeenCalledTimes(1);
-  });
-
-  it("adds a standard level from the 'Add a level' picker", async () => {
-    const user = userEvent.setup();
-    vi.mocked(addLevelAction).mockResolvedValue({ ok: true, data: { code: "L10" } });
-    vi.mocked(getCareerFrameworkAction).mockResolvedValue({
-      ok: true,
-      data: {
-        jobFamilies: [FAMILY],
-        careerTracks: [IC, MGR],
-        levelMappingEntries: [],
-        jobGrades: [L7],
-        levelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
-      },
-    });
-    renderView();
-
-    await user.selectOptions(screen.getByLabelText(/add a level/i), "L10");
-    expect(addLevelAction).toHaveBeenCalledWith({ code: "L10" });
-  });
-
-  it("hides all Levels-panel controls in read-only mode but still shows usage", () => {
-    renderView({
-      canManage: false,
-      jobGrades: [L7, L9],
-      initialLevelUsageByCode: { L7: { positionCount: 0, titleCount: 2 } },
-    });
-    expect(screen.queryByRole("button", { name: /remove level/i })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/add a level/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Unused")).toBeInTheDocument();
+    expect(screen.getByText(/titles are recorded at a level/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("button", { name: /add title/i })).toBeDisabled();
   });
 });

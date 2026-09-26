@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import type {
   CareerTrack,
   Department,
@@ -12,19 +13,12 @@ import { Plus, Trash2, Pencil } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
-import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
 import {
-  addLevelAction,
   addManagerLadderAction,
   deleteCareerTrackAction,
   deleteJobFamilyAction,
-  deleteLevelAction,
   deleteLevelMappingEntryAction,
   getCareerFrameworkAction,
-  provisionStandardLevelsAction,
-  removeUnusedLevelsAction,
-  type JobGradeUsageByCode,
 } from "@/app/(app)/career-framework/actions";
 import { JobFamilyDialog } from "./job-family-dialog";
 import { LevelMappingDialog } from "./level-mapping-dialog";
@@ -36,7 +30,6 @@ interface CareerFrameworkViewProps {
   initialLevelMappingEntries: LevelMappingEntry[];
   departments: Department[];
   jobGrades: JobGrade[];
-  initialLevelUsageByCode: JobGradeUsageByCode;
 }
 
 const TRACK_ORDER: Record<string, number> = { IC: 0, MANAGER: 1 };
@@ -48,50 +41,25 @@ export function CareerFrameworkView({
   initialLevelMappingEntries,
   departments,
   jobGrades,
-  initialLevelUsageByCode,
 }: CareerFrameworkViewProps) {
   const [jobFamilies, setJobFamilies] = useState(initialJobFamilies);
   const [careerTracks, setCareerTracks] = useState(initialCareerTracks);
   const [entries, setEntries] = useState(initialLevelMappingEntries);
   const [levels, setLevels] = useState(jobGrades);
-  const [levelUsage, setLevelUsage] = useState(initialLevelUsageByCode);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const [familyDialogOpen, setFamilyDialogOpen] = useState(false);
   const [editingFamily, setEditingFamily] = useState<JobFamily | null>(null);
   const [mappingForFamily, setMappingForFamily] = useState<JobFamily | null>(null);
 
   const departmentsById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
-  const gradesById = useMemo(() => new Map(levels.map((g) => [g.id, g])), [levels]);
-
-  // The distinct levels as the pickers show them: one per code, preferring the
-  // shared company-wide grade over any per-department duplicate, sorted by the
-  // level's own rank. This is exactly the list a company sees in every Level
-  // dropdown, so curating it here trims that clutter directly.
-  const distinctLevels = useMemo(() => {
-    const byCode = new Map<string, JobGrade>();
-    for (const g of levels) {
-      const existing = byCode.get(g.code);
-      if (!existing || (existing.departmentId && !g.departmentId)) byCode.set(g.code, g);
-    }
-    return [...byCode.values()].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
-  }, [levels]);
-
-  const unusedLevelCount = useMemo(
-    () =>
-      distinctLevels.filter((g) => {
-        const u = levelUsage[g.code];
-        return !u || (u.positionCount === 0 && u.titleCount === 0);
-      }).length,
-    [distinctLevels, levelUsage]
+  // Only used to order titles by their level's rank — levels are no longer
+  // shown on this page (they are managed in Settings, docs/DECISIONS.md D23).
+  const gradeRankById = useMemo(
+    () => new Map(levels.map((g) => [g.id, g.displayOrder ?? 0])),
+    [levels]
   );
-
-  // Standard-scale codes not yet present — the "Add a level" options.
-  const addableLevels = useMemo(() => {
-    const present = new Set(distinctLevels.map((g) => g.code));
-    return JOB_GRADE_SCALE.filter((s) => !present.has(s.code));
-  }, [distinctLevels]);
 
   function refetch() {
     startTransition(async () => {
@@ -101,7 +69,6 @@ export function CareerFrameworkView({
         setCareerTracks(result.data.careerTracks);
         setEntries(result.data.levelMappingEntries);
         setLevels(result.data.jobGrades);
-        setLevelUsage(result.data.levelUsageByCode);
       }
     });
   }
@@ -145,8 +112,8 @@ export function CareerFrameworkView({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <p className="text-muted-foreground max-w-2xl text-sm">
-          Career progression only. Levels, sub-divisions and IC/Manager tracks describe career
-          seniority — they never set who reports to whom. The organogram is built from reporting
+          Sub-divisions and their Individual Contributor / Manager titles describe career
+          progression — they never set who reports to whom. The organogram is built from reporting
           relationships alone.
         </p>
         {canManage ? (
@@ -167,127 +134,19 @@ export function CareerFrameworkView({
         </p>
       ) : null}
 
-      {distinctLevels.length === 0 ? (
-        <div className="border-border bg-muted/30 flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-foreground text-sm font-medium">No levels set up yet</p>
-            <p className="text-muted-foreground mt-0.5 text-sm">
-              Levels (L2–L18) are the rows of the career matrix and the seniority you pick for a
-              position. Add the standard scale to get started — you can remove the ones you don’t
-              use afterwards.
-            </p>
-          </div>
-          {canManage ? (
-            <Button
-              className="shrink-0"
-              disabled={pending}
-              onClick={() => runManage(() => provisionStandardLevelsAction())}
-            >
-              <Plus aria-hidden="true" className="size-4" /> Set up standard levels
-            </Button>
-          ) : null}
-        </div>
-      ) : (
-        <section className="rounded-lg border p-4" aria-label="Levels">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h2 className="text-base font-semibold">Levels</h2>
-              <p className="text-muted-foreground text-xs">
-                The seniority scale shared by every Level picker. Keep only the levels you use — a
-                level in use by a position or a title can’t be removed.
-              </p>
-            </div>
-            {canManage ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {unusedLevelCount > 0 ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={pending}
-                    onClick={() => runManage(() => removeUnusedLevelsAction())}
-                  >
-                    <Trash2 aria-hidden="true" className="size-4" /> Remove {unusedLevelCount}{" "}
-                    unused level{unusedLevelCount === 1 ? "" : "s"}
-                  </Button>
-                ) : null}
-                {addableLevels.length > 0 ? (
-                  <Select
-                    aria-label="Add a level"
-                    value=""
-                    disabled={pending}
-                    onChange={(event) => {
-                      const code = event.target.value;
-                      if (code) runManage(() => addLevelAction({ code }));
-                    }}
-                  >
-                    <option value="">Add a level…</option>
-                    {addableLevels.map((s) => (
-                      <option key={s.code} value={s.code}>
-                        {s.code} — {s.name}
-                      </option>
-                    ))}
-                  </Select>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-
-          <ul className="mt-3 divide-y">
-            {distinctLevels.map((grade) => {
-              const usage = levelUsage[grade.code] ?? { positionCount: 0, titleCount: 0 };
-              const used = usage.positionCount > 0 || usage.titleCount > 0;
-              const usageParts = [
-                usage.positionCount > 0
-                  ? `${usage.positionCount} position${usage.positionCount === 1 ? "" : "s"}`
-                  : null,
-                usage.titleCount > 0
-                  ? `${usage.titleCount} title${usage.titleCount === 1 ? "" : "s"}`
-                  : null,
-              ].filter(Boolean);
-              return (
-                <li key={grade.id} className="flex items-center justify-between gap-3 py-2">
-                  <div className="flex min-w-0 items-baseline gap-2">
-                    <span className="font-medium">{grade.code}</span>
-                    {grade.name ? (
-                      <span className="text-muted-foreground truncate text-sm">{grade.name}</span>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    {used ? (
-                      <span className="text-muted-foreground text-xs">
-                        {usageParts.join(" · ")}
-                      </span>
-                    ) : (
-                      <Badge variant="outline">Unused</Badge>
-                    )}
-                    {canManage ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label={`Remove level ${grade.code}`}
-                        disabled={pending || used}
-                        title={
-                          used
-                            ? "In use — change the positions/titles using it to a different level first"
-                            : "Remove this level"
-                        }
-                        onClick={() => runManage(() => deleteLevelAction({ code: grade.code }))}
-                      >
-                        <Trash2 aria-hidden="true" className="size-4" />
-                      </Button>
-                    ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+      {canManage && levels.length === 0 ? (
+        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
+          Titles are recorded at a level. Set up your levels in{" "}
+          <Link href="/settings" className="underline">
+            Settings
+          </Link>{" "}
+          first, then you can add titles here.
+        </p>
+      ) : null}
 
       {jobFamilies.length === 0 ? (
         <p className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
-          No sub-divisions yet. {canManage ? "Add one to start building the career matrix." : ""}
+          No sub-divisions yet. {canManage ? "Add one to start recording career titles." : ""}
         </p>
       ) : (
         jobFamilies.map((family) => {
@@ -299,17 +158,16 @@ export function CareerFrameworkView({
           // Single-ladder unless a parallel Manager ladder has been added.
           const isSingleLadder = !managerTrack;
 
-          // Matrix columns. A single-ladder family shows one neutral "Title"
-          // column; a family that runs both ladders shows the two named
-          // columns, and only the Manager column can be removed (deleting it
-          // collapses the family back to a single ladder).
+          // Columns: a single-ladder family shows one neutral "Titles" list; a
+          // family running both ladders shows the two named lists, and only the
+          // Manager list can be removed (collapsing back to a single ladder).
           const columns: {
             key: string;
             label: string;
             trackId: string | undefined;
             deletableTrack: CareerTrack | null;
           }[] = isSingleLadder
-            ? [{ key: "single", label: "Title", trackId: icTrack?.id, deletableTrack: null }]
+            ? [{ key: "single", label: "Titles", trackId: icTrack?.id, deletableTrack: null }]
             : [
                 {
                   key: icTrack!.id,
@@ -325,13 +183,17 @@ export function CareerFrameworkView({
                 },
               ];
 
-          // Rows = levels that appear in this family's entries, sorted by
-          // the grade's own rank (displayOrder).
-          const gradeIds = [...new Set(familyEntries.map((e) => e.jobGradeId))];
-          const rows = gradeIds
-            .map((id) => gradesById.get(id))
-            .filter((g): g is JobGrade => Boolean(g))
-            .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+          // Titles for a column, ordered by their level's rank (so the list
+          // still reads junior → senior) then alphabetically — the level
+          // itself is not shown here.
+          const titlesForColumn = (trackId: string | undefined) =>
+            familyEntries
+              .filter((e) => e.careerTrackId === trackId)
+              .sort(
+                (a, b) =>
+                  (gradeRankById.get(a.jobGradeId) ?? 0) - (gradeRankById.get(b.jobGradeId) ?? 0) ||
+                  a.title.localeCompare(b.title)
+              );
 
           return (
             <section
@@ -358,7 +220,7 @@ export function CareerFrameworkView({
                         onClick={() =>
                           runManage(() => addManagerLadderAction({ jobFamilyId: family.id }))
                         }
-                        title="Add a parallel manager ladder for roles that have separate IC and manager titles at the same level"
+                        title="Add a parallel manager ladder for roles that have separate IC and manager titles"
                       >
                         <Plus aria-hidden="true" className="size-4" /> Add manager ladder
                       </Button>
@@ -368,6 +230,7 @@ export function CareerFrameworkView({
                       variant="secondary"
                       onClick={() => setMappingForFamily(family)}
                       disabled={levels.length === 0}
+                      title={levels.length === 0 ? "Set up levels in Settings first" : undefined}
                     >
                       <Plus aria-hidden="true" className="size-4" /> Add title
                     </Button>
@@ -396,93 +259,62 @@ export function CareerFrameworkView({
                 ) : null}
               </div>
 
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[32rem] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b text-left">
-                      <th className="text-muted-foreground w-20 py-2 pr-2 font-medium">Level</th>
-                      {columns.map((col) => (
-                        <th key={col.key} className="py-2 pr-2 font-medium">
-                          <span className="flex items-center gap-2">
-                            {col.label}
-                            {canManage && col.deletableTrack ? (
-                              <button
-                                type="button"
-                                aria-label="Remove manager ladder"
-                                className="text-muted-foreground hover:text-destructive"
-                                onClick={() =>
-                                  runManage(() =>
-                                    deleteCareerTrackAction({
-                                      careerTrackId: col.deletableTrack!.id,
-                                    })
-                                  )
-                                }
-                              >
-                                <Trash2 aria-hidden="true" className="size-3.5" />
-                              </button>
-                            ) : null}
-                          </span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={columns.length + 1} className="text-muted-foreground py-3">
-                          {levels.length === 0
-                            ? "Set up levels first, then add titles."
-                            : "No titles yet."}
-                        </td>
-                      </tr>
-                    ) : (
-                      rows.map((grade) => (
-                        <tr key={grade.id} className="border-b align-top">
-                          <td className="py-2 pr-2 font-medium">{grade.code}</td>
-                          {columns.map((col) => {
-                            const cell = familyEntries.filter(
-                              (e) => e.careerTrackId === col.trackId && e.jobGradeId === grade.id
-                            );
-                            return (
-                              <td key={col.key} className="py-2 pr-2">
-                                <div className="flex flex-wrap gap-1.5">
-                                  {cell.map((entry) => (
-                                    <Badge
-                                      key={entry.id}
-                                      variant="secondary"
-                                      className="flex items-center gap-1"
-                                    >
-                                      {entry.title}
-                                      {canManage ? (
-                                        <button
-                                          type="button"
-                                          aria-label={`Remove ${entry.title}`}
-                                          className="hover:text-destructive"
-                                          onClick={() =>
-                                            runManage(() =>
-                                              deleteLevelMappingEntryAction({
-                                                levelMappingEntryId: entry.id,
-                                              })
-                                            )
-                                          }
-                                        >
-                                          ×
-                                        </button>
-                                      ) : null}
-                                    </Badge>
-                                  ))}
-                                  {cell.length === 0 ? (
-                                    <span className="text-muted-foreground">—</span>
-                                  ) : null}
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              <div className="mt-4 flex flex-col gap-4 sm:flex-row">
+                {columns.map((col) => {
+                  const colTitles = titlesForColumn(col.trackId);
+                  return (
+                    <div key={col.key} className="min-w-0 flex-1">
+                      <div className="mb-2 flex items-center gap-2 border-b pb-1">
+                        <h3 className="text-muted-foreground text-sm font-medium">{col.label}</h3>
+                        {canManage && col.deletableTrack ? (
+                          <button
+                            type="button"
+                            aria-label="Remove manager ladder"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() =>
+                              runManage(() =>
+                                deleteCareerTrackAction({ careerTrackId: col.deletableTrack!.id })
+                              )
+                            }
+                          >
+                            <Trash2 aria-hidden="true" className="size-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                      {colTitles.length === 0 ? (
+                        <p className="text-muted-foreground text-sm">No titles yet.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {colTitles.map((entry) => (
+                            <Badge
+                              key={entry.id}
+                              variant="secondary"
+                              className="flex items-center gap-1"
+                            >
+                              {entry.title}
+                              {canManage ? (
+                                <button
+                                  type="button"
+                                  aria-label={`Remove ${entry.title}`}
+                                  className="hover:text-destructive"
+                                  onClick={() =>
+                                    runManage(() =>
+                                      deleteLevelMappingEntryAction({
+                                        levelMappingEntryId: entry.id,
+                                      })
+                                    )
+                                  }
+                                >
+                                  ×
+                                </button>
+                              ) : null}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </section>
           );

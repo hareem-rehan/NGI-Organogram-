@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermissionMock, serviceMocks, companyRepoMock } = vi.hoisted(() => ({
+const {
+  requirePermissionMock,
+  serviceMocks,
+  companyRepoMock,
+  jobGradeServiceMock,
+  jobGradeRepoMock,
+} = vi.hoisted(() => ({
   requirePermissionMock: vi.fn(),
   serviceMocks: {
     getAuthDisplaySettings: vi.fn(),
@@ -9,14 +15,39 @@ const { requirePermissionMock, serviceMocks, companyRepoMock } = vi.hoisted(() =
     updateSettings: vi.fn(),
   },
   companyRepoMock: { findCompanyById: vi.fn() },
+  jobGradeServiceMock: {
+    deleteLevelByCode: vi.fn(),
+    provisionStandardLevel: vi.fn(),
+    provisionStandardLevels: vi.fn(),
+    removeUnusedLevels: vi.fn(),
+  },
+  jobGradeRepoMock: {
+    getJobGradeUsageCounts: vi.fn(),
+    listJobGradesForCompany: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({ requirePermission: requirePermissionMock }));
 vi.mock("@/lib/services/settings.service", () => serviceMocks);
 vi.mock("@/lib/repositories/company.repository", () => companyRepoMock);
+// Level management now lives in Settings; stub the server-only job-grade
+// modules so this client-side test never loads them.
+vi.mock("@/lib/services/job-grade.service", () => jobGradeServiceMock);
+vi.mock("@/lib/repositories/job-grade.repository", () => jobGradeRepoMock);
 
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
-import { getSettingsAction, updateCompanyProfileAction, updateSettingsAction } from "./actions";
+import {
+  addLevelAction,
+  deleteLevelAction,
+  getCompanyLevelsAction,
+  getSettingsAction,
+  provisionStandardLevelsAction,
+  removeUnusedLevelsAction,
+  updateCompanyProfileAction,
+  updateSettingsAction,
+} from "./actions";
+
+const VALID_LEVEL = "L7";
 
 const ADMIN_USER = {
   id: "u_1",
@@ -94,5 +125,49 @@ describe("settings server actions — authorization", () => {
     });
     expect(result.ok).toBe(false);
     expect(serviceMocks.updateCompanyProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe("settings level actions — authorization (settings:manage / ADMIN-only)", () => {
+  const invocations: [string, () => Promise<unknown>][] = [
+    ["getCompanyLevelsAction", () => getCompanyLevelsAction()],
+    ["provisionStandardLevelsAction", () => provisionStandardLevelsAction()],
+    ["addLevelAction", () => addLevelAction({ code: VALID_LEVEL })],
+    ["deleteLevelAction", () => deleteLevelAction({ code: VALID_LEVEL })],
+    ["removeUnusedLevelsAction", () => removeUnusedLevelsAction()],
+  ];
+
+  for (const [name, invoke] of invocations) {
+    it(`${name} is refused for a caller lacking settings:manage`, async () => {
+      requirePermissionMock.mockRejectedValue(new ForbiddenError());
+      const result = (await invoke()) as { ok: boolean };
+      expect(result.ok).toBe(false);
+      expect(requirePermissionMock).toHaveBeenCalledWith("settings:manage");
+      // No level mutation reached the service layer.
+      expect(jobGradeServiceMock.provisionStandardLevel).not.toHaveBeenCalled();
+      expect(jobGradeServiceMock.deleteLevelByCode).not.toHaveBeenCalled();
+      expect(jobGradeServiceMock.removeUnusedLevels).not.toHaveBeenCalled();
+    });
+  }
+
+  it("deleteLevelAction passes the session company and validated code to the service", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    jobGradeServiceMock.deleteLevelByCode.mockResolvedValue({ deletedCount: 1 });
+
+    const result = await deleteLevelAction({ code: "L9" });
+
+    expect(result.ok).toBe(true);
+    expect(jobGradeServiceMock.deleteLevelByCode).toHaveBeenCalledWith(
+      ADMIN_USER.companyId,
+      "L9",
+      expect.anything()
+    );
+  });
+
+  it("addLevelAction rejects a malformed payload before the service runs", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    const result = await addLevelAction({ notCode: "x" });
+    expect(result.ok).toBe(false);
+    expect(jobGradeServiceMock.provisionStandardLevel).not.toHaveBeenCalled();
   });
 });
