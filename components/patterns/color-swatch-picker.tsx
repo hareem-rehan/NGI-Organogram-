@@ -7,16 +7,16 @@ import { Input } from "@/components/ui/input";
 
 const FULL_HEX = /^#[0-9a-fA-F]{6}$/;
 
-/** Reuses the department chart-grouping palette already defined in app/globals.css (--color-dept-1..8) so a picked color always matches what the eventual organogram (Phase 8) will render. */
+/** Department chart-grouping palette, aligned to the stakeholder's Visily reference (green Engineering, blue Client Delivery/Project, purple Product, gold HR, orange Marketing, pink Delivery/Admin, lavender Finance, teal IT). The organogram cards colour by each department's own chosen hue. */
 export const DEPARTMENT_COLOR_PRESETS = [
-  "#2563eb",
-  "#16a34a",
-  "#d97706",
-  "#dc2626",
+  "#4fae2f",
+  "#3aa4e8",
   "#7c3aed",
-  "#0891b2",
-  "#db2777",
-  "#65a30d",
+  "#d9a400",
+  "#e8811a",
+  "#ec6fa8",
+  "#9b7fe0",
+  "#00b8d4",
 ] as const;
 
 interface ColorSwatchPickerProps {
