@@ -1,13 +1,6 @@
 "use server";
 
-import type {
-  CareerTrack,
-  Department,
-  DepartmentLevelTitle,
-  JobFamily,
-  JobGrade,
-  Position,
-} from "@prisma/client";
+import type { CareerTrack, Department, JobFamily, JobGrade, Position } from "@prisma/client";
 
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
@@ -38,7 +31,6 @@ import {
   listCareerTracksForCompany,
   listJobFamiliesForCompany,
 } from "@/lib/repositories/career-framework.repository";
-import { listDepartmentLevelTitlesForCompany } from "@/lib/repositories/department-level-title.repository";
 import {
   createPositionSchema,
   listPositionsQuerySchema,
@@ -94,22 +86,19 @@ export async function listJobGradeOptionsAction(): Promise<ActionResult<JobGrade
 export interface PositionCareerOptions {
   jobFamilies: JobFamily[];
   careerTracks: CareerTrack[];
-  /** Department-scoped level names (Levels Mapping) — the titles offered when picking a level name. */
-  departmentLevelTitles: DepartmentLevelTitle[];
 }
 
-/** Career-framework options for the Position form's Sub-division / Track dropdowns and level-name picker. Read-only, needs only positions:view. */
+/** Career-framework options for the Position form's Sub-division / Career-track dropdowns. Read-only, needs only positions:view. */
 export async function listPositionCareerOptionsAction(): Promise<
   ActionResult<PositionCareerOptions>
 > {
   return runAction(async () => {
     const user = await requirePermission("positions:view");
-    const [jobFamilies, careerTracks, departmentLevelTitles] = await Promise.all([
+    const [jobFamilies, careerTracks] = await Promise.all([
       listJobFamiliesForCompany(user.companyId),
       listCareerTracksForCompany(user.companyId),
-      listDepartmentLevelTitlesForCompany(user.companyId),
     ]);
-    return { jobFamilies, careerTracks, departmentLevelTitles };
+    return { jobFamilies, careerTracks };
   });
 }
 
@@ -174,6 +163,9 @@ export async function createPositionAction(input: unknown): Promise<ActionResult
       positionCode: values.positionCode ?? generatePositionCode(),
       jobGradeId,
       careerTrackId,
+      // Persist the IC/Manager choice directly on the position (independent of
+      // any sub-division), so the position carries its own ladder context.
+      ladderKind: careerTrackKind ?? null,
     });
   });
 }
@@ -218,6 +210,8 @@ export async function updatePositionAction(input: unknown): Promise<ActionResult
       ...values,
       jobGradeId,
       careerTrackId,
+      // undefined leaves it unchanged; null clears it.
+      ladderKind: careerTrackKind,
     });
   });
 }

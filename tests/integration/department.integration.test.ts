@@ -31,6 +31,44 @@ describe("Department", () => {
     expect(dept.parentDepartmentId).toBeNull();
   });
 
+  it("defaults career ladders to both IC and Manager, and stores an explicit choice", async () => {
+    const company = await makeCompany();
+    const withDefault = await createDepartment({
+      companyId: company.id,
+      name: "Engineering",
+      code: "ENG",
+    });
+    expect(withDefault.hasIcLadder).toBe(true);
+    expect(withDefault.hasManagerLadder).toBe(true);
+
+    const managerOnly = await createDepartment({
+      companyId: company.id,
+      name: "Project",
+      code: "PROJECT",
+      hasIcLadder: false,
+      hasManagerLadder: true,
+    });
+    expect(managerOnly.hasIcLadder).toBe(false);
+    expect(managerOnly.hasManagerLadder).toBe(true);
+  });
+
+  it("updates a department's career ladders to None", async () => {
+    const company = await makeCompany();
+    const dept = await createDepartment({
+      companyId: company.id,
+      name: "Founder",
+      code: "FOUNDER",
+    });
+    const updated = await updateDepartment({
+      companyId: company.id,
+      departmentId: dept.id,
+      hasIcLadder: false,
+      hasManagerLadder: false,
+    });
+    expect(updated.hasIcLadder).toBe(false);
+    expect(updated.hasManagerLadder).toBe(false);
+  });
+
   it("creates a valid nested department", async () => {
     const company = await makeCompany();
     const parent = await makeDepartment(company.id, { code: "ENG" });

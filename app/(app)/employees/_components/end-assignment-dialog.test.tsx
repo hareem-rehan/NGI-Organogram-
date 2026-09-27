@@ -37,6 +37,7 @@ const POSITION: Position = {
   careerTrackId: null,
   title: "Data Analyst",
   positionCode: "POS-DATA-ANALYST",
+  ladderKind: null,
   description: null,
   location: null,
   status: "ACTIVE",

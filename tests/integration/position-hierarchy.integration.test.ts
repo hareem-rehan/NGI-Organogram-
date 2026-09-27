@@ -47,6 +47,34 @@ describe("Position hierarchy", () => {
     expect(root.primaryReportsToPositionId).toBeNull();
   });
 
+  it("stores the IC/Manager ladder kind on the position, and lets an update change it", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const created = await createPosition({
+      companyId: company.id,
+      departmentId: dept.id,
+      title: "Engineering Manager",
+      positionCode: "POS-ENGMGR",
+      primaryReportsToPositionId: null,
+      ladderKind: "MANAGER",
+    });
+    expect(created.ladderKind).toBe("MANAGER");
+
+    const updated = await updatePosition({
+      companyId: company.id,
+      positionId: created.id,
+      ladderKind: "IC",
+    });
+    expect(updated.ladderKind).toBe("IC");
+
+    const cleared = await updatePosition({
+      companyId: company.id,
+      positionId: created.id,
+      ladderKind: null,
+    });
+    expect(cleared.ladderKind).toBeNull();
+  });
+
   it("creates a valid child position at parent level + 1", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);

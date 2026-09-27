@@ -27,6 +27,7 @@ function makePosition(overrides: Partial<Position> = {}): Position {
     careerTrackId: null,
     title: "CEO",
     positionCode: "POS-CEO",
+    ladderKind: null,
     description: null,
     location: null,
     status: "ACTIVE",

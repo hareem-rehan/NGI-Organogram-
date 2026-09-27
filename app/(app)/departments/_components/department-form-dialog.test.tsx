@@ -29,6 +29,8 @@ function makeDepartment(overrides: Partial<Department> = {}): Department {
     description: null,
     color: null,
     parentDepartmentId: null,
+    hasIcLadder: true,
+    hasManagerLadder: true,
     status: "ACTIVE",
     displayOrder: null,
     createdAt: new Date(),
@@ -168,6 +170,8 @@ describe("DepartmentFormDialog", () => {
     const department = makeDepartment({
       id: "11111111-1111-4111-8111-111111111111",
       parentDepartmentId: null,
+      hasIcLadder: true,
+      hasManagerLadder: true,
     });
     updateDepartmentActionMock.mockResolvedValue({ ok: true, data: department });
     const user = userEvent.setup();
@@ -188,6 +192,44 @@ describe("DepartmentFormDialog", () => {
     const payload = updateDepartmentActionMock.mock.calls[0]?.[0];
     expect(() => updateDepartmentSchema.parse(payload)).not.toThrow();
     expect(payload).not.toHaveProperty("parentDepartmentId");
+  });
+
+  it("prefills the Career ladders choice from the department (Manager only)", () => {
+    const department = makeDepartment({ hasIcLadder: false, hasManagerLadder: true });
+    render(
+      <DepartmentFormDialog
+        open
+        onOpenChange={() => {}}
+        department={department}
+        allDepartments={[department]}
+        onSaved={() => {}}
+      />
+    );
+    expect(screen.getByLabelText(/career ladders/i)).toHaveValue("manager");
+  });
+
+  it("submits the chosen Career ladders as the two booleans (None)", async () => {
+    const department = makeDepartment({ id: "22222222-2222-4222-8222-222222222222" });
+    updateDepartmentActionMock.mockResolvedValue({ ok: true, data: department });
+    const user = userEvent.setup();
+
+    render(
+      <DepartmentFormDialog
+        open
+        onOpenChange={() => {}}
+        department={department}
+        allDepartments={[department]}
+        onSaved={() => {}}
+      />
+    );
+
+    await user.selectOptions(screen.getByLabelText(/career ladders/i), "none");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(updateDepartmentActionMock).toHaveBeenCalled());
+    expect(updateDepartmentActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ hasIcLadder: false, hasManagerLadder: false })
+    );
   });
 
   it("does not offer the department being edited as its own parent option", () => {

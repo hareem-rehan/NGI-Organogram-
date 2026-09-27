@@ -56,6 +56,8 @@ export function DepartmentFormDialog({
       code: "",
       description: null,
       color: null,
+      hasIcLadder: true,
+      hasManagerLadder: true,
       parentDepartmentId: null,
     },
   });
@@ -68,12 +70,33 @@ export function DepartmentFormDialog({
       code: department?.code ?? "",
       description: department?.description ?? null,
       color: department?.color ?? null,
+      hasIcLadder: department?.hasIcLadder ?? true,
+      hasManagerLadder: department?.hasManagerLadder ?? true,
       parentDepartmentId: department?.parentDepartmentId ?? null,
     });
   }, [open, department, reset]);
 
   const color = watch("color");
   const parentDepartmentId = watch("parentDepartmentId");
+  const hasIcLadder = watch("hasIcLadder");
+  const hasManagerLadder = watch("hasManagerLadder");
+
+  // Collapse the two booleans into one friendly choice for the picker, and
+  // expand a chosen option back to the booleans. "none" = no career ladders,
+  // which excludes the department from the Level Mapping grid.
+  const ladderChoice = hasIcLadder
+    ? hasManagerLadder
+      ? "both"
+      : "ic"
+    : hasManagerLadder
+      ? "manager"
+      : "none";
+  const setLadderChoice = (choice: string) => {
+    const ic = choice === "both" || choice === "ic";
+    const manager = choice === "both" || choice === "manager";
+    setValue("hasIcLadder", ic);
+    setValue("hasManagerLadder", manager);
+  };
 
   const eligibleParents = allDepartments.filter((candidate) => candidate.id !== department?.id);
 
@@ -87,6 +110,8 @@ export function DepartmentFormDialog({
             code: values.code,
             description: values.description,
             color: values.color,
+            hasIcLadder: values.hasIcLadder,
+            hasManagerLadder: values.hasManagerLadder,
           })
         : await createDepartmentAction(values);
 
@@ -157,6 +182,24 @@ export function DepartmentFormDialog({
                 value={color}
                 onChange={(next) => setValue("color", next, { shouldValidate: true })}
               />
+            )}
+          </Field>
+
+          <Field
+            label="Career ladders"
+            hint="Controls which columns show in Level Mapping. Choose None for departments with no career ladders (e.g. Founder)."
+          >
+            {(fieldProps) => (
+              <Select
+                {...fieldProps}
+                value={ladderChoice}
+                onChange={(event) => setLadderChoice(event.target.value)}
+              >
+                <option value="both">Individual Contributor &amp; Manager</option>
+                <option value="ic">Individual Contributor only</option>
+                <option value="manager">Manager only</option>
+                <option value="none">None (no career ladders)</option>
+              </Select>
             )}
           </Field>
 

@@ -43,6 +43,8 @@ function makeDepartment(overrides: Partial<Department> = {}): Department {
     description: null,
     color: "#16a34a",
     parentDepartmentId: null,
+    hasIcLadder: true,
+    hasManagerLadder: true,
     status: "ACTIVE",
     displayOrder: null,
     createdAt: new Date(),

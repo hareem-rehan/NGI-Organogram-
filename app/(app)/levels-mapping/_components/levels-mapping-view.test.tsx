@@ -19,6 +19,8 @@ const ENG: Department = {
   description: null,
   color: "#16a34a",
   parentDepartmentId: null,
+  hasIcLadder: true,
+  hasManagerLadder: true,
   status: "ACTIVE",
   displayOrder: 1,
   createdAt: new Date(),
@@ -103,5 +105,41 @@ describe("LevelsMappingView", () => {
     expect(screen.queryByRole("button", { name: /add .* level name/i })).not.toBeInTheDocument();
     // The names still render.
     expect(screen.getByText("Software Engineer")).toBeInTheDocument();
+  });
+
+  it("hides a department with no career ladders (None), e.g. Founder", () => {
+    const founder: Department = {
+      ...ENG,
+      id: "dept-founder",
+      name: "Founder",
+      code: "FOUNDER",
+      hasIcLadder: false,
+      hasManagerLadder: false,
+    };
+    renderView({ departments: [ENG, founder], initialTitles: [] });
+    // Engineering still shows; Founder does not (neither as a column nor in the legend).
+    expect(screen.getAllByText("Engineering").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Founder")).not.toBeInTheDocument();
+  });
+
+  it("shows only the Manager column for a Manager-only department", () => {
+    const project: Department = {
+      ...ENG,
+      id: "dept-project",
+      name: "Project",
+      code: "PROJECT",
+      hasIcLadder: false,
+      hasManagerLadder: true,
+    };
+    renderView({ departments: [project], initialTitles: [] });
+    expect(screen.getByRole("columnheader", { name: "Manager" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "IC" })).not.toBeInTheDocument();
+    // Only Manager add-cells exist for Project.
+    expect(
+      screen.getByRole("button", { name: /add manager l2 level name in project/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /add ic l2 level name in project/i })
+    ).not.toBeInTheDocument();
   });
 });

@@ -1,14 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type {
-  CareerTrack,
-  Department,
-  DepartmentLevelTitle,
-  JobFamily,
-  JobGrade,
-  Position,
-} from "@prisma/client";
+import type { CareerTrack, Department, JobFamily, JobGrade, Position } from "@prisma/client";
 
 const { createPositionActionMock, updatePositionActionMock } = vi.hoisted(() => ({
   createPositionActionMock: vi.fn(),
@@ -37,6 +30,8 @@ const DEPARTMENT: Department = {
   description: null,
   color: null,
   parentDepartmentId: null,
+  hasIcLadder: true,
+  hasManagerLadder: true,
   status: "ACTIVE",
   displayOrder: null,
   createdAt: new Date(),
@@ -100,25 +95,6 @@ const MGR_TRACK: CareerTrack = {
   updatedAt: new Date(),
 };
 
-const L7_IC_TITLE: DepartmentLevelTitle = {
-  id: "88888888-8888-4888-8888-888888888888",
-  companyId: "company-1",
-  departmentId: DEPARTMENT_ID,
-  jobGradeCode: "L7",
-  kind: "IC",
-  title: "Principal Software Engineer",
-  displayOrder: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
-
-const L7_MGR_TITLE: DepartmentLevelTitle = {
-  ...L7_IC_TITLE,
-  id: "99999999-9999-4999-8999-999999999999",
-  kind: "MANAGER",
-  title: "Tech Lead",
-};
-
 function makePosition(overrides: Partial<Position> = {}): Position {
   return {
     id: POSITION_ID,
@@ -129,6 +105,7 @@ function makePosition(overrides: Partial<Position> = {}): Position {
     careerTrackId: null,
     title: "Engineering Manager",
     positionCode: "POS-ENGMGR",
+    ladderKind: null,
     description: null,
     location: null,
     status: "ACTIVE",
@@ -152,7 +129,6 @@ function renderForm(overrides: Partial<FormProps> = {}) {
     jobGrades: [],
     jobFamilies: [],
     careerTracks: [],
-    departmentLevelTitles: [],
     allPositions: [],
     onSaved: () => {},
     ...overrides,
@@ -218,10 +194,29 @@ describe("PositionFormDialog", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides the Career-track picker until a sub-division is chosen", () => {
-    renderForm({ jobGrades: [L7_GRADE], jobFamilies: [SWE_FAMILY] });
-    // No sub-division selected yet → no track choice.
-    expect(screen.queryByLabelText(/career track/i)).not.toBeInTheDocument();
+  it("always shows the IC/Manager/None career-track picker (even without a sub-division)", () => {
+    renderForm({ jobGrades: [L7_GRADE] });
+    const trackSelect = screen.getByLabelText(/career track/i);
+    expect(
+      within(trackSelect).getByRole("option", { name: /individual contributor/i })
+    ).toBeInTheDocument();
+    expect(within(trackSelect).getByRole("option", { name: /^manager$/i })).toBeInTheDocument();
+    expect(within(trackSelect).getByRole("option", { name: /^none$/i })).toBeInTheDocument();
+  });
+
+  it("submits the chosen IC/Manager as careerTrackKind even with no sub-division", async () => {
+    createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
+    const user = userEvent.setup();
+    renderForm({ jobGrades: [L7_GRADE] });
+
+    await user.selectOptions(screen.getByLabelText(/career track/i), "MANAGER");
+    await user.type(screen.getByLabelText(/title/i), "Engineering Manager");
+    await user.click(screen.getByRole("button", { name: /create position/i }));
+
+    await waitFor(() => expect(createPositionActionMock).toHaveBeenCalled());
+    expect(createPositionActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ careerTrackKind: "MANAGER", jobFamilyId: null })
+    );
   });
 
   it("offers a plain IC/Manager choice once a sub-division is chosen, and submits it as careerTrackKind", async () => {
@@ -231,11 +226,10 @@ describe("PositionFormDialog", () => {
       jobGrades: [L7_GRADE],
       jobFamilies: [SWE_FAMILY],
       careerTracks: [], // no tracks configured yet — the choice still works
-      departmentLevelTitles: [],
     });
 
     await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
-    // The picker appears with a plain, framework-independent choice.
+    // The picker offers a plain, framework-independent choice.
     const trackSelect = screen.getByLabelText(/career track/i);
     expect(
       within(trackSelect).getByRole("option", { name: /individual contributor/i })
@@ -273,47 +267,16 @@ describe("PositionFormDialog", () => {
     expect(within(levelSelect).getAllByRole("option")).toHaveLength(18);
   });
 
-  it("offers the department's configured level names for the chosen level and fills the Title when one is picked", async () => {
+  it("does not auto-fill the Title (Title stays whatever the user typed)", async () => {
     const user = userEvent.setup();
-    renderForm({ jobGrades: [L7_GRADE], departmentLevelTitles: [L7_IC_TITLE] });
-
+    renderForm({ jobGrades: [L7_GRADE] });
     await user.selectOptions(screen.getByLabelText(/^level$/i), "L7");
-    const levelNameSelect = screen.getByLabelText(/level name/i);
-    expect(
-      within(levelNameSelect).getByRole("option", { name: /Principal Software Engineer — IC/ })
-    ).toBeInTheDocument();
-
-    await user.selectOptions(levelNameSelect, L7_IC_TITLE.id);
-    expect(screen.getByLabelText(/title/i)).toHaveValue("Principal Software Engineer");
+    // No "Level name" picker exists any more, and Title is untouched.
+    expect(screen.queryByLabelText(/level name/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/title/i)).toHaveValue("");
   });
 
-  it("derives the ladder from the chosen level name and submits it as careerTrackKind when a sub-division is set", async () => {
-    createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
-    const user = userEvent.setup();
-    renderForm({
-      jobGrades: [L7_GRADE],
-      jobFamilies: [SWE_FAMILY],
-      departmentLevelTitles: [L7_MGR_TITLE],
-    });
-
-    await user.selectOptions(screen.getByLabelText(/sub-division/i), FAMILY_ID);
-    await user.selectOptions(screen.getByLabelText(/^level$/i), "L7");
-    await user.selectOptions(screen.getByLabelText(/level name/i), L7_MGR_TITLE.id);
-    await user.click(screen.getByRole("button", { name: /create position/i }));
-
-    await waitFor(() =>
-      expect(createPositionActionMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Tech Lead",
-          jobFamilyId: FAMILY_ID,
-          careerTrackKind: "MANAGER",
-          jobGradeCode: "L7",
-        })
-      )
-    );
-  });
-
-  it("prefills the Career-track choice from the position's stored track when editing", () => {
+  it("prefills the Career-track choice from the position's stored ladder when editing", () => {
     const position = makePosition({ jobFamilyId: FAMILY_ID, careerTrackId: MGR_TRACK_ID });
     renderForm({
       position,
@@ -333,32 +296,6 @@ describe("PositionFormDialog", () => {
     ).toBeInTheDocument();
     // The family from another department is not offered.
     expect(within(familySelect).getAllByRole("option")).toHaveLength(2); // "None" + SWE only
-  });
-
-  it("shows the Level name picker only when the department + level has configured names", async () => {
-    const user = userEvent.setup();
-    // No configured names for this department + level → no picker, just Title.
-    const { rerender } = renderForm({ jobGrades: [L7_GRADE], departmentLevelTitles: [] });
-    await user.selectOptions(screen.getByLabelText(/^level$/i), "L7");
-    expect(screen.queryByLabelText(/level name/i)).not.toBeInTheDocument();
-
-    // With configured names the picker appears for that level.
-    rerender(
-      <PositionFormDialog
-        open
-        onOpenChange={() => {}}
-        position={null}
-        departments={[DEPARTMENT]}
-        jobGrades={[L7_GRADE]}
-        jobFamilies={[]}
-        careerTracks={[]}
-        departmentLevelTitles={[L7_IC_TITLE]}
-        allPositions={[]}
-        onSaved={() => {}}
-      />
-    );
-    await user.selectOptions(screen.getByLabelText(/^level$/i), "L7");
-    expect(screen.getByLabelText(/level name/i)).toBeInTheDocument();
   });
 
   it("shows a server error and keeps the dialog open", async () => {
@@ -396,6 +333,7 @@ describe("scopeReportsToOptions", () => {
     id: "ceo",
     title: "CEO",
     positionCode: "POS-CEO",
+    ladderKind: null,
     departmentId: "exec-dept",
     primaryReportsToPositionId: null,
   });
@@ -403,6 +341,7 @@ describe("scopeReportsToOptions", () => {
     id: "eng1",
     title: "CTO",
     positionCode: "POS-ENG",
+    ladderKind: null,
     departmentId: DEPARTMENT_ID,
     primaryReportsToPositionId: "ceo",
   });
@@ -410,6 +349,7 @@ describe("scopeReportsToOptions", () => {
     id: "hr1",
     title: "VP HR",
     positionCode: "POS-HR",
+    ladderKind: null,
     departmentId: "hr-dept",
     primaryReportsToPositionId: "ceo",
   });
@@ -448,6 +388,7 @@ describe("scopeReportsToOptions", () => {
         id: "eng1",
         title: "CTO",
         positionCode: "POS-ENG",
+        ladderKind: null,
         departmentId: DEPARTMENT_ID,
         organizationalLevel: 2,
         jobFamilyId: FAMILY_ID,
@@ -471,6 +412,7 @@ describe("scopeReportsToOptions", () => {
         id: "eng1",
         title: "CTO",
         positionCode: "POS-ENG",
+        ladderKind: null,
         departmentId: DEPARTMENT_ID,
         organizationalLevel: 2,
         jobFamilyId: null,
