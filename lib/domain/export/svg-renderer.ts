@@ -226,21 +226,21 @@ function renderDepartmentCard(
 
 /**
  * A synthetic sub-division grouping card. Like the department heading but
- * labelled with the sub-division name and always painted in its sub-division
- * colour (matching the Visily reference), falling back to the department
- * colour when no family palette entry exists.
+ * labelled with the sub-division name, and painted in its parent department's
+ * colour so the department and its sub-divisions read as one coloured group.
  */
 function renderSubdivisionCard(
   node: SvgRenderNode,
   position: SvgLayoutPosition,
   roleCount: number,
-  familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
   departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
 ): string {
-  const family = node.jobFamilyId ? familyColorById?.get(node.jobFamilyId) : undefined;
-  const dc = departmentColorByName?.get(node.departmentName);
-  const accentColor = family?.accent ?? dc?.accent ?? resolveDepartmentColor(node.departmentColor);
-  const bodyFill = family?.fill ?? dc?.fill ?? lightTint(accentColor);
+  const { fill: bodyFill, accent: accentColor } = cardColorsFor(
+    node,
+    "department",
+    undefined,
+    departmentColorByName
+  );
   const nameLines = wrapText(node.title, 26, 2);
 
   const parts: string[] = [];
@@ -560,7 +560,6 @@ export function renderOrganogramSvg(
           node,
           at,
           childCountByParent.get(node.positionId) ?? 0,
-          options.familyColorById,
           options.departmentColorByName
         );
       }

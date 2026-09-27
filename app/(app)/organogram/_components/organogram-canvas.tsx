@@ -221,10 +221,10 @@ function CanvasInner({
   // (null when unclassified, leaving a neutral card).
   const resolveCardColor = useCallback(
     (node: OrganogramNode): FamilyColor | null => {
-      // A sub-division grouping card always paints in its sub-division colour,
-      // regardless of the active colour mode — it IS a sub-division.
+      // A sub-division grouping card takes its parent department's colour, so a
+      // department and the sub-divisions under it read as one coloured group.
       if (node.kind === "subdivision") {
-        return node.jobFamilyId ? (familyColorById.get(node.jobFamilyId) ?? null) : null;
+        return departmentColorById.get(node.departmentId) ?? null;
       }
       if (node.kind === "department") {
         return departmentColorById.get(node.departmentId) ?? null;

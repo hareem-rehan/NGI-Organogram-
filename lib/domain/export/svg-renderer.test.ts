@@ -640,7 +640,7 @@ describe("renderOrganogramSvg — department tier", () => {
 });
 
 describe("renderOrganogramSvg — sub-division grouping card", () => {
-  it("renders a sub-division heading in its family colour with a role count", () => {
+  it("renders a sub-division heading in its department colour, ignoring the family palette", () => {
     const positions = new Map([["subdiv:head:fam-uiux", { x: 0, y: 0 }]]);
     const result = renderOrganogramSvg(
       [
@@ -648,6 +648,7 @@ describe("renderOrganogramSvg — sub-division grouping card", () => {
           positionId: "subdiv:head:fam-uiux",
           kind: "subdivision",
           title: "UI/UX",
+          departmentName: "Engineering",
           jobFamilyId: "fam-uiux",
           jobFamilyName: "UI/UX",
         }),
@@ -658,12 +659,16 @@ describe("renderOrganogramSvg — sub-division grouping card", () => {
       {
         ...BASE_OPTIONS,
         colorMode: "department",
+        // A family palette entry exists, but the sub-division card must ignore
+        // it and take its parent department's colour instead.
         familyColorById: new Map([["fam-uiux", { fill: "#b6e5ff", accent: "#3aa4e8" }]]),
+        departmentColorByName: new Map([["Engineering", { fill: "#dcfce7", accent: "#16a34a" }]]),
       }
     );
-    // Painted in the sub-division colour even though colour mode is "department".
-    expect(result.svg).toContain('fill="#b6e5ff"');
-    expect(result.svg).toContain('stroke="#3aa4e8"');
+    // Painted in the department colour, not the family colour.
+    expect(result.svg).toContain('fill="#dcfce7"');
+    expect(result.svg).toContain('stroke="#16a34a"');
+    expect(result.svg).not.toContain('fill="#b6e5ff"');
     // Labelled with the sub-division name, not treated as a person card.
     expect(result.svg).toContain("UI/UX");
     expect(result.svg).not.toContain("Vacant");
