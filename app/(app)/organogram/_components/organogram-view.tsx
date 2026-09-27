@@ -37,7 +37,11 @@ import type {
   OrganogramColorMode,
   PositionNodeMatchState,
 } from "@/app/(app)/organogram/_components/position-node";
-import { buildFamilyColorMap } from "@/lib/domain/organogram-family-colors";
+import {
+  buildFamilyColorMap,
+  departmentColorFromHex,
+  type FamilyColor,
+} from "@/lib/domain/organogram-family-colors";
 import {
   computeVisiblePositionIds,
   countHiddenDescendants,
@@ -491,20 +495,25 @@ export function OrganogramView({
   // colouring uses, so cards read with the exact reference colours in both
   // modes.
   const departmentsInOrder = useMemo(() => {
-    if (!data) return [] as { id: string; name: string }[];
-    const seen = new Map<string, string>();
+    if (!data) return [] as { id: string; name: string; color: string | null }[];
+    const seen = new Map<string, { name: string; color: string | null }>();
     for (const node of data.nodes) {
-      if (!seen.has(node.departmentId)) seen.set(node.departmentId, node.departmentName);
+      if (!seen.has(node.departmentId)) {
+        seen.set(node.departmentId, { name: node.departmentName, color: node.departmentColor });
+      }
     }
     return [...seen.entries()]
-      .map(([id, name]) => ({ id, name }))
+      .map(([id, v]) => ({ id, name: v.name, color: v.color }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
-  const departmentColorById = useMemo(
-    () => buildFamilyColorMap(departmentsInOrder.map((d) => d.id)),
-    [departmentsInOrder]
-  );
+  // Each department is coloured by its OWN stored colour (not an index
+  // palette), so the chart matches the department colours HR configures.
+  const departmentColorById = useMemo(() => {
+    const map = new Map<string, FamilyColor>();
+    for (const d of departmentsInOrder) map.set(d.id, departmentColorFromHex(d.color));
+    return map;
+  }, [departmentsInOrder]);
 
   const departmentLegendEntries = useMemo(
     () =>

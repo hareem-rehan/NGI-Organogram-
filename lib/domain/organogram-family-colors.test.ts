@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { FAMILY_COLOR_PALETTE, buildFamilyColorMap, lightTint } from "./organogram-family-colors";
+import {
+  FAMILY_COLOR_PALETTE,
+  buildFamilyColorMap,
+  departmentColorFromHex,
+  lightTint,
+} from "./organogram-family-colors";
 
 describe("lightTint", () => {
   it("blends a colour toward white into a readable pastel", () => {
@@ -52,5 +57,24 @@ describe("buildFamilyColorMap", () => {
       expect(c.accent).toMatch(/^#[0-9a-f]{6}$/i);
       expect(c.fill).not.toEqual(c.accent);
     }
+  });
+});
+
+describe("departmentColorFromHex", () => {
+  it("uses the stored hex as the accent and a pastel of it as the fill", () => {
+    const c = departmentColorFromHex("#4fae2f");
+    expect(c.accent).toBe("#4fae2f");
+    expect(c.fill).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(c.fill).not.toBe(c.accent);
+    // The fill is lighter than the accent (blended toward white).
+    expect(c.fill).toBe(lightTint("#4fae2f", 0.34));
+  });
+
+  it("falls back to a neutral grey when the colour is null or invalid", () => {
+    const nullish = departmentColorFromHex(null);
+    const invalid = departmentColorFromHex("not-a-hex");
+    expect(nullish.accent).toBe("#94a3b8");
+    expect(invalid.accent).toBe("#94a3b8");
+    expect(nullish).toEqual(invalid);
   });
 });

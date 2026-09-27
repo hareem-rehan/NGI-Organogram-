@@ -67,3 +67,17 @@ export function lightTint(hex: string, weight = 0.22): string {
   const to2 = (c: number) => c.toString(16).padStart(2, "0");
   return `#${to2(mix(r))}${to2(mix(g))}${to2(mix(b))}`;
 }
+
+/** Neutral card colour for a department with no colour set. */
+const NEUTRAL_ACCENT = "#94a3b8";
+
+/**
+ * A department's card colour from its OWN stored hex: the hex is the strong
+ * `accent` (border/legend swatch), and the body `fill` is a heavier pastel of
+ * it (weight tuned to match the reference chart's saturated card fills, not the
+ * very light default tint). Falls back to a neutral grey when unset/invalid.
+ */
+export function departmentColorFromHex(color: string | null | undefined): FamilyColor {
+  const accent = color && /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : NEUTRAL_ACCENT;
+  return { fill: lightTint(accent, 0.34), accent };
+}

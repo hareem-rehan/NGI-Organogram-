@@ -17,7 +17,11 @@ import {
   type SvgLegendDepartment,
   type SvgLegendFamily,
 } from "@/lib/domain/export/svg-renderer";
-import { buildFamilyColorMap } from "@/lib/domain/organogram-family-colors";
+import {
+  buildFamilyColorMap,
+  departmentColorFromHex,
+  type FamilyColor,
+} from "@/lib/domain/organogram-family-colors";
 import {
   assertPngWithinSafeRenderBudget,
   PngPerformanceLimitError,
@@ -185,13 +189,15 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     subgraph.edges
   );
 
-  // Departments present in this export, ordered by name so their palette
-  // colour assignment is stable and identical to the interactive chart's
-  // (which also assigns the reference palette by department name order).
-  const departmentNames = [...new Set(subgraph.nodes.map((n) => n.departmentName))].sort((a, b) =>
-    a.localeCompare(b)
-  );
-  const departmentColorByName = buildFamilyColorMap(departmentNames);
+  // Each department is coloured by its OWN stored colour (denormalised onto
+  // every node as departmentColor), so exports match the interactive chart and
+  // the department colours HR configures — not an index palette.
+  const departmentColorByName = new Map<string, FamilyColor>();
+  for (const node of subgraph.nodes) {
+    if (!departmentColorByName.has(node.departmentName)) {
+      departmentColorByName.set(node.departmentName, departmentColorFromHex(node.departmentColor));
+    }
+  }
 
   const departmentsById = new Map<string, SvgLegendDepartment>();
   for (const node of subgraph.nodes) {
@@ -199,7 +205,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
       departmentsById.set(node.departmentId, {
         id: node.departmentId,
         name: node.departmentName,
-        // Legend swatch matches the card colour (palette accent).
+        // Legend swatch matches the card colour (the department's own accent).
         color: departmentColorByName.get(node.departmentName)?.accent ?? node.departmentColor,
       });
     }
