@@ -26,7 +26,7 @@ vi.mock("@/app/(app)/positions/actions", () => ({
   listJobGradeOptionsAction: vi.fn(async () => ({ ok: true, data: [] })),
   listPositionCareerOptionsAction: vi.fn(async () => ({
     ok: true,
-    data: { jobFamilies: [], careerTracks: [], levelMappingEntries: [] },
+    data: { jobFamilies: [], careerTracks: [], departmentLevelTitles: [] },
   })),
 }));
 

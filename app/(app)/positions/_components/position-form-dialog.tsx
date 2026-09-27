@@ -5,9 +5,9 @@ import { useForm } from "react-hook-form";
 import type {
   CareerTrack,
   Department,
+  DepartmentLevelTitle,
   JobFamily,
   JobGrade,
-  LevelMappingEntry,
   Position,
 } from "@prisma/client";
 
@@ -29,7 +29,7 @@ interface PositionFormDialogProps {
   jobGrades: readonly JobGrade[];
   jobFamilies: readonly JobFamily[];
   careerTracks: readonly CareerTrack[];
-  levelMappingEntries: readonly LevelMappingEntry[];
+  departmentLevelTitles: readonly DepartmentLevelTitle[];
   /** Only relevant when creating (used to populate the Reports-To combobox and to detect whether a root already exists). */
   allPositions: readonly Position[];
   /**
@@ -120,11 +120,12 @@ export function reportsToDescription(
 
 /**
  * Create/edit dialog. The fields step down through the career framework —
- * Department → Sub-division → Career Track → Level → Title — where each
- * choice filters the next, and Title offers the eligible titles configured
- * for that (family, track, level) cell without forcing one. NONE of this
- * sets reporting: Reports-To (create only) is a separate, independent
- * picker. When editing, Reports-To is intentionally NOT here — changing an
+ * Department → Sub-division → Career Track → Level → Level name/Title — where
+ * each choice filters the next. The Level name picker offers the titles
+ * configured for the chosen department + level on the Levels Mapping page
+ * (department → ladder → level → level name); picking one fills the Title and
+ * sets the ladder, but a custom Title can always be typed. NONE of this sets
+ * reporting: Reports-To (create only) is a separate, independent picker. When editing, Reports-To is intentionally NOT here — changing an
  * existing position's place in the hierarchy goes through the dedicated
  * `PositionMoveDialog`.
  */
@@ -136,7 +137,7 @@ export function PositionFormDialog({
   jobGrades,
   jobFamilies,
   careerTracks,
-  levelMappingEntries,
+  departmentLevelTitles,
   allPositions,
   initialDepartmentId,
   initialReportsToPositionId,
@@ -233,6 +234,7 @@ export function PositionFormDialog({
   const jobFamilyId = watch("jobFamilyId");
   const careerTrackKind = watch("careerTrackKind");
   const jobGradeCode = watch("jobGradeCode");
+  const title = watch("title");
   const primaryReportsToPositionId = watch("primaryReportsToPositionId");
 
   const hasRoot = allPositions.some((candidate) => candidate.primaryReportsToPositionId === null);
@@ -268,18 +270,15 @@ export function PositionFormDialog({
     [jobFamilies, departmentId]
   );
 
-  // Titles configured for the chosen (family, level) cell of the career
-  // matrix — offered as suggestions, never enforced. The picker works in level
-  // codes, so match an entry by the code of the grade it points at.
-  const gradeCodeById = useMemo(() => new Map(jobGrades.map((g) => [g.id, g.code])), [jobGrades]);
-  const titleSuggestions = useMemo(() => {
-    if (!jobFamilyId || !jobGradeCode) return [];
-    return levelMappingEntries
-      .filter(
-        (e) => e.jobFamilyId === jobFamilyId && gradeCodeById.get(e.jobGradeId) === jobGradeCode
-      )
-      .map((e) => e.title);
-  }, [levelMappingEntries, jobFamilyId, jobGradeCode, gradeCodeById]);
+  // Level names configured for the chosen department + level on the Levels
+  // Mapping page (department → ladder → level → level name). Picking one fills
+  // the Title and sets the ladder (IC/Manager). Independent of reporting.
+  const levelNameOptions = useMemo(() => {
+    if (!departmentId || !jobGradeCode) return [];
+    return departmentLevelTitles.filter(
+      (t) => t.departmentId === departmentId && t.jobGradeCode === jobGradeCode
+    );
+  }, [departmentLevelTitles, departmentId, jobGradeCode]);
 
   const jobFamilyNameById = useMemo(
     () => new Map(jobFamilies.map((f) => [f.id, f.name])),
@@ -454,32 +453,53 @@ export function PositionFormDialog({
             )}
           </Field>
 
+          {levelNameOptions.length > 0 ? (
+            <Field
+              label="Level name"
+              hint="Configured for this department and level on the Levels Mapping page. Pick one to fill the title, or type a custom title below."
+            >
+              {(fieldProps) => (
+                <Select
+                  {...fieldProps}
+                  // Match the current title back to an option; blank when the
+                  // title is custom (typed) rather than a configured name.
+                  value={levelNameOptions.find((o) => o.title === title)?.id ?? ""}
+                  onChange={(event) => {
+                    const chosen = levelNameOptions.find((o) => o.id === event.target.value);
+                    if (!chosen) return;
+                    setValue("title", chosen.title, { shouldValidate: true });
+                    // Derive the ladder from the chosen name (only submitted
+                    // when a sub-division is set).
+                    setValue("careerTrackKind", chosen.kind);
+                  }}
+                >
+                  <option value="">Select a level name…</option>
+                  {levelNameOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.title} — {option.kind === "MANAGER" ? "Manager" : "IC"}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
+
           <Field
             label="Title"
             required
             error={errors.title?.message}
             hint={
-              titleSuggestions.length > 0
-                ? "Suggestions come from the career matrix for the selected family, track and level."
-                : undefined
+              levelNameOptions.length > 0
+                ? undefined
+                : "No level names configured for this department and level yet — type a title, or add names on the Levels Mapping page."
             }
           >
             {(fieldProps) => (
-              <>
-                <Input
-                  {...fieldProps}
-                  {...register("title", { required: "Title is required." })}
-                  list="position-title-suggestions"
-                  autoFocus
-                />
-                {titleSuggestions.length > 0 ? (
-                  <datalist id="position-title-suggestions">
-                    {titleSuggestions.map((suggestion) => (
-                      <option key={suggestion} value={suggestion} />
-                    ))}
-                  </datalist>
-                ) : null}
-              </>
+              <Input
+                {...fieldProps}
+                {...register("title", { required: "Title is required." })}
+                autoFocus
+              />
             )}
           </Field>
 

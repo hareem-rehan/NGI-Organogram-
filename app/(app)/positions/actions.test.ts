@@ -9,6 +9,7 @@ const {
   jobGradeServiceMock,
   careerServiceMock,
   careerRepoMock,
+  deptLevelTitleRepoMock,
 } = vi.hoisted(() => ({
   requirePermissionMock: vi.fn(),
   serviceMocks: {
@@ -33,8 +34,8 @@ const {
   careerRepoMock: {
     listJobFamiliesForCompany: vi.fn(),
     listCareerTracksForCompany: vi.fn(),
-    listLevelMappingEntriesForCompany: vi.fn(),
   },
+  deptLevelTitleRepoMock: { listDepartmentLevelTitlesForCompany: vi.fn() },
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({ requirePermission: requirePermissionMock }));
@@ -45,6 +46,7 @@ vi.mock("@/lib/repositories/job-grade.repository", () => jobGradeRepoMock);
 vi.mock("@/lib/services/job-grade.service", () => jobGradeServiceMock);
 vi.mock("@/lib/services/career-framework.service", () => careerServiceMock);
 vi.mock("@/lib/repositories/career-framework.repository", () => careerRepoMock);
+vi.mock("@/lib/repositories/department-level-title.repository", () => deptLevelTitleRepoMock);
 
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
 import {

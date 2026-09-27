@@ -58,8 +58,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
   {
     href: "/career-framework",
     label: "Career Framework",
+    description: "Sub-divisions (career specializations) — separate from the reporting hierarchy.",
+    plannedPhase: 14,
+    permission: "career:view",
+  },
+  {
+    href: "/levels-mapping",
+    label: "Levels Mapping",
     description:
-      "Career progression titles by sub-division and IC/Manager track — separate from the reporting hierarchy.",
+      "Level names by department, ladder (IC/Manager) and level — the titles offered when adding a position.",
     plannedPhase: 14,
     permission: "career:view",
   },

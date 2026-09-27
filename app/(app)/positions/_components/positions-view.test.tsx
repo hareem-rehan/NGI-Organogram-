@@ -71,7 +71,7 @@ function mockDefaults() {
   listAllPositionsActionMock.mockResolvedValue({ ok: true, data: [] });
   listPositionCareerOptionsActionMock.mockResolvedValue({
     ok: true,
-    data: { jobFamilies: [], careerTracks: [], levelMappingEntries: [] },
+    data: { jobFamilies: [], careerTracks: [], departmentLevelTitles: [] },
   });
 }
 

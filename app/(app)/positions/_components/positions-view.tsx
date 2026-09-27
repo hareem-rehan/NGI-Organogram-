@@ -6,9 +6,9 @@ import { Plus } from "lucide-react";
 import type {
   CareerTrack,
   Department,
+  DepartmentLevelTitle,
   JobFamily,
   JobGrade,
-  LevelMappingEntry,
   Position,
 } from "@prisma/client";
 
@@ -79,7 +79,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
   const [allPositions, setAllPositions] = useState<Position[]>([]);
   const [jobFamilies, setJobFamilies] = useState<JobFamily[]>([]);
   const [careerTracks, setCareerTracks] = useState<CareerTrack[]>([]);
-  const [levelMappingEntries, setLevelMappingEntries] = useState<LevelMappingEntry[]>([]);
+  const [departmentLevelTitles, setDepartmentLevelTitles] = useState<DepartmentLevelTitle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -130,7 +130,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
       if (careerResult.ok) {
         setJobFamilies(careerResult.data.jobFamilies);
         setCareerTracks(careerResult.data.careerTracks);
-        setLevelMappingEntries(careerResult.data.levelMappingEntries);
+        setDepartmentLevelTitles(careerResult.data.departmentLevelTitles);
       }
     });
   }, [search, departmentFilter, status, occupancy, page]);
@@ -460,7 +460,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
             jobGrades={jobGrades}
             jobFamilies={jobFamilies}
             careerTracks={careerTracks}
-            levelMappingEntries={levelMappingEntries}
+            departmentLevelTitles={departmentLevelTitles}
             allPositions={allPositions}
             onSaved={refresh}
           />

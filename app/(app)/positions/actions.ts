@@ -3,9 +3,9 @@
 import type {
   CareerTrack,
   Department,
+  DepartmentLevelTitle,
   JobFamily,
   JobGrade,
-  LevelMappingEntry,
   Position,
 } from "@prisma/client";
 
@@ -37,8 +37,8 @@ import { listJobGradesForCompany } from "@/lib/repositories/job-grade.repository
 import {
   listCareerTracksForCompany,
   listJobFamiliesForCompany,
-  listLevelMappingEntriesForCompany,
 } from "@/lib/repositories/career-framework.repository";
+import { listDepartmentLevelTitlesForCompany } from "@/lib/repositories/department-level-title.repository";
 import {
   createPositionSchema,
   listPositionsQuerySchema,
@@ -94,21 +94,22 @@ export async function listJobGradeOptionsAction(): Promise<ActionResult<JobGrade
 export interface PositionCareerOptions {
   jobFamilies: JobFamily[];
   careerTracks: CareerTrack[];
-  levelMappingEntries: LevelMappingEntry[];
+  /** Department-scoped level names (Levels Mapping) — the titles offered when picking a level name. */
+  departmentLevelTitles: DepartmentLevelTitle[];
 }
 
-/** Career-framework options for the Position form's Sub-division / Track dropdowns and title suggestions. Read-only, needs only positions:view. */
+/** Career-framework options for the Position form's Sub-division / Track dropdowns and level-name picker. Read-only, needs only positions:view. */
 export async function listPositionCareerOptionsAction(): Promise<
   ActionResult<PositionCareerOptions>
 > {
   return runAction(async () => {
     const user = await requirePermission("positions:view");
-    const [jobFamilies, careerTracks, levelMappingEntries] = await Promise.all([
+    const [jobFamilies, careerTracks, departmentLevelTitles] = await Promise.all([
       listJobFamiliesForCompany(user.companyId),
       listCareerTracksForCompany(user.companyId),
-      listLevelMappingEntriesForCompany(user.companyId),
+      listDepartmentLevelTitlesForCompany(user.companyId),
     ]);
-    return { jobFamilies, careerTracks, levelMappingEntries };
+    return { jobFamilies, careerTracks, departmentLevelTitles };
   });
 }
 

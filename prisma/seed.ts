@@ -266,6 +266,44 @@ export async function runSeed(db: PrismaClient) {
   const qaIC = await findOrCreateTrack(qaFamily.id, "IC", "Individual Contributor");
   await findOrCreateMapping(qaFamily.id, qaIC.id, grade("L6").id, "Senior QA Engineer");
 
+  // --- Levels Mapping (department → ladder → level → level name) ------
+  // The Engineering column, seeded from the stakeholder's reference "Levels
+  // Mapping" grid as the worked example. Other departments' level names are
+  // added through the Levels Mapping page.
+  async function findOrCreateDeptLevelTitle(
+    departmentId: string,
+    kind: "IC" | "MANAGER",
+    jobGradeCode: string,
+    title: string
+  ) {
+    const existing = await db.departmentLevelTitle.findFirst({
+      where: { companyId: company.id, departmentId, kind, jobGradeCode, title },
+    });
+    return (
+      existing ??
+      (await db.departmentLevelTitle.create({
+        data: { companyId: company.id, departmentId, kind, jobGradeCode, title },
+      }))
+    );
+  }
+  const ENGINEERING_LEVEL_TITLES: { kind: "IC" | "MANAGER"; code: string; title: string }[] = [
+    { kind: "IC", code: "L2", title: "Trainee / Associate" },
+    { kind: "IC", code: "L3", title: "Software Engineer" },
+    { kind: "IC", code: "L4", title: "Software Engineer II" },
+    { kind: "IC", code: "L5", title: "Senior Software/QA/DevOps Engineer" },
+    { kind: "IC", code: "L6", title: "Senior Software/QA/DevOps/* Engineer II" },
+    { kind: "IC", code: "L7", title: "Principal Software Engineer" },
+    { kind: "IC", code: "L8", title: "Principal Software Engineer II" },
+    { kind: "IC", code: "L9", title: "Associate Architect" },
+    { kind: "MANAGER", code: "L6", title: "Associate Tech Lead" },
+    { kind: "MANAGER", code: "L7", title: "Tech Lead" },
+    { kind: "MANAGER", code: "L8", title: "Senior Tech Lead" },
+    { kind: "MANAGER", code: "L9", title: "Associate Manager" },
+  ];
+  for (const entry of ENGINEERING_LEVEL_TITLES) {
+    await findOrCreateDeptLevelTitle(engDept.id, entry.kind, entry.code, entry.title);
+  }
+
   // --- Positions -----------------------------------------------------
   const ceo = await upsertPosition({
     companyId: company.id,
