@@ -7,9 +7,9 @@ import { AlertTriangle, Download, Plus } from "lucide-react";
 import type {
   CareerTrack,
   Department,
+  DepartmentLevelTitle,
   JobFamily,
   JobGrade,
-  LevelMappingEntry,
   Position,
 } from "@prisma/client";
 
@@ -159,7 +159,7 @@ export function OrganogramView({
     jobGrades: JobGrade[];
     jobFamilies: JobFamily[];
     careerTracks: CareerTrack[];
-    levelMappingEntries: LevelMappingEntry[];
+    departmentLevelTitles: DepartmentLevelTitle[];
     allPositions: Position[];
   }
   const [formOptions, setFormOptions] = useState<PositionFormOptions | null>(null);
@@ -252,7 +252,7 @@ export function OrganogramView({
       jobGrades: jobGrades.data,
       jobFamilies: career.data.jobFamilies,
       careerTracks: career.data.careerTracks,
-      levelMappingEntries: career.data.levelMappingEntries,
+      departmentLevelTitles: career.data.departmentLevelTitles,
       allPositions: allPositions.data,
     };
     setFormOptions(options);
@@ -941,7 +941,7 @@ export function OrganogramView({
           jobGrades={formOptions.jobGrades}
           jobFamilies={formOptions.jobFamilies}
           careerTracks={formOptions.careerTracks}
-          levelMappingEntries={formOptions.levelMappingEntries}
+          departmentLevelTitles={formOptions.departmentLevelTitles}
           allPositions={formOptions.allPositions}
           initialDepartmentId={formInitialDepartmentId}
           initialReportsToPositionId={formInitialReportsToId}

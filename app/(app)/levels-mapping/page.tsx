@@ -4,33 +4,33 @@ import { NAV_ITEMS } from "@/config/navigation";
 import { hasPermission, requireActiveUser } from "@/lib/auth/current-user";
 import { requirePagePermission } from "@/lib/auth/require-page-permission";
 import { PageHeader } from "@/components/patterns/page-header";
-import { listJobFamiliesForCompany } from "@/lib/repositories/career-framework.repository";
 import { listDepartmentsForCompany } from "@/lib/repositories/department.repository";
-import { CareerFrameworkView } from "@/app/(app)/career-framework/_components/career-framework-view";
+import { listDepartmentLevelTitlesForCompany } from "@/lib/repositories/department-level-title.repository";
+import { LevelsMappingView } from "@/app/(app)/levels-mapping/_components/levels-mapping-view";
 
-const item = NAV_ITEMS.find((navItem) => navItem.href === "/career-framework")!;
+const item = NAV_ITEMS.find((navItem) => navItem.href === "/levels-mapping")!;
 
 export const metadata: Metadata = { title: item.label };
 
-export default async function CareerFrameworkPage() {
+export default async function LevelsMappingPage() {
   await requirePagePermission(item.permission);
   const user = await requireActiveUser();
   const canManage = hasPermission(user, "career:manage");
 
-  // The career framework is company config; counts stay small, so load it
-  // all server-side and hand it to the client view rather than paginating.
-  const [jobFamilies, departments] = await Promise.all([
-    listJobFamiliesForCompany(user.companyId),
+  // Company config; counts stay small, so load it all server-side and hand it
+  // to the client view rather than paginating.
+  const [departments, titles] = await Promise.all([
     listDepartmentsForCompany(user.companyId),
+    listDepartmentLevelTitlesForCompany(user.companyId),
   ]);
 
   return (
     <div>
       <PageHeader title={item.label} description={item.description} />
-      <CareerFrameworkView
+      <LevelsMappingView
         canManage={canManage}
-        initialJobFamilies={jobFamilies}
         departments={departments.filter((d) => d.status === "ACTIVE")}
+        initialTitles={titles}
       />
     </div>
   );

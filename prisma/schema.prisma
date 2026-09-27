@@ -204,6 +204,7 @@ model Company {
   jobFamilies         JobFamily[]
   careerTracks        CareerTrack[]
   levelMappingEntries LevelMappingEntry[]
+  departmentLevelTitles DepartmentLevelTitle[]
   positions           Position[]
   employees           Employee[]
   positionAssignments PositionAssignment[]
@@ -245,6 +246,8 @@ model Department {
   positions   Position[]
   jobGrades   JobGrade[]
   jobFamilies JobFamily[]
+
+  departmentLevelTitles DepartmentLevelTitle[]
 
   @@unique([companyId, code])
   @@unique([id, companyId])
@@ -446,6 +449,46 @@ model LevelMappingEntry {
   @@index([careerTrackId])
   @@index([jobGradeId])
   @@map("level_mapping_entries")
+}
+
+// ---------------------------------------------------------------------
+// Department level title (the "Levels Mapping" grid)
+//
+// The department-scoped career map the user configures on the Levels
+// Mapping page: for a Department, on a ladder (IC or Manager), at a level
+// (a JOB_GRADE_SCALE code such as "L7"), the NAME of the role at that rung
+// (e.g. "Principal Software Engineer"). This is what the Position form
+// offers when picking a level name. It is career progression only —
+// nothing here sets or reads a reporting relationship (docs/DECISIONS.md).
+//
+// The level is stored as its CODE (validated against JOB_GRADE_SCALE), not
+// a JobGrade FK: the grid's rows ARE the fixed scale, and the Position form
+// already speaks in level codes (Position jobGradeCode). This keeps the
+// feature decoupled from per-department JobGrade materialisation.
+// ---------------------------------------------------------------------
+
+model DepartmentLevelTitle {
+  id           String          @id @default(uuid()) @db.Uuid
+  companyId    String          @db.Uuid
+  departmentId String          @db.Uuid
+  jobGradeCode String
+  kind         CareerTrackKind
+  title        String
+  displayOrder Int?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  /// Company-scoped composite FK: a title's department must be in the same
+  /// company. Cascade — deleting a department clears its level titles.
+  department Department @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  /// A title is unique within a (department, ladder, level) cell; the same
+  /// name never repeats for one department+kind+level.
+  @@unique([companyId, departmentId, kind, jobGradeCode, title])
+  @@index([companyId])
+  @@index([departmentId])
+  @@map("department_level_titles")
 }
 
 // ---------------------------------------------------------------------
