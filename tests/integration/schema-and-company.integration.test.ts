@@ -17,6 +17,7 @@ describe("schema and migration constraints", () => {
       "career_tracks",
       "companies",
       "company_settings",
+      "department_level_titles",
       "departments",
       "employees",
       "export_jobs",
