@@ -1,5 +1,5 @@
 import "server-only";
-import type { Position, Prisma } from "@prisma/client";
+import type { CareerTrackKind, Position, Prisma } from "@prisma/client";
 import { Prisma as PrismaNamespace } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
@@ -36,6 +36,8 @@ export interface CreatePositionInput {
   /** Career-framework classification (optional; never affects the reporting tree). */
   jobFamilyId?: string | null;
   careerTrackId?: string | null;
+  /** IC/Manager ladder captured directly on the position (optional; presentational). */
+  ladderKind?: CareerTrackKind | null;
   title: string;
   positionCode: string;
   description?: string | null;
@@ -102,6 +104,7 @@ export async function createPosition(
           jobGradeId: input.jobGradeId ?? null,
           jobFamilyId: input.jobFamilyId ?? null,
           careerTrackId: input.careerTrackId ?? null,
+          ladderKind: input.ladderKind ?? null,
           title: input.title.trim(),
           positionCode,
           description: input.description?.trim() || null,
@@ -259,6 +262,7 @@ export interface UpdatePositionInput {
   jobGradeId?: string | null;
   jobFamilyId?: string | null;
   careerTrackId?: string | null;
+  ladderKind?: CareerTrackKind | null;
   displayOrder?: number | null;
 }
 
@@ -317,6 +321,7 @@ export async function updatePosition(
           ...(input.jobGradeId !== undefined ? { jobGradeId: input.jobGradeId } : {}),
           ...(input.jobFamilyId !== undefined ? { jobFamilyId: input.jobFamilyId } : {}),
           ...(input.careerTrackId !== undefined ? { careerTrackId: input.careerTrackId } : {}),
+          ...(input.ladderKind !== undefined ? { ladderKind: input.ladderKind } : {}),
           ...(input.displayOrder !== undefined ? { displayOrder: input.displayOrder } : {}),
         },
       });

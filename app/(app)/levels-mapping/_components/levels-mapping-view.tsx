@@ -50,6 +50,13 @@ export function LevelsMappingView({
     return map;
   }, [departments]);
 
+  // The ladders (columns) a department runs, and the departments that run at
+  // least one — a department with neither IC nor Manager (e.g. Founder) is
+  // left out of the grid entirely.
+  const laddersFor = (d: Department) =>
+    LADDERS.filter((l) => (l.kind === "IC" ? d.hasIcLadder : d.hasManagerLadder));
+  const visibleDepartments = departments.filter((d) => d.hasIcLadder || d.hasManagerLadder);
+
   const titlesByCell = useMemo(() => {
     const map = new Map<string, DepartmentLevelTitle[]>();
     for (const t of titles) {
@@ -89,6 +96,15 @@ export function LevelsMappingView({
     );
   }
 
+  if (visibleDepartments.length === 0) {
+    return (
+      <p className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
+        No departments have career ladders yet. Set a department&apos;s career ladders to Individual
+        Contributor and/or Manager to map level names here.
+      </p>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -99,7 +115,7 @@ export function LevelsMappingView({
         </p>
         {/* Legend of department colours. */}
         <div className="flex flex-wrap items-center gap-3">
-          {departments.map((d) => (
+          {visibleDepartments.map((d) => (
             <span key={d.id} className="flex items-center gap-1.5 text-xs">
               <span
                 aria-hidden="true"
@@ -129,10 +145,10 @@ export function LevelsMappingView({
               >
                 Level
               </th>
-              {departments.map((d) => (
+              {visibleDepartments.map((d) => (
                 <th
                   key={d.id}
-                  colSpan={2}
+                  colSpan={laddersFor(d).length}
                   scope="colgroup"
                   className="border-b border-l p-2 text-center text-sm font-semibold"
                   style={{ backgroundColor: colorByDept.get(d.id)?.accent, color: "#ffffff" }}
@@ -142,8 +158,8 @@ export function LevelsMappingView({
               ))}
             </tr>
             <tr>
-              {departments.flatMap((d) =>
-                LADDERS.map((ladder, i) => (
+              {visibleDepartments.flatMap((d) =>
+                laddersFor(d).map((ladder, i) => (
                   <th
                     key={`${d.id}-${ladder.kind}`}
                     scope="col"
@@ -165,9 +181,9 @@ export function LevelsMappingView({
                   <span className="font-semibold">{scale.code}</span>
                   <span className="text-muted-foreground block text-xs">{scale.name}</span>
                 </th>
-                {departments.flatMap((d) => {
+                {visibleDepartments.flatMap((d) => {
                   const color = colorByDept.get(d.id);
-                  return LADDERS.map((ladder, i) => {
+                  return laddersFor(d).map((ladder, i) => {
                     const cell = titlesByCell.get(cellKey(d.id, ladder.kind, scale.code)) ?? [];
                     return (
                       <td

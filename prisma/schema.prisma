@@ -229,6 +229,11 @@ model Department {
   code               String
   description        String?
   color              String?
+  /// Which career ladders this department runs. Both true = IC + Manager;
+  /// one true = that ladder only; both false = NONE (no career ladders, e.g.
+  /// the Founder/root department) — excluded from the Level Mapping grid.
+  hasIcLadder        Boolean          @default(true)
+  hasManagerLadder   Boolean          @default(true)
   parentDepartmentId String?          @db.Uuid
   status             DepartmentStatus @default(ACTIVE)
   displayOrder       Int?
@@ -310,6 +315,11 @@ model Position {
   /// careerTrack the IC-vs-Manager ladder. See docs/DECISIONS.md.
   jobFamilyId                String?        @db.Uuid
   careerTrackId              String?        @db.Uuid
+  /// The IC/Manager ladder this position sits on, captured directly on the
+  /// position (independent of any sub-division). NULL = neither/none. This is
+  /// the "position context" chosen on the Add-Position form; when a
+  /// sub-division is also set, careerTrackId is resolved from it too.
+  ladderKind                 CareerTrackKind?
   title                      String
   positionCode               String
   description                String?

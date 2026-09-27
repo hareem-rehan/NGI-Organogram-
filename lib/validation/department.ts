@@ -43,6 +43,10 @@ export const createDepartmentSchema = z
     code: codeSchema,
     description: descriptionSchema,
     color: colorSchema,
+    // Career ladders the department runs. Both true = IC + Manager; one true =
+    // that ladder only; both false = NONE (excluded from Level Mapping).
+    hasIcLadder: z.boolean().optional(),
+    hasManagerLadder: z.boolean().optional(),
     parentDepartmentId: z.string().uuid().nullable().optional(),
   })
   .strict();
@@ -55,6 +59,8 @@ export const updateDepartmentSchema = z
     code: codeSchema.optional(),
     description: descriptionSchema,
     color: colorSchema,
+    hasIcLadder: z.boolean().optional(),
+    hasManagerLadder: z.boolean().optional(),
   })
   .strict();
 export type UpdateDepartmentValues = z.infer<typeof updateDepartmentSchema>;

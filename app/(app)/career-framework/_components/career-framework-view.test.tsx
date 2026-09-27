@@ -26,6 +26,8 @@ const DEPT: Department = {
   description: null,
   color: null,
   parentDepartmentId: null,
+  hasIcLadder: true,
+  hasManagerLadder: true,
   status: "ACTIVE",
   displayOrder: null,
   createdAt: new Date(),

@@ -33,6 +33,8 @@ export interface CreateDepartmentInput {
   code: string;
   description?: string | null;
   color?: string | null;
+  hasIcLadder?: boolean;
+  hasManagerLadder?: boolean;
   parentDepartmentId?: string | null;
   displayOrder?: number | null;
 }
@@ -67,6 +69,10 @@ export async function createDepartment(
           code,
           description: input.description?.trim() || null,
           color: input.color ?? null,
+          ...(input.hasIcLadder !== undefined ? { hasIcLadder: input.hasIcLadder } : {}),
+          ...(input.hasManagerLadder !== undefined
+            ? { hasManagerLadder: input.hasManagerLadder }
+            : {}),
           parentDepartmentId: input.parentDepartmentId ?? null,
           displayOrder: input.displayOrder ?? null,
         },
@@ -182,6 +188,8 @@ export interface UpdateDepartmentInput {
   code?: string;
   description?: string | null;
   color?: string | null;
+  hasIcLadder?: boolean;
+  hasManagerLadder?: boolean;
   displayOrder?: number | null;
 }
 
@@ -213,6 +221,10 @@ export async function updateDepartment(
             ? { description: input.description?.trim() || null }
             : {}),
           ...(input.color !== undefined ? { color: input.color } : {}),
+          ...(input.hasIcLadder !== undefined ? { hasIcLadder: input.hasIcLadder } : {}),
+          ...(input.hasManagerLadder !== undefined
+            ? { hasManagerLadder: input.hasManagerLadder }
+            : {}),
           ...(input.displayOrder !== undefined ? { displayOrder: input.displayOrder } : {}),
         },
       });
