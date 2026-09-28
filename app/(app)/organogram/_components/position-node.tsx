@@ -123,7 +123,11 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         backgroundColor: fill,
       }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-border !border-none" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
+      />
       <button
         type="button"
         onClick={() => onToggleCollapse(node.positionId)}
@@ -153,7 +157,11 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
-      <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
+      />
     </div>
   );
 }
@@ -181,7 +189,11 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
       )}
       style={{ width: NODE_WIDTH, height: NODE_HEIGHT, borderColor: border, backgroundColor: fill }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-border !border-none" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
+      />
       <button
         type="button"
         onClick={() => onToggleCollapse(node.positionId)}
@@ -211,7 +223,11 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
-      <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
+      />
     </div>
   );
 }
@@ -302,7 +318,11 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         backgroundColor: cardBackground,
       }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-border !border-none" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
+      />
       {arrangeMode ? (
         // Inline management controls (managers only, arrange mode).
         // `nodrag` keeps a click on these from starting a node drag, and
@@ -412,10 +432,20 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             {rolesUnder === 1 ? " role under" : " roles under"}
           </button>
         ) : (
+          // No expand control here (nothing is drawn directly under this card
+          // — e.g. its reports sit under their own department box), but the
+          // count is still the real one.
           <p
             className={cn(secondaryTextClass(cardBackground), "shrink-0 text-[11px] font-semibold")}
           >
-            No roles under
+            {rolesUnder > 0 ? (
+              <>
+                <span className="text-foreground font-extrabold">{rolesUnder}</span>
+                {rolesUnder === 1 ? " role under" : " roles under"}
+              </>
+            ) : (
+              "No roles under"
+            )}
           </p>
         )}
         {node.jobGradeCode || node.jobFamilyName ? (
@@ -433,7 +463,11 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           </p>
         ) : null}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
+      />
     </div>
   );
 }

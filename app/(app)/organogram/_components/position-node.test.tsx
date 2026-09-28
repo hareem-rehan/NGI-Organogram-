@@ -383,6 +383,15 @@ describe("PositionNode — department tier (Demo 1 feedback)", () => {
 // D29) — the same way a department heading counts its roles — replacing the
 // earlier "N direct reports" footer.
 describe("PositionNode — roles-under footer", () => {
+  it("still shows the real count when nothing is drawn directly beneath the card", () => {
+    // E.g. a manager whose reports are drawn under their own department box.
+    renderNode({
+      node: makeNode({ hasChildren: false, directReportCount: 3, totalReportCount: 7 }),
+    });
+    expect(screen.getByText(/roles under/).closest("p")).toHaveTextContent(/^7 roles under$/);
+    expect(screen.queryByRole("button", { name: /^(Expand|Collapse)/ })).not.toBeInTheDocument();
+  });
+
   it("shows the whole-branch count, not just direct reports", () => {
     renderNode({
       node: makeNode({
