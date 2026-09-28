@@ -16,6 +16,17 @@ export type OrganogramColorMode = "department" | "family";
 /** Phase 9: how this node relates to the active search/filter/focus criteria — "none" (the Phase 8 default, no search/filter/focus active) never renders a Match/Context badge and never dims. */
 export type PositionNodeMatchState = "none" | "match" | "context";
 
+/**
+ * Secondary text (occupant, grade, counts, expand control) on a card. On a
+ * colour-FILLED card it uses the full foreground colour: the reference
+ * palette's stronger fills (e.g. Marketing orange) drop the muted grey below
+ * WCAG AA, while the foreground stays >= 4.5:1 on every swatch
+ * (organogram-family-colors.test.ts). Uncoloured cards keep the muted grey.
+ */
+function secondaryTextClass(fill: string | undefined): string {
+  return fill ? "text-foreground" : "text-muted-foreground";
+}
+
 export interface PositionNodeData extends Record<string, unknown> {
   node: OrganogramNode;
   isCollapsed: boolean;
@@ -109,16 +120,22 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         <div className="flex min-w-0 items-center gap-1.5">
           {node.hasChildren ? (
             isCollapsed ? (
-              <ChevronRight aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+              <ChevronRight
+                aria-hidden="true"
+                className={cn(secondaryTextClass(fill), "size-4 shrink-0")}
+              />
             ) : (
-              <ChevronDown aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(secondaryTextClass(fill), "size-4 shrink-0")}
+              />
             )
           ) : null}
           <p className="text-foreground line-clamp-2 text-sm leading-tight font-bold tracking-wide uppercase">
             {node.departmentName}
           </p>
         </div>
-        <p className="text-muted-foreground mt-1 truncate text-xs">
+        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-xs")}>
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
@@ -160,16 +177,22 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
         <div className="flex min-w-0 items-center gap-1.5">
           {node.hasChildren ? (
             isCollapsed ? (
-              <ChevronRight aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+              <ChevronRight
+                aria-hidden="true"
+                className={cn(secondaryTextClass(fill), "size-4 shrink-0")}
+              />
             ) : (
-              <ChevronDown aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(secondaryTextClass(fill), "size-4 shrink-0")}
+              />
             )
           ) : null}
           <p className="text-foreground line-clamp-2 text-sm leading-tight font-semibold">
             {node.title}
           </p>
         </div>
-        <p className="text-muted-foreground mt-1 truncate text-xs">
+        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-xs")}>
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
@@ -338,10 +361,17 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           </div>
         </div>
         {occupantName ? (
-          <p className="text-foreground/80 mt-1 truncate text-xs">{occupantName}</p>
+          <p
+            className={cn(
+              cardBackground ? "text-foreground" : "text-foreground/80",
+              "mt-1 truncate text-xs"
+            )}
+          >
+            {occupantName}
+          </p>
         ) : null}
         {node.jobGradeCode || node.jobFamilyName ? (
-          <p className="text-muted-foreground mt-0.5 truncate text-xs">
+          <p className={cn(secondaryTextClass(cardBackground), "mt-0.5 truncate text-xs")}>
             {node.jobGradeCode ? <span className="font-medium">{node.jobGradeCode}</span> : null}
             {node.jobGradeCode && node.jobFamilyName ? " · " : null}
             {node.jobFamilyName ?? null}
@@ -359,7 +389,10 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
                 ? `Expand ${node.title}, ${hiddenDescendantCount} hidden position${hiddenDescendantCount === 1 ? "" : "s"}`
                 : `Collapse ${node.title}`
             }
-            className="nodrag text-muted-foreground hover:text-foreground focus-visible:ring-ring flex items-center gap-1 rounded text-xs outline-none focus-visible:ring-2"
+            className={cn(
+              "nodrag hover:text-foreground focus-visible:ring-ring flex items-center gap-1 rounded text-xs outline-none focus-visible:ring-2",
+              secondaryTextClass(cardBackground)
+            )}
           >
             {isCollapsed ? (
               <ChevronRight aria-hidden="true" className="size-3.5" />
@@ -370,7 +403,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             {isCollapsed && hiddenDescendantCount > 0 ? ` (+${hiddenDescendantCount} hidden)` : ""}
           </button>
         ) : (
-          <p className="text-muted-foreground text-xs">No direct reports</p>
+          <p className={cn(secondaryTextClass(cardBackground), "text-xs")}>No direct reports</p>
         )}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />

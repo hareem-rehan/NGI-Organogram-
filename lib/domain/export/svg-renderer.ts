@@ -218,7 +218,7 @@ function renderDepartmentCard(
     );
   });
   parts.push(
-    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${EXPORT_COLORS.mutedForeground}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
+    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${EXPORT_COLORS.foreground}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
   );
   parts.push("</g>");
   return parts.join("");
@@ -254,7 +254,7 @@ function renderSubdivisionCard(
     );
   });
   parts.push(
-    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${EXPORT_COLORS.mutedForeground}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
+    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${EXPORT_COLORS.foreground}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
   );
   parts.push("</g>");
   return parts.join("");
@@ -355,11 +355,13 @@ function renderNodeCard(
     y += 14;
   }
   // Grade and family share the compact card's last line, mirroring
-  // position-node.tsx ("L7 · Software Engineering").
+  // position-node.tsx ("L7 · Software Engineering"). Every exported card is
+  // colour-filled, so its text uses the foreground colour — the muted grey
+  // falls below WCAG AA on the reference palette's stronger fills.
   const gradeFamilyLine = [node.jobGradeCode, node.jobFamilyName].filter(Boolean).join(" · ");
   if (gradeFamilyLine) {
     parts.push(
-      `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.mutedForeground}">${escapeXmlText(gradeFamilyLine)}</text>`
+      `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(gradeFamilyLine)}</text>`
     );
   }
 
