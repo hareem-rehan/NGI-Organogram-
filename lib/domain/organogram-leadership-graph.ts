@@ -81,7 +81,8 @@ export function isSubdivisionGroupId(id: string): boolean {
 
 /**
  * A synthetic sub-division card, inserted between a position and its reports
- * when that position's reports span 2+ sub-divisions (docs/DECISIONS.md D25).
+ * at the point where a sub-division begins under it — for each report family
+ * the position is not itself part of (docs/DECISIONS.md D25, refined).
  * Like the department heading it is pure visual grouping — inert on every
  * field that describes a real seat — but it carries `jobFamilyId`/name so the
  * card paints in its sub-division colour (matching the Visily reference) and
@@ -166,11 +167,12 @@ function makeDepartmentNode(args: {
 }
 
 /**
- * Groups a position's reports under synthetic sub-division cards when those
- * reports span two or more sub-divisions. Returns the nodes with the new
- * cards appended and the grouped reports re-parented onto them. Positions with
- * no sub-division, and positions whose reports all share one (or no)
- * sub-division, are left exactly as they were.
+ * Groups a position's reports under synthetic sub-division cards at the point
+ * where each sub-division begins — one card per report family the position is
+ * not itself part of. Returns the nodes with the new cards appended and the
+ * grouped reports re-parented onto them. Family-less reports, and reports whose
+ * family the position already belongs to (the sub-division continues rather
+ * than begins), are left directly under the position.
  */
 function insertSubdivisionTier(baseNodes: readonly OrganogramNode[]): OrganogramNode[] {
   // Direct children of each node (in the already-parented base tree).
@@ -228,13 +230,18 @@ function insertSubdivisionTier(baseNodes: readonly OrganogramNode[]): Organogram
       byFamily.set(child.jobFamilyId, bucket);
     }
 
-    // The rule: only when the reports span 2+ distinct sub-divisions.
-    if (byFamily.size < 2) continue;
-
-    // Deterministic order: by sub-division name, then id.
-    const familyEntries = [...byFamily.entries()].sort(
-      (a, b) => a[1].name.localeCompare(b[1].name) || a[0].localeCompare(b[0])
-    );
+    // A sub-division card marks where a sub-division BEGINS under a position:
+    // create one for each family among the reports that the parent is not
+    // itself already part of. This draws a labelled box at the top of every
+    // sub-division (matching the reference org chart — e.g. QA/QAA under its
+    // Associate Director, Backend + DE under theirs) without repeating the box
+    // at every level below, where the parent is already in that family.
+    // (Refines D25, which only grouped when reports spanned 2+ sub-divisions.)
+    const familyEntries = [...byFamily.entries()]
+      .filter(([familyId]) => familyId !== parent.jobFamilyId)
+      // Deterministic order: by sub-division name, then id.
+      .sort((a, b) => a[1].name.localeCompare(b[1].name) || a[0].localeCompare(b[0]));
+    if (familyEntries.length === 0) continue;
     for (const [familyId, bucket] of familyEntries) {
       const groupId = subdivisionGroupId(parent.positionId, familyId);
       subdivisionNodes.push(
