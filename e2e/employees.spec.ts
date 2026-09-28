@@ -42,11 +42,13 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     // to claim the root itself.
     await page.goto("/positions");
     await expect(page.getByRole("row").nth(1)).toBeVisible();
+    // The first cell of a manageable row is now the bulk-select checkbox, so
+    // the position Title is the second cell (nth(1)).
     const existingParentName = await page
       .getByRole("row")
       .nth(1)
       .getByRole("cell")
-      .first()
+      .nth(1)
       .textContent();
     if (!existingParentName) {
       throw new Error(
