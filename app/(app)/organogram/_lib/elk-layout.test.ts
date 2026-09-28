@@ -102,7 +102,7 @@ describe("computeElkLayout — department segregation", () => {
       .sort((a, b) => a.left - b.left);
     for (let i = 1; i < bands.length; i++) {
       const gap = bands[i]!.left - bands[i - 1]!.right;
-      // Wider than the 36px gap between two cards of the same department.
+      // Wider than the 24px gap between two cards of the same department.
       expect(gap).toBeGreaterThanOrEqual(2 * DEPARTMENT_SIDE_PADDING);
     }
   });

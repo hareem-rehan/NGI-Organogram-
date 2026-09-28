@@ -28,6 +28,7 @@ import {
   lockPositionsForUpdate,
 } from "@/lib/repositories/position.repository";
 import { findDepartmentById } from "@/lib/repositories/department.repository";
+import { ensureJobGradeByCode } from "@/lib/services/job-grade.service";
 import type { DbClient } from "@/lib/repositories/types";
 import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service";
 
@@ -472,6 +473,163 @@ export async function changeReportsTo(
   });
 }
 
+export interface MovePositionToDepartmentInput {
+  companyId: string;
+  actor?: AuditActor;
+  positionId: string;
+  departmentId: string;
+}
+
+export interface MovePositionToDepartmentResult {
+  position: Position;
+  /** The position it now reports to (the department's top position, or the company root). */
+  newHeadPositionId: string;
+  /** How many positions changed department (the moved position plus its branch). */
+  departmentChangedCount: number;
+}
+
+/**
+ * The organogram's "drop onto a department heading" move (docs/DECISIONS.md
+ * D29): the position joins that department and reports to the department's
+ * TOP position — the highest-level position in the department whose own head
+ * is outside it (ties broken by title) — or to the company root when the
+ * department has no positions yet. Its whole branch (everyone below it
+ * through head 1) moves along, keeps its reporting lines, and joins the
+ * department too:
+ *
+ * - each moved position's job level is re-mapped to the SAME level code in
+ *   the new department (levels are department-scoped; company-wide levels are
+ *   kept as they are);
+ * - a sub-division (department-scoped) that doesn't belong to the new
+ *   department is cleared, with its career track.
+ *
+ * The reporting change reuses `movePosition` (cycle checks, level
+ * recalculation, locking), and everything runs in ONE transaction with full
+ * rollback. A position cannot be dropped into its own branch's department
+ * head (that is the cycle rule), and the company root cannot be moved.
+ */
+export async function movePositionToDepartment(
+  input: MovePositionToDepartmentInput,
+  db: DbClient = prisma
+): Promise<MovePositionToDepartmentResult> {
+  return withTransaction(db, async (tx) => {
+    const position = await findPositionById(input.positionId, input.companyId, tx);
+    if (!position) throw new NotFoundError("Position", input.positionId);
+    if (position.primaryReportsToPositionId === null) {
+      throw new DomainValidationError(
+        "The top (root) position can't be moved into a department — it sits above every department."
+      );
+    }
+    const department = await findDepartmentById(input.departmentId, input.companyId, tx);
+    if (!department) {
+      throw new CrossCompanyError(
+        `Department ${input.departmentId} does not exist in company ${input.companyId}.`
+      );
+    }
+
+    // The branch that moves along: everyone below the position through head 1.
+    const subtree = await getPositionSubtree(input.positionId, input.companyId, tx);
+    const branchIds = new Set<string>([input.positionId]);
+    for (const node of subtree) {
+      if (node.parentId !== null && branchIds.has(node.parentId)) branchIds.add(node.id);
+    }
+
+    // The department's top position, ignoring the branch being moved in.
+    const members = await tx.position.findMany({
+      where: {
+        companyId: input.companyId,
+        departmentId: input.departmentId,
+        id: { notIn: [...branchIds] },
+        status: { not: "INACTIVE" },
+      },
+      select: {
+        id: true,
+        title: true,
+        organizationalLevel: true,
+        primaryReportsToPositionId: true,
+      },
+    });
+    const memberIds = new Set(members.map((m) => m.id));
+    const top = members
+      .filter((m) => !m.primaryReportsToPositionId || !memberIds.has(m.primaryReportsToPositionId))
+      .sort(
+        (a, b) => a.organizationalLevel - b.organizationalLevel || a.title.localeCompare(b.title)
+      )[0];
+    const root = top ? null : await findRootPosition(input.companyId, tx);
+    const newHeadPositionId = top?.id ?? root?.id;
+    if (!newHeadPositionId) {
+      throw new DomainValidationError("This company has no top position to report to.");
+    }
+
+    // Reporting change: all the usual rules (cycle, second head, levels).
+    if (position.primaryReportsToPositionId !== newHeadPositionId) {
+      await movePosition(
+        {
+          companyId: input.companyId,
+          actor: input.actor,
+          positionId: input.positionId,
+          newParentPositionId: newHeadPositionId,
+        },
+        tx
+      );
+    }
+
+    // Department change for the whole branch.
+    const branchRows = await tx.position.findMany({
+      where: { id: { in: [...branchIds] }, companyId: input.companyId },
+      include: {
+        jobGrade: { select: { code: true, departmentId: true } },
+        jobFamily: { select: { departmentId: true } },
+      },
+    });
+    let departmentChangedCount = 0;
+    for (const row of branchRows) {
+      if (row.departmentId === input.departmentId) continue;
+      const { jobGrade, jobFamily, ...before } = row;
+      const jobGradeId =
+        jobGrade && jobGrade.departmentId !== null && jobGrade.departmentId !== input.departmentId
+          ? (
+              await ensureJobGradeByCode(
+                input.companyId,
+                input.departmentId,
+                jobGrade.code,
+                undefined,
+                tx
+              )
+            ).id
+          : row.jobGradeId;
+      const familyStays = jobFamily !== null && jobFamily.departmentId === input.departmentId;
+      const updated = await tx.position.update({
+        where: { id: row.id },
+        data: {
+          departmentId: input.departmentId,
+          jobGradeId,
+          ...(familyStays ? {} : { jobFamilyId: null, careerTrackId: null }),
+        },
+      });
+      await recordAuditEvent(
+        {
+          companyId: input.companyId,
+          actor: input.actor ?? "SYSTEM",
+          action: "UPDATED",
+          category: "POSITION",
+          entityType: "Position",
+          entityId: row.id,
+          entityDisplayReference: row.positionCode,
+          before,
+          after: updated,
+          metadata: { movedIntoDepartmentId: input.departmentId },
+        },
+        tx
+      );
+      departmentChangedCount++;
+    }
+
+    const final = await findPositionById(input.positionId, input.companyId, tx);
+    return { position: final!, newHeadPositionId, departmentChangedCount };
+  });
+}
+
 export interface UpdatePositionInput {
   companyId: string;
   actor?: AuditActor;
@@ -659,16 +817,10 @@ export async function deletePosition(
       );
     }
 
-    // Any assignment — current OR historical — pins the position, because
-    // assignment history is kept (PositionAssignment → Position is
-    // RESTRICT). A position someone has ever held is deactivated, not
-    // deleted, so that history stays resolvable.
-    const assignmentCount = await tx.positionAssignment.count({ where: { positionId: id } });
-    if (assignmentCount > 0) {
-      throw new UnsafeMutationError(
-        `${position.title} has employment history (someone is or was assigned to it), so it cannot be deleted. Deactivate this position instead.`
-      );
-    }
+    // Only someone who holds (or is booked to hold) the position blocks the
+    // delete. Past assignments are removed with it, each audited
+    // (docs/DECISIONS.md D20, amended 2026-09-28).
+    await clearPastAssignmentsOrRefuse([id], companyId, actor, tx);
 
     try {
       await tx.position.delete({ where: { id } });
@@ -693,6 +845,65 @@ export async function deletePosition(
       tx
     );
   });
+}
+
+/**
+ * The delete rule for positions (docs/DECISIONS.md D20, amended 2026-09-28):
+ * a position can be deleted while nobody holds it. An assignment that is
+ * current (no end date) or still to come (ends in the future) blocks the
+ * delete, and the message names who holds it. PAST assignments do not: they
+ * are removed together with the position (PositionAssignment → Position is
+ * RESTRICT, so they must go first), each with its own audit event carrying
+ * the full before-snapshot, so the record of who held it survives in the
+ * audit log.
+ */
+async function clearPastAssignmentsOrRefuse(
+  positionIds: readonly string[],
+  companyId: string,
+  actor: AuditActor,
+  tx: DbClient
+): Promise<void> {
+  if (positionIds.length === 0) return;
+  const now = new Date();
+  const assignments = await tx.positionAssignment.findMany({
+    where: { positionId: { in: [...positionIds] }, companyId },
+    include: {
+      employee: { select: { firstName: true, lastName: true, preferredName: true } },
+      position: { select: { title: true } },
+    },
+  });
+
+  const current = assignments.find((a) => a.endDate === null || a.endDate > now);
+  if (current) {
+    const name =
+      current.employee.preferredName?.trim() ||
+      `${current.employee.firstName} ${current.employee.lastName}`.trim();
+    throw new UnsafeMutationError(
+      `${current.position.title} is currently held by ${name}, so it cannot be deleted. End or transfer that assignment first, or deactivate the position instead.`
+    );
+  }
+
+  for (const assignment of assignments) {
+    // `before` is filtered through the PositionAssignment audit allowlist, so
+    // the joined employee/position fields never reach the audit log.
+    await recordAuditEvent(
+      {
+        companyId,
+        actor,
+        action: "DELETED",
+        category: "ASSIGNMENT",
+        entityType: "PositionAssignment",
+        entityId: assignment.id,
+        before: assignment,
+      },
+      tx
+    );
+  }
+  if (assignments.length > 0) {
+    await tx.positionAssignment.deleteMany({
+      where: { id: { in: assignments.map((a) => a.id) } },
+    });
+  }
 }
 
 export interface DeleteSubtreeResult {
@@ -750,17 +961,10 @@ export async function deletePositionSubtree(
       );
     }
 
-    // Refuse if anyone in the branch is or was assigned — assignment history
-    // is kept (PositionAssignment → Position is RESTRICT). A held seat is
-    // deactivated, not deleted, so the history stays resolvable.
-    const assignmentCount = await tx.positionAssignment.count({
-      where: { positionId: { in: memberIds } },
-    });
-    if (assignmentCount > 0) {
-      throw new UnsafeMutationError(
-        `${root.title} cannot be deleted: ${assignmentCount} position${assignmentCount === 1 ? "" : "s"} in this branch ${assignmentCount === 1 ? "has" : "have"} employment history (someone is or was assigned). Reassign or deactivate ${assignmentCount === 1 ? "it" : "them"} first, or deactivate this branch instead.`
-      );
-    }
+    // Refuse if anyone in the branch currently holds (or is booked to hold) a
+    // seat; otherwise past assignments are removed with the branch, each
+    // audited (docs/DECISIONS.md D20, amended 2026-09-28).
+    await clearPastAssignmentsOrRefuse(memberIds, companyId, actor, tx);
 
     // Full rows for the before-snapshots, keyed for the audit loop.
     const rows = await tx.position.findMany({ where: { id: { in: memberIds }, companyId } });

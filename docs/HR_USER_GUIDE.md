@@ -67,7 +67,7 @@ Departments group positions for reporting and for the organogram's color-coding.
   - **Name** (required)
   - **Code** (required — a short unique identifier; it's automatically compared without regard to upper/lower case, so "ENG" and "eng" are treated as the same code)
   - **Description** (optional)
-  - **Color** (optional — used for the department's color coding on the organogram; pick one that's visually distinct from other departments)
+  - **Color** (optional — used for the department's color coding on the organogram). Click one of the quick-pick circles (the first seven are the reference chart's colours), or **Custom colour…** to choose any colour from a full palette, or type a hex code. Pick one that's visually distinct from other departments; the chart automatically keeps the text on it readable.
   - **Parent department** (optional — pick this to make the new department a sub-department of an existing one, e.g. "Platform Engineering" under "Engineering")
 
   Click **Create department** to save.
@@ -135,6 +135,15 @@ Sometimes one role reports to two heads at once (for example, a Sr. Software Eng
 
 Use the **Deactivate**/**Reactivate** button (labeled "Reactivate" for a currently-inactive position, "Deactivate" otherwise) to retire a position that's no longer needed, or bring one back. Archiving is safe even if the position has direct reports — the hierarchy stays intact; only the one position's status changes.
 
+### 5.6 Deleting a position
+
+**Delete** permanently removes a position. It works when:
+
+- nothing reports to it (move or delete its reports first), and
+- **nobody currently holds it**. If someone does, the message names them; end or transfer their assignment first, or deactivate the position instead.
+
+Someone who held the position **in the past** does not block the delete. Their old assignment record is removed with the position, and a copy is kept in the **Audit Log**.
+
 ## 6. Employees & assignments
 
 Open **Employees** from the menu.
@@ -143,6 +152,8 @@ Open **Employees** from the menu.
 - **Add Employee** (HR_EDITOR/ADMIN): **Employee code** (required, unique), **First name** and **Last name** (required), **Preferred name** (optional — shown instead of the full name wherever an occupant's name is displayed, e.g. on the organogram), **Work email** (optional but must be unique if provided), **Joining date** (optional). Click **Create employee**.
 
 An employee created this way starts with **no position** — creating an employee never assigns them to anything. This is intentional and is exactly how you'd represent a new hire who hasn't been placed yet, or record someone between roles.
+
+The employee list shows each person's current position, department, **sub-division**, and **level**. The level is the job level (e.g. "L7 — Lead / Principal", the same as on the Positions page), not how deep the position sits in the chart.
 
 Open an employee's record to see their current position (if any) and take action:
 
@@ -157,7 +168,16 @@ You can also set who holds a position straight from the **Position form** (Add P
 
 ## 7. The Organogram
 
-Open **Organogram** from the menu — this is the automatically-generated chart. Nobody manually drags or positions a card here; the whole layout is computed from Positions and their Reports-To relationships every time you open it.
+Open **Organogram** from the menu — this is the automatically-generated chart. The layout is computed from Positions and their Reports-To relationships every time you open it, and each department's branch sits in its own clearly separated band.
+
+- **Each box** shows the position title (bold), the person in it, their level, and at the bottom how many roles sit under it in total (e.g. "48 roles under"). Click the count to expand or collapse that branch.
+- **Opening view:** the chart opens at a readable size. If the whole company doesn't fit, it shows the top (the CEO, departments and their leaders); scroll or zoom from there, or click **Fit to View** to see everything.
+- **Colour by:** **Department** colours every box by its department. **Sub-division** colours only sub-divisions and the roles in them; everything else turns neutral grey.
+- **Arrange** (HR_EDITOR/ADMIN): turn it on to reorganise by drag and drop.
+  - Drag a box onto another box to make that position its new head.
+  - Drag a box onto a **department heading** to move it into that department: it reports to the department's top position, and its level carries over.
+  - Either way, everyone under it moves along and keeps their own reporting lines. You confirm each move, and levels and role counts update automatically.
+  - While you drag, the box under the pointer shows a **green ring** if you can drop there, or a **red ring** if you can't. You can't drop a position onto itself or anyone who reports to it.
 
 - **Visual View / Outline View**: toggle at the top. Visual View is the interactive chart (pan, zoom, expand/collapse). Outline View is a plain, fully keyboard-and-screen-reader-accessible indented list of the same data — use it if the visual canvas doesn't work well for you.
 - **Expand All / Collapse All**: show or hide every branch at once.
@@ -233,7 +253,7 @@ Every settings save is protected against two people overwriting each other's cha
 
 ## 13. A note on what this application does not do
 
-To avoid confusion, a few things are deliberately **not** part of this application (by design, not because they were forgotten): dragging chart nodes around by hand, dotted-line/secondary reporting relationships, viewing the org chart as it looked at a past date, multi-step approval workflows for structural changes, and automatic syncing with any other HR system. If you need one of these, that's a conversation for your administrator/product owner, not something to work around inside the app.
+To avoid confusion, a few things are deliberately **not** part of this application (by design, not because they were forgotten): hand-positioning boxes at fixed places on the chart (drag-and-drop changes who reports to whom, and the layout is then regenerated), dotted-line reporting (a position can have up to two equal heads — see 5.4a — but not visually secondary lines), viewing the org chart as it looked at a past date, multi-step approval workflows for structural changes, and automatic syncing with any other HR system. If you need one of these, that's a conversation for your administrator/product owner, not something to work around inside the app.
 
 ## 14. Getting help
 

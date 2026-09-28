@@ -68,7 +68,7 @@ test.describe("Organogram — department segregation", () => {
     bands.sort((a, b) => a.left - b.left);
     for (let i = 1; i < bands.length; i++) {
       const gap = bands[i]!.left - bands[i - 1]!.right;
-      // Clearly wider than the 36px gap between two cards of one department.
+      // Clearly wider than the 24px gap between two cards of one department.
       expect(gap, `${bands[i - 1]!.name} → ${bands[i]!.name}`).toBeGreaterThanOrEqual(100);
     }
 

@@ -20,6 +20,7 @@ const {
     updatePosition: vi.fn(),
     movePosition: vi.fn(),
     changeReportsTo: vi.fn(),
+    movePositionToDepartment: vi.fn(),
     archivePosition: vi.fn(),
     activatePosition: vi.fn(),
     deletePosition: vi.fn(),
@@ -76,6 +77,8 @@ import {
   listPositionsAction,
   movePositionAction,
   changeReportsToAction,
+  movePositionToDepartmentAction,
+  getSubtreeIdsAction,
   updatePositionAction,
   listEmployeeOptionsAction,
   getPositionOccupantAction,
@@ -694,5 +697,67 @@ describe("position actions — second head (docs/DECISIONS.md D27)", () => {
     expect(serviceMocks.createPosition).toHaveBeenCalledWith(
       expect.objectContaining({ primaryReportsToPositionId: HEAD_A, coReportsToPositionId: HEAD_B })
     );
+  });
+});
+
+describe("position actions — organogram drag-and-drop (docs/DECISIONS.md D29)", () => {
+  afterEach(() => vi.clearAllMocks());
+  const DEPT = "44444444-4444-4444-8444-444444444444";
+
+  it("movePositionToDepartmentAction requires positions:manage and forwards the trusted company", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.movePositionToDepartment.mockResolvedValue({
+      position: {},
+      newHeadPositionId: "head",
+      departmentChangedCount: 3,
+    });
+
+    const result = await movePositionToDepartmentAction({
+      positionId: VALID_UUID,
+      departmentId: DEPT,
+    });
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    expect(serviceMocks.movePositionToDepartment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: "company-trusted",
+        positionId: VALID_UUID,
+        departmentId: DEPT,
+      })
+    );
+    expect(result).toEqual({
+      ok: true,
+      data: { newHeadPositionId: "head", departmentChangedCount: 3 },
+    });
+  });
+
+  it("a VIEWER cannot move a position into a department — the service is never reached", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+    const result = await movePositionToDepartmentAction({
+      positionId: VALID_UUID,
+      departmentId: DEPT,
+    });
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.movePositionToDepartment).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a malformed department id", { positionId: VALID_UUID, departmentId: "nope" }],
+    ["an extra key", { positionId: VALID_UUID, departmentId: DEPT, companyId: "other" }],
+  ])("rejects %s before the service", async (_label, input) => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    const result = await movePositionToDepartmentAction(input);
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.movePositionToDepartment).not.toHaveBeenCalled();
+  });
+
+  it("getSubtreeIdsAction requires positions:view and returns the subordinate ids", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    positionRepoMocks.getPositionSubtree.mockResolvedValue([{ id: "a" }, { id: "b" }]);
+
+    const result = await getSubtreeIdsAction(VALID_UUID);
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:view");
+    expect(result).toEqual({ ok: true, data: ["a", "b"] });
   });
 });

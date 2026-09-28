@@ -239,6 +239,9 @@ export function EmployeesView({ canManage }: EmployeesViewProps) {
                   Department
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
+                  Sub-division
+                </th>
+                <th scope="col" className="px-4 py-2 text-left font-medium">
                   Level
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
@@ -278,7 +281,24 @@ export function EmployeesView({ canManage }: EmployeesViewProps) {
                       {department?.name ?? <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="px-4 py-2">
-                      {current?.position.organizationalLevel ?? (
+                      {current?.jobFamilyName ?? <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      {/* The job LEVEL (e.g. "L7 — Lead / Principal"), matching the
+                          Positions page — not the chart depth
+                          (organizationalLevel), which is a different number. */}
+                      {current?.jobGrade ? (
+                        <>
+                          <span className="font-medium">{current.jobGrade.code}</span>
+                          {current.jobGrade.name &&
+                          current.jobGrade.name !== current.jobGrade.code ? (
+                            <span className="text-muted-foreground">
+                              {" "}
+                              — {current.jobGrade.name}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>

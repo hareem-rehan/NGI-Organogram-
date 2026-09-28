@@ -35,6 +35,7 @@ export const AUDIT_FIELD_ALLOWLISTS: Record<string, readonly string[]> = {
     "departmentId",
     "jobGradeId",
     "primaryReportsToPositionId",
+    "coReportsToPositionId",
     "organizationalLevel",
     "displayOrder",
   ],

@@ -16,6 +16,7 @@ import {
   deletePositionSubtree,
   movePosition,
   changeReportsTo,
+  movePositionToDepartment,
   updatePosition,
   type DeleteSubtreeResult,
 } from "@/lib/services/hierarchy.service";
@@ -39,6 +40,7 @@ import {
   listPositionsQuerySchema,
   movePositionSchema,
   changeReportsToSchema,
+  movePositionToDepartmentSchema,
   positionStatusChangeSchema,
   deletePositionSchema,
   setPositionOccupantSchema,
@@ -120,6 +122,20 @@ export async function getSubtreeSizeAction(positionId: string): Promise<ActionRe
     const user = await requirePermission("positions:view");
     const subtree = await getPositionSubtree(positionId, user.companyId);
     return subtree.length;
+  });
+}
+
+/**
+ * Ids of every position below this one (through either head), so the
+ * organogram's drag-and-drop can refuse a drop onto the dragged position's
+ * own subordinate before any confirmation is shown — including subordinates
+ * the leadership view draws under a different department heading.
+ */
+export async function getSubtreeIdsAction(positionId: string): Promise<ActionResult<string[]>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:view");
+    const subtree = await getPositionSubtree(positionId, user.companyId);
+    return subtree.map((node) => node.id);
   });
 }
 
@@ -251,6 +267,30 @@ export async function changeReportsToAction(input: unknown): Promise<ActionResul
   });
 }
 
+/**
+ * Organogram drag-and-drop onto a department heading (docs/DECISIONS.md D29):
+ * the position joins that department and reports to its top position, and
+ * its whole branch moves along. A hierarchy change, so gated on
+ * positions:manage; every rule is re-checked in the service.
+ */
+export async function movePositionToDepartmentAction(
+  input: unknown
+): Promise<ActionResult<{ newHeadPositionId: string; departmentChangedCount: number }>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const values = movePositionToDepartmentSchema.parse(input);
+    const result = await movePositionToDepartment({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      ...values,
+    });
+    return {
+      newHeadPositionId: result.newHeadPositionId,
+      departmentChangedCount: result.departmentChangedCount,
+    };
+  });
+}
+
 export async function archivePositionAction(input: unknown): Promise<ActionResult<Position>> {
   return runAction(async () => {
     const user = await requirePermission("positions:manage");
@@ -270,8 +310,9 @@ export async function activatePositionAction(input: unknown): Promise<ActionResu
 /**
  * Permanently removes a position. Re-authorized and re-validated here
  * regardless of the client (CLAUDE.md §1.8); the service refuses any
- * position that still has direct reports or employment history, so this
- * can never orphan a report or lose an assignment record.
+ * position that still has direct reports or a current holder, so this can
+ * never orphan a report; past assignment records are removed with it, each
+ * audited (docs/DECISIONS.md D20, amended).
  */
 export async function deletePositionAction(input: unknown): Promise<ActionResult<null>> {
   return runAction(async () => {
@@ -285,10 +326,11 @@ export async function deletePositionAction(input: unknown): Promise<ActionResult
 /**
  * Deletes a position AND its entire subtree (the organogram card's "delete
  * a wrong branch" action). Re-authorized and re-validated here regardless
- * of the client (CLAUDE.md §1.8); the service refuses the delete if any
- * position in the branch has employment history, and runs the whole removal
- * in one transaction, so it can never orphan a report or lose an assignment
- * record. The count is surfaced so the UI can confirm the blast radius.
+ * of the client (CLAUDE.md §1.8); the service refuses the delete if anyone in
+ * the branch currently holds a seat, and runs the whole removal (including
+ * audited removal of past assignment records) in one transaction, so it can
+ * never orphan a report. The count is surfaced so the UI can confirm the
+ * blast radius.
  */
 export async function deletePositionSubtreeAction(
   input: unknown
@@ -322,7 +364,7 @@ function bulkItemError(error: unknown): string {
  * Permanently removes several positions. Re-authorized and re-validated here
  * regardless of the client (CLAUDE.md §1.8). Each removal is the same atomic,
  * fully-validated `deletePosition` used by the single-item path, so a position
- * that still has reports or employment history is refused with its own reason
+ * that still has reports or a current holder is refused with its own reason
  * and never orphans anyone. Deletes are retried leaf-first: when the selection
  * covers a whole branch, a parent that was blocked only by a selected child
  * succeeds on a later pass once that child is gone.

@@ -72,6 +72,36 @@ describe("renderOrganogramSvg — colour by sub-division", () => {
     expect(result.svg).not.toContain(">Departments<");
   });
 
+  it("colours ONLY sub-divisions: department headings and unclassified cards stay neutral (D29)", () => {
+    const positions = new Map([
+      ["dept", { x: 0, y: 0 }],
+      ["plain", { x: 300, y: 0 }],
+    ]);
+    const result = renderOrganogramSvg(
+      [
+        node({
+          positionId: "dept",
+          kind: "department",
+          departmentName: "Engineering",
+          departmentColor: "#4fae2f",
+        }),
+        node({ positionId: "plain", departmentColor: "#4fae2f", jobFamilyId: null }),
+      ],
+      [],
+      positions,
+      METADATA,
+      {
+        ...BASE_OPTIONS,
+        colorMode: "family",
+        familyColorById: new Map([["fam-swe", { fill: "#cbf2b1", accent: "#6fbf3f" }]]),
+        families: [{ id: "fam-swe", name: "Software Engineering", color: "#6fbf3f" }],
+      }
+    );
+    // Neither card uses the department's green; both are the neutral card.
+    expect(result.svg).not.toContain("#4fae2f");
+    expect(result.svg).not.toContain("#d3f1b7");
+  });
+
   it("in department mode fills the card with a tint of the department colour and a Departments legend", () => {
     const positions = new Map([["p1", { x: 0, y: 0 }]]);
     const result = renderOrganogramSvg(

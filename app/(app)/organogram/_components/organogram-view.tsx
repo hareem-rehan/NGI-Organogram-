@@ -15,12 +15,14 @@ import { PositionFormDialog } from "@/app/(app)/positions/_components/position-f
 import {
   deletePositionAction,
   deletePositionSubtreeAction,
+  getSubtreeIdsAction,
   getSubtreeSizeAction,
   listAllPositionsAction,
   listDepartmentOptionsAction,
   listJobGradeOptionsAction,
   listPositionCareerOptionsAction,
   movePositionAction,
+  movePositionToDepartmentAction,
 } from "@/app/(app)/positions/actions";
 import { OrganogramCanvas } from "@/app/(app)/organogram/_components/organogram-canvas";
 import { OrganogramDetailsPanel } from "@/app/(app)/organogram/_components/organogram-details-panel";
@@ -48,6 +50,7 @@ import {
   headIdsOfNode,
   type OrganogramNode,
 } from "@/lib/domain/organogram";
+import type { DropVerdict } from "@/lib/domain/organogram-drag";
 import { isBelowThreshold } from "@/lib/domain/organogram-leadership";
 import { computeFilterMatchIds, isAnyFilterActive } from "@/lib/domain/organogram-filters";
 import {
@@ -172,11 +175,16 @@ export function OrganogramView({
   // Re-parent (drag-drop) confirmation.
   interface MoveIntent {
     childId: string;
+    /** "position": parentId is the new head. "department": parentId is the department id. */
+    kind: "position" | "department";
     parentId: string;
     childTitle: string;
     parentTitle: string;
     affectedCount: number;
   }
+  // A refused drag-drop (onto itself or a subordinate), shown under the
+  // arrange-mode hint until the next drag.
+  const [dropNotice, setDropNotice] = useState<string | null>(null);
   const [moveIntent, setMoveIntent] = useState<MoveIntent | null>(null);
   const moveDialog = useConfirmDialog();
   const [movePending, setMovePending] = useState(false);
@@ -304,21 +312,30 @@ export function OrganogramView({
   );
 
   const handleReparent = useCallback(
-    (childId: string, parentId: string) => {
+    (childId: string, verdict: Extract<DropVerdict, { valid: true }>) => {
       const child = data?.nodes.find((n) => n.positionId === childId);
-      const parent = data?.nodes.find((n) => n.positionId === parentId);
-      if (!child || !parent) return;
+      if (!child) return;
       setMoveError(null);
+      setDropNotice(null);
       void (async () => {
-        // Affected count = the descendants that get their level recalculated
-        // with the move. Best-effort; a failed count just shows none.
-        const size = await getSubtreeSizeAction(childId);
+        // The real subordinates (both heads, every department) — the chart
+        // may draw some of them under another department heading, where the
+        // canvas's own check cannot see them. Doubles as the affected count.
+        const subtree = await getSubtreeIdsAction(childId);
+        const subtreeIds = subtree.ok ? subtree.data : [];
+        if (verdict.kind === "position" && subtreeIds.includes(verdict.targetPositionId)) {
+          setDropNotice(
+            `${verdict.label} reports (directly or indirectly) to ${child.title}, so it can't become its head.`
+          );
+          return;
+        }
         setMoveIntent({
           childId,
-          parentId,
+          kind: verdict.kind,
+          parentId: verdict.kind === "position" ? verdict.targetPositionId : verdict.departmentId,
           childTitle: child.title,
-          parentTitle: parent.title,
-          affectedCount: size.ok ? size.data : 0,
+          parentTitle: verdict.label,
+          affectedCount: subtreeIds.length,
         });
         moveDialog.setOpen(true);
       })();
@@ -331,10 +348,16 @@ export function OrganogramView({
     setMovePending(true);
     setMoveError(null);
     void (async () => {
-      const result = await movePositionAction({
-        positionId: moveIntent.childId,
-        newParentPositionId: moveIntent.parentId,
-      });
+      const result =
+        moveIntent.kind === "department"
+          ? await movePositionToDepartmentAction({
+              positionId: moveIntent.childId,
+              departmentId: moveIntent.parentId,
+            })
+          : await movePositionAction({
+              positionId: moveIntent.childId,
+              newParentPositionId: moveIntent.parentId,
+            });
       setMovePending(false);
       if (!result.ok) {
         setMoveError(result.error);
@@ -778,10 +801,17 @@ export function OrganogramView({
 
       {arrangeMode ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Arrange mode — drag a card onto another to change who it reports to, use{" "}
+          Arrange mode — drag a card onto another card to change who it reports to, or onto a
+          department heading to move it into that department (its whole branch moves with it). Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
           the trash icon to delete, and click a card to edit it. A drag onto empty space just nudges
           the card; the layout is regenerated on reload.
+        </p>
+      ) : null}
+
+      {arrangeMode && dropNotice ? (
+        <p role="alert" className="text-destructive text-sm font-medium">
+          {dropNotice}
         </p>
       ) : null}
 
@@ -882,6 +912,7 @@ export function OrganogramView({
                 centerOnNodeId={centerOnNodeId}
                 arrangeMode={arrangeMode}
                 onReparent={handleReparent}
+                onInvalidDrop={setDropNotice}
                 onEditCard={handleEditCard}
                 onAddChild={handleAddChild}
                 onRequestDelete={handleRequestDelete}
@@ -958,12 +989,22 @@ export function OrganogramView({
             moveDialog.setOpen(open);
             if (!open) setMoveIntent(null);
           }}
-          title="Change reporting line?"
-          description={`${moveIntent.childTitle} will report to ${moveIntent.parentTitle}.${
-            moveIntent.affectedCount > 0
-              ? ` ${moveIntent.affectedCount} position${moveIntent.affectedCount === 1 ? "" : "s"} beneath it will have their level recalculated.`
-              : ""
-          }`}
+          title={
+            moveIntent.kind === "department" ? "Move into department?" : "Change reporting line?"
+          }
+          description={
+            moveIntent.kind === "department"
+              ? `${moveIntent.childTitle} will join ${moveIntent.parentTitle} and report to its top position.${
+                  moveIntent.affectedCount > 0
+                    ? ` The ${moveIntent.affectedCount} position${moveIntent.affectedCount === 1 ? "" : "s"} beneath it move${moveIntent.affectedCount === 1 ? "s" : ""} along, keep${moveIntent.affectedCount === 1 ? "s" : ""} their reporting lines, and join ${moveIntent.parentTitle} too.`
+                    : ""
+                } Levels are kept; a sub-division from the old department is cleared.`
+              : `${moveIntent.childTitle} will report to ${moveIntent.parentTitle}.${
+                  moveIntent.affectedCount > 0
+                    ? ` The ${moveIntent.affectedCount} position${moveIntent.affectedCount === 1 ? "" : "s"} beneath it move${moveIntent.affectedCount === 1 ? "s" : ""} along and keep${moveIntent.affectedCount === 1 ? "s" : ""} their reporting lines; levels are recalculated.`
+                    : ""
+                }`
+          }
           confirmLabel="Move"
           pending={movePending}
           errorMessage={moveError}
@@ -981,8 +1022,8 @@ export function OrganogramView({
           title={deleteIntent.descendantCount > 0 ? "Delete this branch?" : "Delete this position?"}
           description={
             deleteIntent.descendantCount > 0
-              ? `${deleteIntent.title} and everything reporting to it — ${deleteIntent.descendantCount + 1} positions in total — will be permanently removed. This cannot be undone, and is only possible if no one in the branch is or was assigned; otherwise deactivate it instead.`
-              : `${deleteIntent.title} will be permanently removed. This cannot be undone. A position can only be deleted while no one is or was assigned to it — otherwise deactivate it instead.`
+              ? `${deleteIntent.title} and everything reporting to it — ${deleteIntent.descendantCount + 1} positions in total — will be permanently removed. This cannot be undone, and is only possible if no one in the branch currently holds a seat (past assignment records are removed with it); otherwise deactivate it instead.`
+              : `${deleteIntent.title} will be permanently removed. This cannot be undone. A position can only be deleted while no one currently holds it (any past assignment record is removed with it) — otherwise deactivate it instead.`
           }
           confirmLabel={deleteIntent.descendantCount > 0 ? "Delete branch" : "Delete"}
           destructive

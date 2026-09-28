@@ -36,6 +36,10 @@ export interface SvgRenderNode {
   occupantDisplayName: string | null;
   positionStatus: "PLANNED" | "ACTIVE" | "INACTIVE";
   matchState: "none" | "match" | "context";
+  /** Whole-branch role count for the card footer (docs/DECISIONS.md D29). Optional so callers without it still render (the footer then falls back). */
+  totalReportCount?: number;
+  displayChildCount?: number;
+  directReportCount?: number;
   /**
    * A synthetic grouping heading (department, or sub-division) rather than a
    * real position (lib/domain/organogram-leadership-graph.ts). Absent means
@@ -197,15 +201,17 @@ function renderDepartmentCard(
   node: SvgRenderNode,
   position: SvgLayoutPosition,
   roleCount: number,
-  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
+  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined,
+  colorMode: ExportColorMode = "department",
+  familyColorById?: ReadonlyMap<string, FamilyColor>
 ): string {
   const { fill: bodyFill, accent: accentColor } = cardColorsFor(
     node,
-    "department",
-    undefined,
+    colorMode,
+    familyColorById,
     departmentColorByName
   );
-  const nameLines = wrapText(node.departmentName.toUpperCase(), 26, 2);
+  const nameLines = wrapText(node.departmentName.toUpperCase(), 22, 2);
 
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="1">`);
@@ -233,15 +239,17 @@ function renderSubdivisionCard(
   node: SvgRenderNode,
   position: SvgLayoutPosition,
   roleCount: number,
-  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
+  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined,
+  colorMode: ExportColorMode = "department",
+  familyColorById?: ReadonlyMap<string, FamilyColor>
 ): string {
   const { fill: bodyFill, accent: accentColor } = cardColorsFor(
     node,
-    "department",
-    undefined,
+    colorMode,
+    familyColorById,
     departmentColorByName
   );
-  const nameLines = wrapText(node.title, 26, 2);
+  const nameLines = wrapText(node.title, 22, 2);
 
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="1">`);
@@ -273,9 +281,16 @@ function cardColorsFor(
   familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
   departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
 ): { fill: string; accent: string } {
-  if (colorMode === "family" && node.kind !== "department" && node.jobFamilyId) {
-    const fc = familyColorById?.get(node.jobFamilyId);
-    if (fc) return { fill: fc.fill, accent: fc.accent };
+  // Sub-division mode colours ONLY sub-divisions (docs/DECISIONS.md D29):
+  // department headings and cards outside any sub-division are neutral.
+  if (colorMode === "family") {
+    const fc =
+      node.kind !== "department" && node.jobFamilyId
+        ? familyColorById?.get(node.jobFamilyId)
+        : undefined;
+    return fc
+      ? { fill: fc.fill, accent: fc.accent }
+      : { fill: EXPORT_COLORS.background, accent: EXPORT_COLORS.border };
   }
   const dc = departmentColorByName?.get(node.departmentName);
   if (dc) return { fill: dc.fill, accent: dc.accent };
@@ -311,7 +326,7 @@ function renderNodeCard(
   // removed there (Demo 1 feedback) and must be removed here too — this
   // renderer draws its own copy of the card, so the two silently diverge
   // unless changed together.
-  const titleLines = wrapText(node.title, 30, 2);
+  const titleLines = wrapText(node.title, 25, 2);
   const isOccupied = node.occupancyStatus === "occupied";
   const occupantName = isOccupied ? (node.occupantDisplayName ?? null) : null;
   const badge = nodeBadge(node);
@@ -350,7 +365,7 @@ function renderNodeCard(
   let y = 30 + titleLines.length * 15;
   if (occupantName) {
     parts.push(
-      `<text x="16" y="${y}" font-size="11" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(occupantName)}</text>`
+      `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(occupantName)}</text>`
     );
     y += 14;
   }
@@ -364,6 +379,18 @@ function renderNodeCard(
       `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(gradeFamilyLine)}</text>`
     );
   }
+
+  // Footer — every role in the position's whole branch, like the on-screen
+  // card (docs/DECISIONS.md D29), under a thin divider.
+  const rolesUnder = node.totalReportCount ?? node.displayChildCount ?? node.directReportCount ?? 0;
+  parts.push(
+    `<line x1="12" y1="${NODE_HEIGHT - 24}" x2="${NODE_WIDTH - 12}" y2="${NODE_HEIGHT - 24}" stroke="${EXPORT_COLORS.foreground}" stroke-opacity="0.12" stroke-width="1" />`,
+    `<text x="16" y="${NODE_HEIGHT - 9}" font-size="10.5" fill="${EXPORT_COLORS.foreground}">${
+      rolesUnder > 0
+        ? `<tspan font-weight="700">${rolesUnder}</tspan> ${rolesUnder === 1 ? "role" : "roles"} under`
+        : "No roles under"
+    }</text>`
+  );
 
   parts.push("</g>");
   return parts.join("");
@@ -554,7 +581,9 @@ export function renderOrganogramSvg(
           node,
           at,
           childCountByParent.get(node.positionId) ?? 0,
-          options.departmentColorByName
+          options.departmentColorByName,
+          options.colorMode ?? "department",
+          options.familyColorById
         );
       }
       if (node.kind === "subdivision") {
@@ -562,7 +591,9 @@ export function renderOrganogramSvg(
           node,
           at,
           childCountByParent.get(node.positionId) ?? 0,
-          options.departmentColorByName
+          options.departmentColorByName,
+          options.colorMode ?? "department",
+          options.familyColorById
         );
       }
       return renderNodeCard(

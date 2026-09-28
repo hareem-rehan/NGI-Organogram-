@@ -51,6 +51,8 @@ const POSITION: Position = {
 
 const CURRENT_ASSIGNMENT = {
   assignmentId: "44444444-4444-4444-8444-444444444444",
+  jobGrade: null,
+  jobFamilyName: null,
   startDate: new Date("2026-01-01"),
   position: POSITION,
 };
