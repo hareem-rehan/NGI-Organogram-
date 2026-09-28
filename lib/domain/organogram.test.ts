@@ -34,11 +34,20 @@ function pos(
 }
 
 describe("resolveDivisionColor", () => {
+  // The real shape: a single company root (Founder, no parent) with the
+  // divisions directly beneath it, and sub-departments beneath those.
+  const root: OrganogramDepartmentInput = {
+    id: "root",
+    name: "Founder",
+    code: "FO",
+    color: "#9b7fe0",
+  };
   const division: OrganogramDepartmentInput = {
     id: "div",
     name: "Client Delivery Services",
     code: "CDS",
     color: "#3aa4e8",
+    parentDepartmentId: "root",
   };
   const child: OrganogramDepartmentInput = {
     id: "child",
@@ -55,20 +64,25 @@ describe("resolveDivisionColor", () => {
     parentDepartmentId: "child",
   };
   const map = new Map([
+    [root.id, root],
     [division.id, division],
     [child.id, child],
     [grandchild.id, grandchild],
   ]);
 
-  it("returns a top-level department's own colour", () => {
+  it("returns the company root's own colour (it is its own division)", () => {
+    expect(resolveDivisionColor("root", map)).toBe("#9b7fe0");
+  });
+
+  it("returns its own colour for a division directly under the root", () => {
     expect(resolveDivisionColor("div", map)).toBe("#3aa4e8");
   });
 
-  it("returns the top-level ancestor's colour for a child department", () => {
+  it("returns the division's colour for a sub-department, not the root's", () => {
     expect(resolveDivisionColor("child", map)).toBe("#3aa4e8");
   });
 
-  it("walks multiple levels up to the division", () => {
+  it("walks up to the division (below the root) from deeper levels", () => {
     expect(resolveDivisionColor("grandchild", map)).toBe("#3aa4e8");
   });
 
@@ -169,12 +183,20 @@ describe("buildOrganogramGraph", () => {
     });
   });
 
-  it("paints a child department's node with its division (top-level ancestor) colour", () => {
-    const parentDept: OrganogramDepartmentInput = {
+  it("paints a sub-department's node with its division's colour, not the company root's", () => {
+    // Founder (root) → Client Delivery Services (division) → Product (sub).
+    const rootDept: OrganogramDepartmentInput = {
+      id: "founder",
+      name: "Founder",
+      code: "FO",
+      color: "#9b7fe0",
+    };
+    const divisionDept: OrganogramDepartmentInput = {
       id: "cds",
       name: "Client Delivery Services",
       code: "CDS",
       color: "#3aa4e8",
+      parentDepartmentId: "founder",
     };
     const childDept: OrganogramDepartmentInput = {
       id: "product",
@@ -188,14 +210,16 @@ describe("buildOrganogramGraph", () => {
       positions,
       safePositionIds: new Set(["p1"]),
       departmentsById: new Map([
-        [parentDept.id, parentDept],
+        [rootDept.id, rootDept],
+        [divisionDept.id, divisionDept],
         [childDept.id, childDept],
       ]),
       jobGradeNamesById: new Map(),
       occupantNamesByPositionId: new Map(),
       occupantEmployeeIdsByPositionId: new Map(),
     });
-    // Keeps its own department identity, but takes the division's colour.
+    // Keeps its own department identity, but takes its division's colour —
+    // the division below the root, never the root's own colour.
     expect(nodes[0]).toMatchObject({
       departmentName: "Product",
       departmentColor: "#3aa4e8",
