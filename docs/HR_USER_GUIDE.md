@@ -139,6 +139,8 @@ Open an employee's record to see their current position (if any) and take action
 - **End Assignment**: ends the employee's current assignment as of the date you choose, without assigning them anywhere new — their position reverts to Vacant.
 - **Terminate Employee**: the guided way to record someone leaving the organization entirely. You must type the employee's own code to confirm (a deliberate extra step, since this is hard to casually undo). Terminating ends any active assignment automatically and sets the employee's status to Terminated — their former position stays exactly where it is in the chart, now Vacant.
 
+You can also set who holds a position straight from the **Position form** (Add Position or Edit): the optional **Assigned employee** field lists every active employee plus **Vacant**. Picking someone assigns them as of today (replacing any current holder, whose assignment ends today); picking **Vacant** ends the current holder's assignment. Someone who already holds another position can't be picked this way — use **Transfer** on their employee record instead. To back-date an assignment, use the Employees page.
+
 **Assignment history**: every employee's record shows their full history of position assignments — past (ended) ones and the current one, each with start/end dates. Note that this view always shows a position's _current_ title/code/department, not what it was called at the time of that historical assignment — the app doesn't keep a separate historical snapshot of position details.
 
 ## 7. The Organogram

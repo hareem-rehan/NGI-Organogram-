@@ -39,10 +39,17 @@ import {
   movePositionSchema,
   positionStatusChangeSchema,
   deletePositionSchema,
+  setPositionOccupantSchema,
   updatePositionSchema,
   type ListPositionsQuery,
 } from "@/lib/validation/position";
 import { AppError } from "@/lib/errors";
+import { setPositionPrimaryOccupant } from "@/lib/services/assignment.service";
+import { listPrimaryAssignmentsForPosition } from "@/lib/repositories/assignment.repository";
+import {
+  listEmployeeOptionsForCompany,
+  type EmployeeOption,
+} from "@/lib/repositories/employee.repository";
 
 export interface PositionListPayload extends PositionSearchResult {
   occupiedPositionIds: string[];
@@ -395,5 +402,52 @@ export async function bulkMovePositionsAction(
       }
     }
     return { succeeded, failed };
+  });
+}
+
+/**
+ * Active employees for the Position form's "Assigned employee" picker. Read
+ * gated on employees:view (the picker only appears for managers, who have it).
+ */
+export async function listEmployeeOptionsAction(): Promise<ActionResult<EmployeeOption[]>> {
+  return runAction(async () => {
+    const user = await requirePermission("employees:view");
+    return listEmployeeOptionsForCompany(user.companyId);
+  });
+}
+
+/**
+ * The current (open-ended, primary) occupant of a position, so the edit form
+ * can prefill its "Assigned employee" picker. Returns null when vacant.
+ */
+export async function getPositionOccupantAction(
+  positionId: string
+): Promise<ActionResult<{ employeeId: string | null }>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:view");
+    const open = (await listPrimaryAssignmentsForPosition(positionId, user.companyId)).find(
+      (assignment) => assignment.endDate === null
+    );
+    return { employeeId: open?.employeeId ?? null };
+  });
+}
+
+/**
+ * Sets (or clears) a position's occupant from the Position form. Assigning an
+ * employee is an employee-management operation, so it is gated on
+ * employees:manage and re-validated server-side regardless of the client
+ * (CLAUDE.md §1.8). The service runs the vacate-then-assign atomically.
+ */
+export async function setPositionOccupantAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("employees:manage");
+    const { positionId, employeeId } = setPositionOccupantSchema.parse(input);
+    await setPositionPrimaryOccupant({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      positionId,
+      employeeId,
+    });
+    return null;
   });
 }

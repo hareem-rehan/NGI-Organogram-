@@ -12,7 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
-import { createPositionAction, updatePositionAction } from "@/app/(app)/positions/actions";
+import {
+  createPositionAction,
+  getPositionOccupantAction,
+  listEmployeeOptionsAction,
+  setPositionOccupantAction,
+  updatePositionAction,
+} from "@/app/(app)/positions/actions";
+import type { EmployeeOption } from "@/lib/repositories/employee.repository";
 
 interface PositionFormDialogProps {
   open: boolean;
@@ -137,6 +144,21 @@ export function PositionFormDialog({
   const [pending, startTransition] = useTransition();
   const [reportsToQuery, setReportsToQuery] = useState("");
 
+  // "Assigned employee" picker. `occupantValue` is the chosen employee id, ""
+  // for vacant. `initialOccupant` is what the position started with, so a save
+  // only touches assignments when the occupant actually changed. Employees are
+  // loaded when the dialog opens.
+  const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
+  const [occupantValue, setOccupantValue] = useState("");
+  const [initialOccupant, setInitialOccupant] = useState("");
+  const [occupantQuery, setOccupantQuery] = useState("");
+  // Once a create succeeds, remember the new id so a retry (e.g. after an
+  // occupant-assignment error) updates that position instead of creating a duplicate.
+  const justCreatedIdRef = useRef<string | null>(null);
+  // Set once the user picks an occupant, so a slow occupant fetch can never
+  // overwrite their choice.
+  const occupantTouchedRef = useRef(false);
+
   const {
     register,
     handleSubmit,
@@ -221,6 +243,30 @@ export function PositionFormDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, departments]);
 
+  // Load the employee options and, when editing, the position's current
+  // occupant, each time the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    justCreatedIdRef.current = null;
+    occupantTouchedRef.current = false;
+    setOccupantQuery("");
+    setOccupantValue("");
+    setInitialOccupant("");
+    listEmployeeOptionsAction().then((result) => {
+      if (result.ok) setEmployeeOptions(result.data);
+    });
+    const editing = positionRef.current;
+    if (editing) {
+      getPositionOccupantAction(editing.id).then((result) => {
+        if (result.ok) {
+          const value = result.data.employeeId ?? "";
+          setInitialOccupant(value);
+          if (!occupantTouchedRef.current) setOccupantValue(value);
+        }
+      });
+    }
+  }, [open]);
+
   const departmentId = watch("departmentId");
   const jobFamilyId = watch("jobFamilyId");
   const careerTrackKind = watch("careerTrackKind");
@@ -269,44 +315,85 @@ export function PositionFormDialog({
     [allPositions, reportsToQuery, departmentId, jobFamilyNameById]
   );
 
+  // "Assigned employee" options: a "Vacant" choice plus every active employee,
+  // filtered by the picker's query (name or code).
+  const employeeOptionsForCombobox: ComboboxOption[] = useMemo(() => {
+    const q = occupantQuery.trim().toLowerCase();
+    const name = (e: EmployeeOption) =>
+      (e.preferredName?.trim() || `${e.firstName} ${e.lastName}`.trim()).trim();
+    const matches = employeeOptions.filter(
+      (e) =>
+        q === "" || name(e).toLowerCase().includes(q) || e.employeeCode.toLowerCase().includes(q)
+    );
+    return [
+      { value: "", label: "Vacant (no one assigned)" },
+      ...matches.map((e) => ({ value: e.id, label: name(e), description: e.employeeCode })),
+    ];
+  }, [employeeOptions, occupantQuery]);
+
   function onSubmit(values: FormValues) {
     setFormError(null);
-    startTransition(async () => {
-      const result = isEdit
-        ? await updatePositionAction({
-            positionId: position.id,
-            title: values.title,
-            departmentId: values.departmentId,
-            // Send the level CODE; the action resolves it to a grade for the
-            // department (creating it on first use). null clears the level.
-            jobGradeCode: values.jobGradeCode,
-            jobFamilyId: values.jobFamilyId,
-            // Sent regardless of sub-division: it is stored on the position as
-            // its ladder context, and also resolves the family track when a
-            // sub-division is chosen.
-            careerTrackKind: values.careerTrackKind,
-            description: values.description,
-          })
-        : await createPositionAction({
-            title: values.title,
-            departmentId: values.departmentId,
-            jobGradeCode: values.jobGradeCode,
-            jobFamilyId: values.jobFamilyId,
-            careerTrackKind: values.careerTrackKind,
-            description: values.description,
-            primaryReportsToPositionId: values.primaryReportsToPositionId,
-          });
-
-      if (!result.ok) {
-        setFormError(result.error);
-        if (result.fieldErrors) {
-          for (const [field, message] of Object.entries(result.fieldErrors)) {
-            if (field in values) {
-              setError(field as keyof FormValues, { message });
-            }
-          }
+    const applyFailure = (result: { error: string; fieldErrors?: Record<string, string> }) => {
+      setFormError(result.error);
+      if (result.fieldErrors) {
+        for (const [field, message] of Object.entries(result.fieldErrors)) {
+          if (field in values) setError(field as keyof FormValues, { message });
         }
-        return;
+      }
+    };
+    startTransition(async () => {
+      // Persist the position first. On edit we update in place; on create we
+      // create once and then remember the new id, so if a later step fails and
+      // the user retries, we update that position instead of duplicating it.
+      const editingId = isEdit ? position.id : justCreatedIdRef.current;
+      let positionId: string;
+      if (editingId) {
+        const result = await updatePositionAction({
+          positionId: editingId,
+          title: values.title,
+          departmentId: values.departmentId,
+          // Send the level CODE; the action resolves it to a grade for the
+          // department (creating it on first use). null clears the level.
+          jobGradeCode: values.jobGradeCode,
+          jobFamilyId: values.jobFamilyId,
+          // Stored on the position as its ladder context; also resolves the
+          // family track when a sub-division is chosen.
+          careerTrackKind: values.careerTrackKind,
+          description: values.description,
+        });
+        if (!result.ok) return applyFailure(result);
+        positionId = editingId;
+      } else {
+        const result = await createPositionAction({
+          title: values.title,
+          departmentId: values.departmentId,
+          jobGradeCode: values.jobGradeCode,
+          jobFamilyId: values.jobFamilyId,
+          careerTrackKind: values.careerTrackKind,
+          description: values.description,
+          primaryReportsToPositionId: values.primaryReportsToPositionId,
+        });
+        if (!result.ok) return applyFailure(result);
+        positionId = result.data.id;
+        justCreatedIdRef.current = positionId;
+      }
+
+      // Only touch assignments when the occupant actually changed.
+      if (occupantValue !== initialOccupant) {
+        const occ = await setPositionOccupantAction({
+          positionId,
+          employeeId: occupantValue || null,
+        });
+        if (!occ.ok) {
+          // The position saved, but the occupant change didn't (e.g. the person
+          // already holds another position). Keep the dialog open with the
+          // reason and refresh the list to reflect the saved position; a retry
+          // updates rather than re-creates.
+          setFormError(occ.error);
+          onSaved();
+          return;
+        }
+        setInitialOccupant(occupantValue);
       }
 
       onOpenChange(false);
@@ -446,6 +533,27 @@ export function PositionFormDialog({
 
           <Field label="Description" error={errors.description?.message}>
             {(fieldProps) => <Textarea {...fieldProps} {...register("description")} rows={3} />}
+          </Field>
+
+          <Field
+            label="Assigned employee"
+            hint="Who currently holds this position (optional). Pick from the Employees module, or leave vacant."
+          >
+            {(fieldProps) => (
+              <Combobox
+                {...fieldProps}
+                value={occupantValue}
+                onChange={(value) => {
+                  occupantTouchedRef.current = true;
+                  setOccupantValue(value ?? "");
+                }}
+                options={employeeOptionsForCombobox}
+                query={occupantQuery}
+                onQueryChange={setOccupantQuery}
+                placeholder="Search employees…"
+                aria-label="Assigned employee"
+              />
+            )}
           </Field>
 
           {!isEdit ? (

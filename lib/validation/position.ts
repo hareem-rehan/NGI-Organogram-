@@ -127,6 +127,16 @@ export const deletePositionSchema = z
   .strict();
 
 /**
+ * Sets a position's current occupant. `employeeId` null means "leave vacant".
+ */
+export const setPositionOccupantSchema = z
+  .object({
+    positionId: z.string().uuid(),
+    employeeId: z.string().uuid().nullable(),
+  })
+  .strict();
+
+/**
  * A non-empty, de-duplicated set of position ids for a bulk action. Capped so
  * one request can never fan out into an unbounded number of per-item
  * transactions (docs/DECISIONS.md P7 large-data guard).

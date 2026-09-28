@@ -60,6 +60,14 @@ export function Combobox({
 
   const selectedOption = options.find((option) => option.value === value) ?? null;
 
+  // Focus stays on the input (aria-activedescendant), so the browser never
+  // scrolls the popover for us — keep the keyboard-active option in view once
+  // the list is taller than the popover's max height.
+  React.useEffect(() => {
+    if (!open || activeIndex < 0) return;
+    document.getElementById(`${listboxId}-${activeIndex}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [open, activeIndex, listboxId]);
+
   function selectOption(option: ComboboxOption) {
     if (option.disabled) return;
     onChange(option.value);
@@ -131,9 +139,14 @@ export function Combobox({
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content
           onOpenAutoFocus={(event) => event.preventDefault()}
+          // A long result list scrolls inside this popover; tabIndex makes that
+          // scroll region reachable by keyboard alone (axe
+          // scrollable-region-focusable / WCAG 2.1.1) for anyone not using the
+          // input's arrow-key navigation.
+          tabIndex={0}
           align="start"
           sideOffset={4}
-          className="border-border bg-background z-50 max-h-64 w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-md border p-1 shadow-md"
+          className="border-border bg-background z-50 max-h-64 w-[var(--radix-popover-trigger-width)] overflow-y-auto overscroll-contain rounded-md border p-1 shadow-md"
         >
           {options.length === 0 ? (
             // `role="listbox"` requires every child to be `role="option"`
