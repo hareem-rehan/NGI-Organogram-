@@ -146,7 +146,13 @@ A department heading renders differently on purpose: filled rather than outlined
 
 ## 5. Connectors
 
-Solid, primary-reporting-only edges (manager → direct report), rendered via `smoothstep`. No dotted/secondary edges are ever produced by the server or the client — see the blacklist in §2.
+Solid org-chart connectors (D31, `org-chart-edge.tsx`):
+
+- a straight line down from the parent's centre;
+- one shared horizontal bar at `ORG_EDGE_BUS_OFFSET` below the parent (half of `LAYER_GAP`, i.e. midway to the next row);
+- a straight line down into each child.
+
+Every child of the same parent shares that exact bar, so the lines meet cleanly, as in the reference chart. Connection points are invisible, and the PDF/PNG export draws the same shape. A second head's line (D27) uses the same connector. There are no dotted lines.
 
 ## 6. Expand/collapse
 
