@@ -114,8 +114,8 @@ export interface OrganogramNode {
   /**
    * Distinguishes a real Position card from the SYNTHETIC grouping cards the
    * leadership view inserts (lib/domain/organogram-leadership-graph.ts):
-   * `"department"` below the root, and `"subdivision"` under a position whose
-   * reports span 2+ sub-divisions. Nothing `buildOrganogramGraph` produces
+   * `"department"` below the root, and `"subdivision"` where a sub-division
+   * begins under a position. Nothing `buildOrganogramGraph` produces
    * ever carries it — the raw graph is positions and nothing else — so
    * `undefined` means "position". Both synthetic kinds are visual grouping
    * only: they never change reporting or count as organizational levels

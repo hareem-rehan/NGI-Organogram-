@@ -511,12 +511,43 @@ describe("projectLeadershipGraph — sub-division tier", () => {
     expect(qa.departmentMemberCount).toBe(1);
   });
 
-  it("does NOT insert a card when all reports share one sub-division", () => {
+  it("inserts a single card where one sub-division begins under a position not in it", () => {
+    // The head has no family; its reports are all DevOps. The sub-division
+    // begins here, so it gets a labelled box (matches the reference chart's
+    // single-family boxes, e.g. QA/QAA under its Associate Director).
     const result = projectLeadershipGraph(withHeadAndReports([DEVOPS, DEVOPS]), opts(), engDepts);
+    const devopsId = subdivisionGroupId("head", DEVOPS);
+    expect(byId(result, devopsId).kind).toBe("subdivision");
+    expect(byId(result, "r0").primaryReportsToPositionId).toBe(devopsId);
+    expect(byId(result, "r1").primaryReportsToPositionId).toBe(devopsId);
+  });
+
+  it("does NOT repeat a card when the parent is already in that sub-division", () => {
+    // A lead who is themselves in DevOps, with DevOps reports: the sub-division
+    // continues rather than begins, so no new box — this prevents a box at every
+    // level down a single-family chain.
+    const nodes: OrganogramNode[] = [
+      ceo(),
+      node({
+        positionId: "lead",
+        title: "DevOps Lead",
+        departmentId: ENG,
+        primaryReportsToPositionId: "ceo",
+        jobFamilyId: DEVOPS,
+        jobFamilyName: "DevOps",
+      }),
+      node({
+        positionId: "r0",
+        title: "DevOps Engineer",
+        departmentId: ENG,
+        primaryReportsToPositionId: "lead",
+        jobFamilyId: DEVOPS,
+        jobFamilyName: "DevOps",
+      }),
+    ];
+    const result = projectLeadershipGraph(nodes, opts(), engDepts);
     expect(result.nodes.some((n) => n.kind === "subdivision")).toBe(false);
-    // Reports stay directly under the head.
-    expect(byId(result, "r0").primaryReportsToPositionId).toBe("head");
-    expect(byId(result, "r1").primaryReportsToPositionId).toBe("head");
+    expect(byId(result, "r0").primaryReportsToPositionId).toBe("lead");
   });
 
   it("does NOT insert a card when reports have no sub-division at all", () => {

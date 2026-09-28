@@ -128,8 +128,8 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
 }
 
 /**
- * A synthetic sub-division grouping card, shown under a position whose reports
- * span 2+ sub-divisions (docs/DECISIONS.md D25). Styled like the department
+ * A synthetic sub-division grouping card, shown where a sub-division begins
+ * under a position (docs/DECISIONS.md D25, refined). Styled like the department
  * heading — a filled, colour-coded grouping box whose whole surface is the
  * expand/collapse control — but labelled with the sub-division name (not
  * uppercased, since these are names like "UI/UX") and painted in its
