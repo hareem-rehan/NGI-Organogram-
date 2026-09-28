@@ -49,9 +49,13 @@ vi.mock("@/lib/repositories/career-framework.repository", () => careerRepoMock);
 vi.mock("@/lib/repositories/department-level-title.repository", () => deptLevelTitleRepoMock);
 
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
+import { AppError } from "@/lib/errors";
 import {
   activatePositionAction,
   archivePositionAction,
+  bulkArchivePositionsAction,
+  bulkDeletePositionsAction,
+  bulkMovePositionsAction,
   createPositionAction,
   deletePositionAction,
   deletePositionSubtreeAction,
@@ -401,5 +405,125 @@ describe("deletePositionSubtreeAction — authorization and validation", () => {
 
     expect(result.ok).toBe(false);
     expect(serviceMocks.deletePositionSubtree).not.toHaveBeenCalled();
+  });
+});
+
+describe("position actions — bulk operations", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  const ID_A = "11111111-1111-4111-8111-111111111111";
+  const ID_B = "22222222-2222-4222-8222-222222222222";
+  const ID_C = "33333333-3333-4333-8333-333333333333";
+
+  it.each([
+    ["bulkDeletePositionsAction", () => bulkDeletePositionsAction({ positionIds: [ID_A] })],
+    ["bulkArchivePositionsAction", () => bulkArchivePositionsAction({ positionIds: [ID_A] })],
+    [
+      "bulkMovePositionsAction",
+      () => bulkMovePositionsAction({ positionIds: [ID_A], newParentPositionId: null }),
+    ],
+  ])("%s requires positions:manage", async (_name, invoke) => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.deletePosition.mockResolvedValue(undefined);
+    serviceMocks.archivePosition.mockResolvedValue({});
+    serviceMocks.movePosition.mockResolvedValue({});
+
+    await invoke();
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+  });
+
+  it("a VIEWER rejection blocks every bulk action before any service runs", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+
+    const del = await bulkDeletePositionsAction({ positionIds: [ID_A] });
+    const arch = await bulkArchivePositionsAction({ positionIds: [ID_A] });
+    const move = await bulkMovePositionsAction({ positionIds: [ID_A], newParentPositionId: null });
+
+    expect(del.ok).toBe(false);
+    expect(arch.ok).toBe(false);
+    expect(move.ok).toBe(false);
+    expect(serviceMocks.deletePosition).not.toHaveBeenCalled();
+    expect(serviceMocks.archivePosition).not.toHaveBeenCalled();
+    expect(serviceMocks.movePosition).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty selection before touching the service", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+
+    const result = await bulkDeletePositionsAction({ positionIds: [] });
+
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.deletePosition).not.toHaveBeenCalled();
+  });
+
+  it("de-duplicates repeated ids so a position is only acted on once", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.archivePosition.mockResolvedValue({});
+
+    const result = await bulkArchivePositionsAction({ positionIds: [ID_A, ID_A, ID_A] });
+
+    expect(result.ok).toBe(true);
+    expect(serviceMocks.archivePosition).toHaveBeenCalledTimes(1);
+    if (result.ok) expect(result.data.succeeded).toEqual([ID_A]);
+  });
+
+  it("bulk delete reports per-item success and failure with the item's own reason", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.deletePosition.mockImplementation(async (id: string) => {
+      if (id === ID_B) throw new AppError("It still has employment history.");
+    });
+
+    const result = await bulkDeletePositionsAction({ positionIds: [ID_A, ID_B] });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.succeeded).toEqual([ID_A]);
+      expect(result.data.failed).toEqual([{ id: ID_B, error: "It still has employment history." }]);
+    }
+  });
+
+  it("bulk delete retries leaf-first so a parent blocked only by a selected child still deletes", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    // ID_A is the parent of ID_C: deleting A fails while C exists, succeeds after.
+    const deleted = new Set<string>();
+    serviceMocks.deletePosition.mockImplementation(async (id: string) => {
+      if (id === ID_A && !deleted.has(ID_C)) {
+        throw new AppError("It still has 1 position reporting to it.");
+      }
+      deleted.add(id);
+    });
+
+    const result = await bulkDeletePositionsAction({ positionIds: [ID_A, ID_C] });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.failed).toEqual([]);
+      expect(new Set(result.data.succeeded)).toEqual(new Set([ID_A, ID_C]));
+    }
+  });
+
+  it("bulk move passes the chosen new parent to every position and aggregates cycle refusals", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.movePosition.mockImplementation(async ({ positionId }: { positionId: string }) => {
+      if (positionId === ID_B) throw new AppError("That would create a reporting cycle.");
+      return {};
+    });
+
+    const result = await bulkMovePositionsAction({
+      positionIds: [ID_A, ID_B],
+      newParentPositionId: ID_C,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.succeeded).toEqual([ID_A]);
+      expect(result.data.failed).toEqual([
+        { id: ID_B, error: "That would create a reporting cycle." },
+      ]);
+    }
+    expect(serviceMocks.movePosition).toHaveBeenCalledWith(
+      expect.objectContaining({ positionId: ID_A, newParentPositionId: ID_C })
+    );
   });
 });

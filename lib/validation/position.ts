@@ -126,6 +126,26 @@ export const deletePositionSchema = z
   })
   .strict();
 
+/**
+ * A non-empty, de-duplicated set of position ids for a bulk action. Capped so
+ * one request can never fan out into an unbounded number of per-item
+ * transactions (docs/DECISIONS.md P7 large-data guard).
+ */
+const bulkPositionIds = z
+  .array(z.string().uuid())
+  .min(1, "Select at least one position.")
+  .max(200, "Select at most 200 positions at a time.")
+  .transform((ids) => [...new Set(ids)]);
+
+export const bulkPositionIdsSchema = z.object({ positionIds: bulkPositionIds }).strict();
+
+export const bulkMovePositionsSchema = z
+  .object({
+    positionIds: bulkPositionIds,
+    newParentPositionId: z.string().uuid().nullable(),
+  })
+  .strict();
+
 export const listPositionsQuerySchema = z
   .object({
     search: searchQuerySchema,

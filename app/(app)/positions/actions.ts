@@ -32,6 +32,8 @@ import {
   listJobFamiliesForCompany,
 } from "@/lib/repositories/career-framework.repository";
 import {
+  bulkMovePositionsSchema,
+  bulkPositionIdsSchema,
   createPositionSchema,
   listPositionsQuerySchema,
   movePositionSchema,
@@ -40,6 +42,7 @@ import {
   updatePositionSchema,
   type ListPositionsQuery,
 } from "@/lib/validation/position";
+import { AppError } from "@/lib/errors";
 
 export interface PositionListPayload extends PositionSearchResult {
   occupiedPositionIds: string[];
@@ -270,5 +273,127 @@ export async function deletePositionSubtreeAction(
     const user = await requirePermission("positions:manage");
     const { positionId } = deletePositionSchema.parse(input);
     return deletePositionSubtree(positionId, user.companyId, toAuditActor(user));
+  });
+}
+
+/**
+ * Outcome of a bulk action: which positions were changed and which were
+ * refused, each with the same user-facing reason a single-item action would
+ * have surfaced. Bulk actions never partially corrupt data — each position is
+ * processed by its own atomic service call (its own transaction), so a refusal
+ * on one leaves the others exactly as the caller sees in `succeeded`/`failed`.
+ */
+export interface BulkActionResult {
+  succeeded: string[];
+  failed: { id: string; error: string }[];
+}
+
+/** The reason a single item failed, mapped the same safe way as runAction. */
+function bulkItemError(error: unknown): string {
+  if (error instanceof AppError) return error.message;
+  return "Something went wrong for this position.";
+}
+
+/**
+ * Permanently removes several positions. Re-authorized and re-validated here
+ * regardless of the client (CLAUDE.md §1.8). Each removal is the same atomic,
+ * fully-validated `deletePosition` used by the single-item path, so a position
+ * that still has reports or employment history is refused with its own reason
+ * and never orphans anyone. Deletes are retried leaf-first: when the selection
+ * covers a whole branch, a parent that was blocked only by a selected child
+ * succeeds on a later pass once that child is gone.
+ */
+export async function bulkDeletePositionsAction(
+  input: unknown
+): Promise<ActionResult<BulkActionResult>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { positionIds } = bulkPositionIdsSchema.parse(input);
+    const succeeded: string[] = [];
+    const lastError = new Map<string, string>();
+    let remaining = positionIds;
+    // At most one pass per id: each pass either deletes something (making
+    // progress) or the set is stable and we stop.
+    for (let pass = 0; pass < positionIds.length && remaining.length > 0; pass++) {
+      const stillFailing: string[] = [];
+      let progressed = false;
+      for (const id of remaining) {
+        try {
+          await deletePosition(id, user.companyId, toAuditActor(user));
+          succeeded.push(id);
+          lastError.delete(id);
+          progressed = true;
+        } catch (error) {
+          lastError.set(id, bulkItemError(error));
+          stillFailing.push(id);
+        }
+      }
+      remaining = stillFailing;
+      if (!progressed) break;
+    }
+    return {
+      succeeded,
+      failed: remaining.map((id) => ({ id, error: lastError.get(id) ?? bulkItemError(null) })),
+    };
+  });
+}
+
+/**
+ * Deactivates several positions. Re-authorized and re-validated here regardless
+ * of the client (CLAUDE.md §1.8). Each uses the same `archivePosition` service
+ * as the single-item path; a position that cannot be archived is refused with
+ * its own reason while the rest still apply.
+ */
+export async function bulkArchivePositionsAction(
+  input: unknown
+): Promise<ActionResult<BulkActionResult>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { positionIds } = bulkPositionIdsSchema.parse(input);
+    const succeeded: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+    for (const id of positionIds) {
+      try {
+        await archivePosition(id, user.companyId, toAuditActor(user));
+        succeeded.push(id);
+      } catch (error) {
+        failed.push({ id, error: bulkItemError(error) });
+      }
+    }
+    return { succeeded, failed };
+  });
+}
+
+/**
+ * Re-parents several positions under one new manager (bulk "Change
+ * Reports-To"). Re-authorized and re-validated here regardless of the client
+ * (CLAUDE.md §1.8). Each move is the same atomic `movePosition` used by the
+ * single-item path — it recalculates levels and rejects any cycle inside its
+ * own transaction — so a move that would create a cycle (e.g. moving a
+ * position under its own descendant) is refused with its own reason while the
+ * valid ones still apply.
+ */
+export async function bulkMovePositionsAction(
+  input: unknown
+): Promise<ActionResult<BulkActionResult>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { positionIds, newParentPositionId } = bulkMovePositionsSchema.parse(input);
+    const succeeded: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+    for (const id of positionIds) {
+      try {
+        await movePosition({
+          companyId: user.companyId,
+          actor: toAuditActor(user),
+          positionId: id,
+          newParentPositionId,
+        });
+        succeeded.push(id);
+      } catch (error) {
+        failed.push({ id, error: bulkItemError(error) });
+      }
+    }
+    return { succeeded, failed };
   });
 }

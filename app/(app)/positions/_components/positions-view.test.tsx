@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Position } from "@prisma/client";
 
@@ -11,6 +11,9 @@ const {
   listPositionCareerOptionsActionMock,
   archivePositionActionMock,
   deletePositionActionMock,
+  bulkArchivePositionsActionMock,
+  bulkDeletePositionsActionMock,
+  bulkMovePositionsActionMock,
 } = vi.hoisted(() => ({
   listPositionsActionMock: vi.fn(),
   listDepartmentOptionsActionMock: vi.fn(),
@@ -19,6 +22,9 @@ const {
   listPositionCareerOptionsActionMock: vi.fn(),
   archivePositionActionMock: vi.fn(),
   deletePositionActionMock: vi.fn(),
+  bulkArchivePositionsActionMock: vi.fn(),
+  bulkDeletePositionsActionMock: vi.fn(),
+  bulkMovePositionsActionMock: vi.fn(),
 }));
 
 vi.mock("@/app/(app)/positions/actions", () => ({
@@ -30,6 +36,9 @@ vi.mock("@/app/(app)/positions/actions", () => ({
   activatePositionAction: vi.fn(),
   archivePositionAction: archivePositionActionMock,
   deletePositionAction: deletePositionActionMock,
+  bulkArchivePositionsAction: bulkArchivePositionsActionMock,
+  bulkDeletePositionsAction: bulkDeletePositionsActionMock,
+  bulkMovePositionsAction: bulkMovePositionsActionMock,
 }));
 
 // RTL's render() has no Next.js App Router context provider, which
@@ -297,5 +306,83 @@ describe("PositionsView", () => {
 
     await waitFor(() => expect(screen.getByText(/employment history/i)).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: /delete position/i })).toBeInTheDocument();
+  });
+});
+
+describe("PositionsView — multi-select bulk actions", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  const P1 = "11111111-1111-4111-8111-111111111111";
+  const P2 = "44444444-4444-4444-8444-444444444444";
+
+  function loadTwoPositions() {
+    mockDefaults();
+    listPositionsActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        items: [
+          makePosition({ id: P1, title: "Chief Executive Officer", positionCode: "POS-CEO" }),
+          makePosition({ id: P2, title: "Head of Admin", positionCode: "POS-ADMIN" }),
+        ],
+        totalCount: 2,
+        occupiedPositionIds: [],
+      },
+    });
+  }
+
+  it("shows no selection checkboxes for a viewer", async () => {
+    loadTwoPositions();
+    render(<PositionsView canManage={false} />);
+    await screen.findByText("Chief Executive Officer");
+    expect(screen.queryByLabelText(/select all positions/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Select Head of Admin")).not.toBeInTheDocument();
+  });
+
+  it("reveals the bulk action bar once a row is selected", async () => {
+    const user = userEvent.setup();
+    loadTwoPositions();
+    render(<PositionsView canManage />);
+    await screen.findByText("Chief Executive Officer");
+
+    expect(screen.queryByRole("region", { name: "Bulk actions" })).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Select Head of Admin"));
+
+    const bar = screen.getByRole("region", { name: "Bulk actions" });
+    expect(bar).toHaveTextContent("1 selected");
+  });
+
+  it("select-all selects every position on the page", async () => {
+    const user = userEvent.setup();
+    loadTwoPositions();
+    render(<PositionsView canManage />);
+    await screen.findByText("Chief Executive Officer");
+
+    await user.click(screen.getByLabelText(/select all positions/i));
+
+    expect(screen.getByRole("region", { name: "Bulk actions" })).toHaveTextContent("2 selected");
+  });
+
+  it("bulk delete confirms then calls the bulk action with the selected ids", async () => {
+    const user = userEvent.setup();
+    loadTwoPositions();
+    bulkDeletePositionsActionMock.mockResolvedValue({
+      ok: true,
+      data: { succeeded: [P1, P2], failed: [] },
+    });
+    render(<PositionsView canManage />);
+    await screen.findByText("Chief Executive Officer");
+
+    await user.click(screen.getByLabelText(/select all positions/i));
+    const bar = screen.getByRole("region", { name: "Bulk actions" });
+    await user.click(within(bar).getByRole("button", { name: "Delete" }));
+
+    // Confirm inside the dialog.
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(bulkDeletePositionsActionMock).toHaveBeenCalledTimes(1));
+    expect(bulkDeletePositionsActionMock).toHaveBeenCalledWith({
+      positionIds: expect.arrayContaining([P1, P2]),
+    });
   });
 });

@@ -19,15 +19,19 @@ import { parseEnumParam, parseUuidParam } from "@/lib/utils/search-params";
 import {
   activatePositionAction,
   archivePositionAction,
+  bulkArchivePositionsAction,
+  bulkDeletePositionsAction,
   deletePositionAction,
   listAllPositionsAction,
   listDepartmentOptionsAction,
   listJobGradeOptionsAction,
   listPositionCareerOptionsAction,
   listPositionsAction,
+  type BulkActionResult,
 } from "@/app/(app)/positions/actions";
 import { PositionFormDialog } from "@/app/(app)/positions/_components/position-form-dialog";
 import { PositionMoveDialog } from "@/app/(app)/positions/_components/position-move-dialog";
+import { PositionsBulkMoveDialog } from "@/app/(app)/positions/_components/positions-bulk-move-dialog";
 
 interface PositionsViewProps {
   canManage: boolean;
@@ -90,9 +94,21 @@ export function PositionsView({ canManage }: PositionsViewProps) {
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Multi-select for bulk actions. Selection is scoped to the current page's
+  // rows (cleared whenever the list reloads), so a bulk action never touches a
+  // position the user can't currently see.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const bulkDeleteDialog = useConfirmDialog();
+  const bulkDeactivateDialog = useConfirmDialog();
+  const [bulkPending, setBulkPending] = useState(false);
+  const [bulkDeleteMessage, setBulkDeleteMessage] = useState<string | null>(null);
+  const [bulkDeactivateMessage, setBulkDeactivateMessage] = useState<string | null>(null);
+
   const refresh = useCallback(() => {
     setLoading(true);
     setError(null);
+    setSelectedIds(new Set());
     startTransition(async () => {
       const [listResult, deptResult, gradeResult, allResult, careerResult] = await Promise.all([
         listPositionsAction({
@@ -189,6 +205,75 @@ export function PositionsView({ canManage }: PositionsViewProps) {
     deleteDialog.setOpen(false);
     if (positions.length === 1 && page > 1) setPage(page - 1);
     else refresh();
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allOnPageSelected = positions.length > 0 && positions.every((p) => selectedIds.has(p.id));
+
+  function toggleSelectAllOnPage() {
+    setSelectedIds(allOnPageSelected ? new Set() : new Set(positions.map((p) => p.id)));
+  }
+
+  const selectedPositions = positions.filter((p) => selectedIds.has(p.id));
+
+  // A short "N done, M skipped: title — reason; …" line from a bulk result,
+  // mapping ids back to titles for the current page. Returns null when nothing
+  // was skipped (the caller then just closes and refreshes).
+  function summarizeBulk(result: BulkActionResult, verb: string): string | null {
+    if (result.failed.length === 0) return null;
+    const titleById = new Map(positions.map((p) => [p.id, p.title]));
+    const reasons = result.failed
+      .map((f) => `${titleById.get(f.id) ?? f.id} — ${f.error}`)
+      .join("; ");
+    return `${result.succeeded.length} ${verb}, ${result.failed.length} skipped: ${reasons}`;
+  }
+
+  async function confirmBulkDelete() {
+    if (selectedIds.size === 0) return;
+    setBulkPending(true);
+    setBulkDeleteMessage(null);
+    const result = await bulkDeletePositionsAction({ positionIds: [...selectedIds] });
+    setBulkPending(false);
+    if (!result.ok) {
+      setBulkDeleteMessage(result.error);
+      return;
+    }
+    const message = summarizeBulk(result.data, "deleted");
+    if (message) {
+      setBulkDeleteMessage(message);
+      refresh();
+      return;
+    }
+    bulkDeleteDialog.setOpen(false);
+    refresh();
+  }
+
+  async function confirmBulkDeactivate() {
+    if (selectedIds.size === 0) return;
+    setBulkPending(true);
+    setBulkDeactivateMessage(null);
+    const result = await bulkArchivePositionsAction({ positionIds: [...selectedIds] });
+    setBulkPending(false);
+    if (!result.ok) {
+      setBulkDeactivateMessage(result.error);
+      return;
+    }
+    const message = summarizeBulk(result.data, "deactivated");
+    if (message) {
+      setBulkDeactivateMessage(message);
+      refresh();
+      return;
+    }
+    bulkDeactivateDialog.setOpen(false);
+    refresh();
   }
 
   function departmentName(departmentId: string): string {
@@ -307,6 +392,52 @@ export function PositionsView({ canManage }: PositionsViewProps) {
         ) : null}
       </div>
 
+      {canManage && selectedIds.size > 0 ? (
+        <div
+          role="region"
+          aria-label="Bulk actions"
+          className="bg-muted mb-3 flex flex-wrap items-center gap-2 rounded-md border px-4 py-2"
+        >
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setBulkMoveOpen(true)}>
+              Change Reports-To
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setBulkDeactivateMessage(null);
+                bulkDeactivateDialog.setOpen(true);
+              }}
+            >
+              Deactivate
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => {
+                setBulkDeleteMessage(null);
+                bulkDeleteDialog.setOpen(true);
+              }}
+            >
+              Delete
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {loading ? (
         <LoadingState label="Loading positions…" />
       ) : error ? (
@@ -332,6 +463,17 @@ export function PositionsView({ canManage }: PositionsViewProps) {
             <caption className="sr-only">Positions</caption>
             <thead className="bg-muted text-muted-foreground">
               <tr>
+                {canManage ? (
+                  <th scope="col" className="w-10 px-4 py-2 text-left">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all positions on this page"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAllOnPage}
+                      className="size-4 cursor-pointer align-middle"
+                    />
+                  </th>
+                ) : null}
                 <th scope="col" className="px-4 py-2 text-left font-medium">
                   Title
                 </th>
@@ -366,7 +508,18 @@ export function PositionsView({ canManage }: PositionsViewProps) {
             </thead>
             <tbody className="divide-border divide-y">
               {positions.map((position) => (
-                <tr key={position.id}>
+                <tr key={position.id} data-selected={selectedIds.has(position.id) || undefined}>
+                  {canManage ? (
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${position.title}`}
+                        checked={selectedIds.has(position.id)}
+                        onChange={() => toggleSelect(position.id)}
+                        className="size-4 cursor-pointer align-middle"
+                      />
+                    </td>
+                  ) : null}
                   <td className="px-4 py-2 font-medium">{position.title}</td>
                   <td className="px-4 py-2">{departmentName(position.departmentId)}</td>
                   <td className="px-4 py-2">{jobFamilyName(position.jobFamilyId)}</td>
@@ -497,6 +650,41 @@ export function PositionsView({ canManage }: PositionsViewProps) {
           errorMessage={deleteError}
           onConfirm={confirmDelete}
         />
+      ) : null}
+
+      {canManage ? (
+        <>
+          <PositionsBulkMoveDialog
+            open={bulkMoveOpen}
+            onOpenChange={setBulkMoveOpen}
+            selected={selectedPositions}
+            allPositions={allPositions}
+            jobFamilyNameById={jobFamilyNameById}
+            onDone={refresh}
+          />
+          <ConfirmDialog
+            open={bulkDeleteDialog.open}
+            onOpenChange={bulkDeleteDialog.setOpen}
+            title={`Delete ${selectedIds.size} position${selectedIds.size === 1 ? "" : "s"}?`}
+            description="Each selected position is permanently removed. This cannot be undone. A position can only be deleted while nothing reports to it and no one is or was assigned to it — any that can't be are kept and listed."
+            confirmLabel="Delete"
+            destructive
+            pending={bulkPending}
+            errorMessage={bulkDeleteMessage}
+            onConfirm={confirmBulkDelete}
+          />
+          <ConfirmDialog
+            open={bulkDeactivateDialog.open}
+            onOpenChange={bulkDeactivateDialog.setOpen}
+            title={`Deactivate ${selectedIds.size} position${selectedIds.size === 1 ? "" : "s"}?`}
+            description="Each selected position is marked inactive. Their place in the reporting hierarchy and any existing employee assignments are unaffected."
+            confirmLabel="Deactivate"
+            destructive
+            pending={bulkPending}
+            errorMessage={bulkDeactivateMessage}
+            onConfirm={confirmBulkDeactivate}
+          />
+        </>
       ) : null}
     </div>
   );
