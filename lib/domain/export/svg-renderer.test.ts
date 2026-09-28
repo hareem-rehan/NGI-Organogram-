@@ -65,8 +65,10 @@ describe("renderOrganogramSvg — colour by sub-division", () => {
     // The card body takes the family fill and the family accent edge.
     expect(result.svg).toContain('fill="#cbf2b1"');
     expect(result.svg).toContain('fill="#6fbf3f"');
-    // The grade and family share the card's last line.
-    expect(result.svg).toContain("L7 · Software Engineering");
+    // The grade and family share the compact card's footer (D30), shortened
+    // to fit; the full sub-division name is in the legend.
+    expect(result.svg).toContain("L7 · Software");
+    expect(result.svg).toContain(">Software Engineering<");
     // The legend keys sub-divisions, not departments.
     expect(result.svg).toContain("Sub-divisions");
     expect(result.svg).not.toContain(">Departments<");

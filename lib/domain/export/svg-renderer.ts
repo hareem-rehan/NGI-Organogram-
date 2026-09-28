@@ -326,7 +326,7 @@ function renderNodeCard(
   // removed there (Demo 1 feedback) and must be removed here too — this
   // renderer draws its own copy of the card, so the two silently diverge
   // unless changed together.
-  const titleLines = wrapText(node.title, 25, 2);
+  const titleLines = wrapText(node.title, 22, 2);
   const isOccupied = node.occupancyStatus === "occupied";
   const occupantName = isOccupied ? (node.occupantDisplayName ?? null) : null;
   const badge = nodeBadge(node);
@@ -349,48 +349,46 @@ function renderNodeCard(
   // "Vacant" wording, conveying the empty seat by the absent name alone,
   // exactly like position-node.tsx on screen. Title starts flush-left when
   // there is no dot so the text is not indented into empty space.
-  const titleX = isOccupied ? 34 : 16;
+  const titleX = isOccupied ? 26 : 10;
   if (isOccupied) {
-    parts.push(`<circle cx="22" cy="22" r="4" fill="${EXPORT_COLORS.statusFilled}" />`);
+    parts.push(`<circle cx="15" cy="15" r="3.5" fill="${EXPORT_COLORS.statusFilled}" />`);
   }
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="${titleX}" y="${26 + index * 15}" font-size="13" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
+      `<text x="${titleX}" y="${19 + index * 15}" font-size="13" font-weight="800" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
     );
   });
 
-  // Rows 2 and 3 — the person (omitted when nobody holds the role) and
-  // the grade, each positioned BELOW however many title lines were
-  // actually drawn, so a two-line title can never be overprinted.
-  let y = 30 + titleLines.length * 15;
+  // Row 2 — the person (omitted when nobody holds the role), placed BELOW
+  // however many title lines were drawn so a two-line title is never
+  // overprinted. Every exported card is colour-filled, so all text uses the
+  // foreground colour — the muted grey falls below WCAG AA on the stronger
+  // fills.
   if (occupantName) {
     parts.push(
-      `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(occupantName)}</text>`
-    );
-    y += 14;
-  }
-  // Grade and family share the compact card's last line, mirroring
-  // position-node.tsx ("L7 · Software Engineering"). Every exported card is
-  // colour-filled, so its text uses the foreground colour — the muted grey
-  // falls below WCAG AA on the reference palette's stronger fills.
-  const gradeFamilyLine = [node.jobGradeCode, node.jobFamilyName].filter(Boolean).join(" · ");
-  if (gradeFamilyLine) {
-    parts.push(
-      `<text x="16" y="${y}" font-size="11" font-weight="600" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(gradeFamilyLine)}</text>`
+      `<text x="10" y="${20 + titleLines.length * 15}" font-size="12" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(occupantName)}</text>`
     );
   }
 
-  // Footer — every role in the position's whole branch, like the on-screen
-  // card (docs/DECISIONS.md D29), under a thin divider.
+  // Footer (compact card, docs/DECISIONS.md D30): every role in the
+  // position's whole branch on the left, the level (and sub-division) on
+  // the right, under a thin divider — mirroring position-node.tsx.
   const rolesUnder = node.totalReportCount ?? node.displayChildCount ?? node.directReportCount ?? 0;
+  const footerY = NODE_HEIGHT - 7;
   parts.push(
-    `<line x1="12" y1="${NODE_HEIGHT - 24}" x2="${NODE_WIDTH - 12}" y2="${NODE_HEIGHT - 24}" stroke="${EXPORT_COLORS.foreground}" stroke-opacity="0.12" stroke-width="1" />`,
-    `<text x="16" y="${NODE_HEIGHT - 9}" font-size="10.5" fill="${EXPORT_COLORS.foreground}">${
+    `<line x1="8" y1="${NODE_HEIGHT - 20}" x2="${NODE_WIDTH - 8}" y2="${NODE_HEIGHT - 20}" stroke="${EXPORT_COLORS.foreground}" stroke-opacity="0.15" stroke-width="1" />`,
+    `<text x="10" y="${footerY}" font-size="10.5" font-weight="600" fill="${EXPORT_COLORS.foreground}">${
       rolesUnder > 0
-        ? `<tspan font-weight="700">${rolesUnder}</tspan> ${rolesUnder === 1 ? "role" : "roles"} under`
+        ? `<tspan font-weight="800">${rolesUnder}</tspan> ${rolesUnder === 1 ? "role" : "roles"} under`
         : "No roles under"
     }</text>`
   );
+  const gradeFamilyLine = [node.jobGradeCode, node.jobFamilyName].filter(Boolean).join(" · ");
+  if (gradeFamilyLine) {
+    parts.push(
+      `<text x="${NODE_WIDTH - 10}" y="${footerY}" font-size="10.5" font-weight="700" text-anchor="end" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(wrapText(gradeFamilyLine, 16, 1)[0] ?? "")}</text>`
+    );
+  }
 
   parts.push("</g>");
   return parts.join("");

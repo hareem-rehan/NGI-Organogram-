@@ -129,7 +129,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         onClick={() => onToggleCollapse(node.positionId)}
         aria-expanded={!isCollapsed}
         aria-label={`${node.departmentName} department, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
-        className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {node.hasChildren ? (
@@ -145,11 +145,11 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
               />
             )
           ) : null}
-          <p className="text-foreground line-clamp-2 text-sm leading-tight font-bold tracking-wide uppercase">
+          <p className="text-foreground line-clamp-2 text-[13px] leading-tight font-extrabold tracking-wide uppercase">
             {node.departmentName}
           </p>
         </div>
-        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-xs")}>
+        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-xs font-semibold")}>
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
@@ -187,7 +187,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
         onClick={() => onToggleCollapse(node.positionId)}
         aria-expanded={!isCollapsed}
         aria-label={`${node.title} sub-division, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
-        className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {node.hasChildren ? (
@@ -203,11 +203,11 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
               />
             )
           ) : null}
-          <p className="text-foreground line-clamp-2 text-sm leading-tight font-semibold">
+          <p className="text-foreground line-clamp-2 text-[13px] leading-tight font-extrabold">
             {node.title}
           </p>
         </div>
-        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-xs")}>
+        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-xs font-semibold")}>
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
@@ -354,7 +354,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // is released without moving — so a click edits and a press-drag
         // re-parents, sharing one surface. The +/Delete/collapse controls stay
         // `nodrag` so they never start a drag.
-        className="focus-visible:ring-ring flex min-h-0 flex-1 flex-col rounded-t-[calc(0.5rem-2px)] px-2.5 pt-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex min-h-0 flex-1 flex-col rounded-t-[calc(0.5rem-2px)] px-2 pt-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         {/* Compact leadership card (Demo 1 feedback): role, then the
             person in it, then the level. Deliberately NOT shown — the
@@ -365,7 +365,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             three characters). All of it is still on the details panel,
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
-          <p className="text-foreground line-clamp-2 text-[13px] leading-tight font-bold">
+          <p className="text-foreground line-clamp-2 text-[13px] leading-[15px] font-extrabold tracking-tight">
             {node.title}
           </p>
           <div className="flex shrink-0 items-center gap-1">
@@ -379,24 +379,15 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           </div>
         </div>
         {occupantName ? (
-          <p
-            className={cn(
-              cardBackground ? "text-foreground" : "text-foreground/80",
-              "mt-0.5 truncate text-xs font-semibold"
-            )}
-          >
+          <p className={cn("text-foreground mt-0.5 truncate text-xs leading-4 font-bold")}>
             {occupantName}
           </p>
         ) : null}
-        {node.jobGradeCode || node.jobFamilyName ? (
-          <p className={cn(secondaryTextClass(cardBackground), "mt-0.5 truncate text-[11px]")}>
-            {node.jobGradeCode ? <span className="font-bold">{node.jobGradeCode}</span> : null}
-            {node.jobGradeCode && node.jobFamilyName ? " · " : null}
-            {node.jobFamilyName ?? null}
-          </p>
-        ) : null}
       </button>
-      <div className="border-foreground/10 mx-2.5 mb-1.5 border-t pt-1">
+      {/* Footer: how many roles sit under it (the expand control) on the
+          left, the level (and sub-division) on the right — one row, so the
+          card stays compact (docs/DECISIONS.md D30). */}
+      <div className="border-foreground/15 mx-2 mb-1 flex min-w-0 items-center justify-between gap-2 border-t pt-1">
         {node.hasChildren ? (
           <button
             type="button"
@@ -408,7 +399,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
                 : `Collapse ${node.title}`
             }
             className={cn(
-              "nodrag hover:text-foreground focus-visible:ring-ring flex items-center gap-1 rounded text-xs outline-none focus-visible:ring-2",
+              "nodrag hover:text-foreground focus-visible:ring-ring flex shrink-0 items-center gap-0.5 rounded text-[11px] font-semibold outline-none focus-visible:ring-2",
               secondaryTextClass(cardBackground)
             )}
           >
@@ -417,12 +408,30 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             ) : (
               <ChevronDown aria-hidden="true" className="size-3.5" />
             )}
-            <span className="font-bold">{rolesUnder}</span>
+            <span className="text-foreground font-extrabold">{rolesUnder}</span>
             {rolesUnder === 1 ? " role under" : " roles under"}
           </button>
         ) : (
-          <p className={cn(secondaryTextClass(cardBackground), "text-[11px]")}>No roles under</p>
+          <p
+            className={cn(secondaryTextClass(cardBackground), "shrink-0 text-[11px] font-semibold")}
+          >
+            No roles under
+          </p>
         )}
+        {node.jobGradeCode || node.jobFamilyName ? (
+          <p
+            className={cn(
+              secondaryTextClass(cardBackground),
+              "min-w-0 truncate text-right text-[11px] font-semibold"
+            )}
+          >
+            {node.jobGradeCode ? (
+              <span className="text-foreground font-extrabold">{node.jobGradeCode}</span>
+            ) : null}
+            {node.jobGradeCode && node.jobFamilyName ? " · " : null}
+            {node.jobFamilyName ?? null}
+          </p>
+        ) : null}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />
     </div>

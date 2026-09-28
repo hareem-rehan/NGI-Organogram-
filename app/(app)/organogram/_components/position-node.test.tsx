@@ -155,13 +155,17 @@ describe("PositionNode", () => {
       }),
     });
 
-    const card = screen.getByRole("button", { name: /^Manager Admin\. Hammad Hussain\./ });
+    // The whole card, top to bottom: role, person, then the footer (with the
+    // level) — the level moved into the footer row in the compact card (D30).
+    const card = screen.getByRole("button", {
+      name: /^Manager Admin\. Hammad Hussain\./,
+    }).parentElement!;
     const lines = (card.textContent ?? "").trim();
     expect(lines.indexOf("Manager Admin")).toBeLessThan(lines.indexOf("Hammad Hussain"));
     expect(lines.indexOf("Hammad Hussain")).toBeLessThan(lines.indexOf("L10"));
   });
 
-  it("shows the sub-division alongside the grade under the title", () => {
+  it("shows the sub-division alongside the grade in the footer", () => {
     renderNode({
       node: makeNode({
         title: "Principal Engineer",
