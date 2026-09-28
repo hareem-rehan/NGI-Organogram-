@@ -3,6 +3,7 @@ import type { ExportJob, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
 import { computeElkLayout } from "@/app/(app)/organogram/_lib/elk-layout";
+import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import { DomainValidationError, NotFoundError, UnsafeMutationError } from "@/lib/domain/errors";
 import {
   ExportOptionsError,
@@ -184,9 +185,12 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
   // itself and gives the real, post-layout pixel dimensions needed to
   // check `assertPngWithinSafeRenderBudget` below before committing to a
   // job at all.
+  // Same department segregation as the interactive chart, so an export
+  // never shows one department's cards drifting under another's.
   const positions = await computeElkLayout(
     subgraph.nodes.map((n) => n.positionId),
-    subgraph.edges
+    subgraph.edges,
+    computeLayoutClusters(subgraph.nodes)
   );
 
   // Each department is coloured by its OWN stored colour (denormalised onto

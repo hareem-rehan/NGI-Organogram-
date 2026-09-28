@@ -21,6 +21,7 @@ import {
   NODE_WIDTH,
   type LayoutPosition,
 } from "@/app/(app)/organogram/_lib/elk-layout";
+import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import {
   NODE_TYPES,
   type OrganogramColorMode,
@@ -130,9 +131,13 @@ function CanvasInner({
     const requestId = ++layoutRequestId.current;
     let cancelled = false;
 
+    // Each department's branch is laid out in its own box, side by side, so
+    // departments stay visibly separated and a wide branch never drifts under
+    // a neighbour (lib/domain/organogram-layout-clusters.ts).
     void computeElkLayout(
       visibleNodes.map((n) => n.positionId),
-      visibleEdges
+      visibleEdges,
+      computeLayoutClusters(visibleNodes)
     )
       .then((computed) => {
         if (cancelled || requestId !== layoutRequestId.current) return;
