@@ -12,6 +12,32 @@ export async function findEmployeeById(
   return db.employee.findFirst({ where: { id, companyId } });
 }
 
+export interface EmployeeOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+  preferredName: string | null;
+  employeeCode: string;
+}
+
+/**
+ * A flat, name-sorted list of ACTIVE employees for an occupant picker (the
+ * Position form's "Assigned employee" field). Capped, like the other option
+ * lists, so a large company can never balloon the payload (docs/DECISIONS.md
+ * P7). Only the fields a picker needs — never the whole record.
+ */
+export async function listEmployeeOptionsForCompany(
+  companyId: string,
+  db: DbClient = prisma
+): Promise<EmployeeOption[]> {
+  return db.employee.findMany({
+    where: { companyId, employmentStatus: "ACTIVE" },
+    select: { id: true, firstName: true, lastName: true, preferredName: true, employeeCode: true },
+    orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    take: 2000,
+  });
+}
+
 export interface EmployeeSearchParams {
   companyId: string;
   search?: string;

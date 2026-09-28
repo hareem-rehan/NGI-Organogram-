@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import {
   createAssignment,
   endAssignment,
+  setPositionPrimaryOccupant,
   transferEmployee,
 } from "@/lib/services/assignment.service";
 import {
@@ -961,5 +962,197 @@ describe("Employee search and derived assignment info (Phase 6)", () => {
     );
     expect(map.get(assignedEmployee.id)?.position.id).toBe(position.id);
     expect(map.has(unassignedEmployee.id)).toBe(false);
+  });
+});
+
+describe("setPositionPrimaryOccupant (Position form 'Assigned employee')", () => {
+  it("assigns an employee to a vacant position", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const employee = await makeEmployee(company.id);
+
+    await setPositionPrimaryOccupant({
+      companyId: company.id,
+      positionId: position.id,
+      employeeId: employee.id,
+    });
+
+    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
+    expect(active?.employeeId).toBe(employee.id);
+  });
+
+  it("reassigns to a different employee, ending the previous occupant's assignment", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const first = await makeEmployee(company.id, { employeeCode: "OCC-1" });
+    const second = await makeEmployee(company.id, { employeeCode: "OCC-2" });
+    await createAssignment({
+      companyId: company.id,
+      employeeId: first.id,
+      positionId: position.id,
+      startDate: new Date("2023-01-01"),
+    });
+
+    await setPositionPrimaryOccupant({
+      companyId: company.id,
+      positionId: position.id,
+      employeeId: second.id,
+    });
+
+    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
+    expect(active?.employeeId).toBe(second.id);
+    // The first employee's old assignment is closed, not open-ended.
+    const firstRows = await testPrisma.positionAssignment.findMany({
+      where: { companyId: company.id, employeeId: first.id },
+    });
+    expect(firstRows.every((r) => r.endDate !== null)).toBe(true);
+  });
+
+  it("vacates a position when the employee is null", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const employee = await makeEmployee(company.id);
+    await createAssignment({
+      companyId: company.id,
+      employeeId: employee.id,
+      positionId: position.id,
+      startDate: new Date("2023-01-01"),
+    });
+
+    await setPositionPrimaryOccupant({
+      companyId: company.id,
+      positionId: position.id,
+      employeeId: null,
+    });
+
+    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
+    expect(active).toBeNull();
+  });
+
+  it("is a no-op when the chosen employee already occupies the position", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const employee = await makeEmployee(company.id);
+    const existing = await createAssignment({
+      companyId: company.id,
+      employeeId: employee.id,
+      positionId: position.id,
+      startDate: new Date("2023-01-01"),
+    });
+
+    await setPositionPrimaryOccupant({
+      companyId: company.id,
+      positionId: position.id,
+      employeeId: employee.id,
+    });
+
+    const rows = await testPrisma.positionAssignment.findMany({
+      where: { companyId: company.id, positionId: position.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(existing.id);
+  });
+
+  it("handles a same-day reassignment (occupant assigned today, replaced today)", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const first = await makeEmployee(company.id, { employeeCode: "SD-1" });
+    const second = await makeEmployee(company.id, { employeeCode: "SD-2" });
+
+    await setPositionPrimaryOccupant({
+      companyId: company.id,
+      positionId: position.id,
+      employeeId: first.id,
+    });
+    // Same day, swap to a different person — the same-day row can't be
+    // end-dated (endDate must be after startDate), so it is removed and a new
+    // one created without error.
+    await setPositionPrimaryOccupant({
+      companyId: company.id,
+      positionId: position.id,
+      employeeId: second.id,
+    });
+
+    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
+    expect(active?.employeeId).toBe(second.id);
+  });
+
+  it("refuses to assign an employee who already holds another open position", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const other = await makeChildPosition(company.id, dept.id, root.id, 1);
+    const employee = await makeEmployee(company.id);
+    await createAssignment({
+      companyId: company.id,
+      employeeId: employee.id,
+      positionId: root.id,
+      startDate: new Date("2023-01-01"),
+    });
+
+    await expect(
+      setPositionPrimaryOccupant({
+        companyId: company.id,
+        positionId: other.id,
+        employeeId: employee.id,
+      })
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("rolls back the vacate step when the new assignment fails — the previous occupant stays", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const other = await makeChildPosition(company.id, dept.id, root.id, 1);
+    const incumbent = await makeEmployee(company.id);
+    const busy = await makeEmployee(company.id);
+    const incumbentAssignment = await createAssignment({
+      companyId: company.id,
+      employeeId: incumbent.id,
+      positionId: other.id,
+      startDate: new Date("2023-01-01"),
+    });
+    await createAssignment({
+      companyId: company.id,
+      employeeId: busy.id,
+      positionId: root.id,
+      startDate: new Date("2023-01-01"),
+    });
+
+    await expect(
+      setPositionPrimaryOccupant({
+        companyId: company.id,
+        positionId: other.id,
+        employeeId: busy.id,
+      })
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    const active = await getActivePrimaryAssignmentForPosition(other.id, company.id);
+    expect(active?.id).toBe(incumbentAssignment.id);
+    expect(active?.endDate).toBeNull();
+  });
+
+  it("refuses an employee from another company", async () => {
+    const company = await makeCompany();
+    const otherCompany = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const outsider = await makeEmployee(otherCompany.id);
+
+    await expect(
+      setPositionPrimaryOccupant({
+        companyId: company.id,
+        positionId: position.id,
+        employeeId: outsider.id,
+      })
+    ).rejects.toBeInstanceOf(CrossCompanyError);
+
+    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
+    expect(active).toBeNull();
   });
 });

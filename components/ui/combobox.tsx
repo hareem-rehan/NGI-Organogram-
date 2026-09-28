@@ -133,7 +133,7 @@ export function Combobox({
           onOpenAutoFocus={(event) => event.preventDefault()}
           align="start"
           sideOffset={4}
-          className="border-border bg-background z-50 max-h-64 w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-md border p-1 shadow-md"
+          className="border-border bg-background z-50 max-h-64 w-[var(--radix-popover-trigger-width)] overflow-y-auto overscroll-contain rounded-md border p-1 shadow-md"
         >
           {options.length === 0 ? (
             // `role="listbox"` requires every child to be `role="option"`

@@ -303,3 +303,78 @@ function translateAssignmentWriteError(error: unknown): Error {
   }
   return error instanceof Error ? error : new Error("Unexpected database error.");
 }
+
+/**
+ * Sets a position's current (open-ended, primary) occupant — the "assign
+ * employee" action on the Position form. Runs the whole change in one
+ * transaction (docs/DOMAIN_MODEL.md §7, CLAUDE.md §9) so a position never ends
+ * up both vacated and un-filled:
+ *
+ * - `employeeId` unchanged from the current occupant → no-op.
+ * - Any current occupant is cleared first: its open assignment is ended today
+ *   (history preserved), unless it also started today — a same-day correction
+ *   that cannot be end-dated (endDate must be after startDate), so that row is
+ *   removed instead.
+ * - `employeeId` set → a fresh primary assignment starts today, reusing
+ *   `createAssignment` so all its guards apply (the DB still rejects assigning
+ *   an employee who already holds another open primary assignment — surfaced as
+ *   a conflict for the caller to show).
+ * - `employeeId === null` → the position is left vacant.
+ */
+export async function setPositionPrimaryOccupant(
+  input: {
+    companyId: string;
+    actor?: AuditActor;
+    positionId: string;
+    employeeId: string | null;
+  },
+  db: DbClient = prisma
+): Promise<void> {
+  const actor = input.actor ?? "SYSTEM";
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+  await withTransaction(db, async (tx) => {
+    const current = (
+      await listPrimaryAssignmentsForPosition(input.positionId, input.companyId, tx)
+    ).find((assignment) => assignment.endDate === null);
+
+    if (current && input.employeeId && current.employeeId === input.employeeId) {
+      return; // already the occupant — nothing to do
+    }
+
+    if (current) {
+      const startedToday = current.startDate.getTime() >= today.getTime();
+      if (startedToday) {
+        await recordAuditEvent(
+          {
+            companyId: input.companyId,
+            actor,
+            action: "ASSIGNMENT_ENDED",
+            category: "ASSIGNMENT",
+            entityType: "PositionAssignment",
+            entityId: current.id,
+            before: current,
+          },
+          tx
+        );
+        await tx.positionAssignment.delete({ where: { id: current.id } });
+      } else {
+        await endAssignment(current.id, input.companyId, today, actor, tx);
+      }
+    }
+
+    if (input.employeeId) {
+      await createAssignment(
+        {
+          companyId: input.companyId,
+          actor,
+          employeeId: input.employeeId,
+          positionId: input.positionId,
+          startDate: today,
+        },
+        tx
+      );
+    }
+  });
+}

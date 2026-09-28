@@ -168,4 +168,49 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
 
     await expect(page.getByText(sharedTitle)).toHaveCount(2);
   });
+
+  test("HR_EDITOR/ADMIN can assign, then vacate, a position's employee from the Position form", async ({
+    page,
+  }) => {
+    const occupiedTitle = `E2E Occupied ${suffix}`;
+    const employeeCode = `E2E-POSEMP-${suffix}`;
+
+    await page.goto("/employees");
+    await page.getByRole("button", { name: /add employee/i }).click();
+    let dialog = page.getByRole("dialog");
+    await dialog.getByLabel(/employee code/i).fill(employeeCode);
+    await dialog.getByLabel(/first name/i).fill("Grace");
+    await dialog.getByLabel(/last name/i).fill(`Hopper ${suffix}`);
+    await dialog.getByRole("button", { name: /create employee/i }).click();
+    await expect(dialog).toBeHidden();
+
+    await page.goto("/positions");
+    await page.getByRole("button", { name: /add position/i }).click();
+    dialog = page.getByRole("dialog");
+    await fillTitle(dialog, occupiedTitle);
+    await dialog.getByRole("combobox", { name: /reports to/i }).click();
+    await dialog.getByRole("combobox", { name: /reports to/i }).fill(rootTitle);
+    await page.getByRole("option", { name: new RegExp(rootTitle) }).click();
+    const picker = dialog.getByRole("combobox", { name: /assigned employee/i });
+    await picker.click();
+    await picker.fill(employeeCode);
+    await page.getByRole("option", { name: new RegExp(`Hopper ${suffix}`) }).click();
+    await dialog.getByRole("button", { name: /create position/i }).click();
+    await expect(dialog).toBeHidden();
+
+    const row = page.getByRole("row", { name: new RegExp(occupiedTitle) });
+    await expect(row.getByText("Filled")).toBeVisible();
+
+    // Editing prefills the current occupant; choosing Vacant ends the assignment.
+    await row.getByRole("button", { name: /^edit$/i }).click();
+    dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("combobox", { name: /assigned employee/i })).toHaveValue(
+      `Grace Hopper ${suffix}`
+    );
+    await dialog.getByRole("combobox", { name: /assigned employee/i }).click();
+    await page.getByRole("option", { name: /vacant/i }).click();
+    await dialog.getByRole("button", { name: /save changes/i }).click();
+    await expect(dialog).toBeHidden();
+    await expect(row.getByText("Vacant")).toBeVisible();
+  });
 });
