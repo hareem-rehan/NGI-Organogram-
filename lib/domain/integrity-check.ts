@@ -21,12 +21,22 @@
  * categories 10-13 are derived from.
  */
 
+import { findCycleInHeadGraph } from "@/lib/domain/hierarchy";
+
 export interface IntegrityPositionRow {
   id: string;
   companyId: string;
   positionCode: string;
   primaryReportsToPositionId: string | null;
+  /** Optional second head (docs/DECISIONS.md D27). Absent is treated as none. */
+  coReportsToPositionId?: string | null;
   organizationalLevel: number;
+}
+
+function headIdsOf(position: IntegrityPositionRow): string[] {
+  return [position.primaryReportsToPositionId, position.coReportsToPositionId ?? null].filter(
+    (id): id is string => id !== null
+  );
 }
 
 export interface IntegrityEmployeeRow {
@@ -82,6 +92,7 @@ export type IntegrityCategory =
   | "SELF_REPORTING_POSITION"
   | "REPORTING_CYCLE"
   | "CROSS_COMPANY_REPORTS_TO"
+  | "INVALID_SECOND_HEAD"
   | "DUPLICATE_POSITION_CODE"
   | "DUPLICATE_EMPLOYEE_CODE"
   | "OVERLAPPING_POSITION_ASSIGNMENT"
@@ -148,17 +159,24 @@ export function checkPositionLevelsAndRoots(
       }
     }
 
+    // Level = deepest head + 1 (docs/DECISIONS.md D27); with one head this
+    // is the familiar "parent + 1".
     const byId = new Map(companyPositions.map((p) => [p.id, p]));
     for (const position of companyPositions) {
       if (position.primaryReportsToPositionId === null) continue;
-      const parent = byId.get(position.primaryReportsToPositionId);
-      if (!parent) continue; // cross-company or dangling reference — reported separately
-      if (position.organizationalLevel !== parent.organizationalLevel + 1) {
+      const heads = headIdsOf(position)
+        .map((id) => byId.get(id))
+        .filter((head): head is IntegrityPositionRow => head !== undefined);
+      if (heads.length === 0) continue; // cross-company or dangling reference — reported separately
+      const deepest = heads.reduce((a, b) =>
+        b.organizationalLevel > a.organizationalLevel ? b : a
+      );
+      if (position.organizationalLevel !== deepest.organizationalLevel + 1) {
         violations.push({
           category: "CHILD_LEVEL_MISMATCH",
           companyId,
-          recordIds: [position.id, parent.id],
-          message: `Position ${position.id} (code ${position.positionCode}) has organizationalLevel ${position.organizationalLevel}, expected parent ${parent.organizationalLevel} + 1 = ${parent.organizationalLevel + 1}.`,
+          recordIds: [position.id, deepest.id],
+          message: `Position ${position.id} (code ${position.positionCode}) has organizationalLevel ${position.organizationalLevel}, expected deepest head ${deepest.organizationalLevel} + 1 = ${deepest.organizationalLevel + 1}.`,
         });
       }
     }
@@ -211,8 +229,52 @@ export function checkReportingCycles(positions: IntegrityPositionRow[]): Integri
         current = byId.get(current.primaryReportsToPositionId);
       }
     }
+
+    // A cycle that only closes through a SECOND head (docs/DECISIONS.md
+    // D27) is invisible to the head-1 walk above. Check the full head graph
+    // too, reporting only a cycle not already reported.
+    const headsOf = new Map(
+      companyPositions.map((p) => [p.id, headIdsOf(p).filter((h) => h !== p.id)])
+    );
+    const cycle = findCycleInHeadGraph(headsOf);
+    if (cycle && !cycle.some((id) => cycleAlreadyReportedFor.has(id))) {
+      violations.push({
+        category: "REPORTING_CYCLE",
+        companyId,
+        recordIds: cycle,
+        message: `Reporting cycle detected among position(s): ${cycle.join(" -> ")}.`,
+      });
+    }
   }
 
+  return violations;
+}
+
+/**
+ * Second-head shape (docs/DECISIONS.md D27): never the position itself,
+ * never the same as head 1, never on the root. Also DB CHECK-enforced; this
+ * catches anything that got past both.
+ */
+export function checkSecondHeads(positions: IntegrityPositionRow[]): IntegrityViolation[] {
+  const violations: IntegrityViolation[] = [];
+  for (const position of positions) {
+    const co = position.coReportsToPositionId ?? null;
+    if (co === null) continue;
+    let problem: string | null = null;
+    if (co === position.id) problem = "is its own second head";
+    else if (position.primaryReportsToPositionId === null)
+      problem = "is the root but has a second head";
+    else if (co === position.primaryReportsToPositionId)
+      problem = "has the same position as both heads";
+    if (problem) {
+      violations.push({
+        category: "INVALID_SECOND_HEAD",
+        companyId: position.companyId,
+        recordIds: [position.id],
+        message: `Position ${position.id} (code ${position.positionCode}) ${problem}.`,
+      });
+    }
+  }
   return violations;
 }
 
@@ -224,15 +286,16 @@ export function checkCrossCompanyReportsTo(
   const byId = new Map(positions.map((p) => [p.id, p]));
 
   for (const position of positions) {
-    if (!position.primaryReportsToPositionId) continue;
-    const parent = byId.get(position.primaryReportsToPositionId);
-    if (parent && parent.companyId !== position.companyId) {
-      violations.push({
-        category: "CROSS_COMPANY_REPORTS_TO",
-        companyId: position.companyId,
-        recordIds: [position.id, parent.id],
-        message: `Position ${position.id} (company ${position.companyId}) reports to position ${parent.id} in a different company (${parent.companyId}).`,
-      });
+    for (const headId of headIdsOf(position)) {
+      const parent = byId.get(headId);
+      if (parent && parent.companyId !== position.companyId) {
+        violations.push({
+          category: "CROSS_COMPANY_REPORTS_TO",
+          companyId: position.companyId,
+          recordIds: [position.id, parent.id],
+          message: `Position ${position.id} (company ${position.companyId}) reports to position ${parent.id} in a different company (${parent.companyId}).`,
+        });
+      }
     }
   }
 
@@ -495,6 +558,7 @@ export function runAllIntegrityChecks(input: IntegrityCheckInput): IntegrityViol
     ...checkPositionLevelsAndRoots(input.positions),
     ...checkReportingCycles(input.positions),
     ...checkCrossCompanyReportsTo(input.positions),
+    ...checkSecondHeads(input.positions),
     ...checkDuplicatePositionCodes(input.positions),
     ...checkDuplicateEmployeeCodes(input.employees),
     ...checkOverlappingAssignments(input.assignments),

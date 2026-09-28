@@ -112,3 +112,49 @@ export async function occupyPosition(
     });
   });
 }
+
+/**
+ * Seeds a small chart in which one position reports to TWO heads
+ * (docs/DECISIONS.md D27), mirroring the Visily reference:
+ *
+ *   CEO
+ *   ├── Sr. Software Engineer II ──┐
+ *   └── Associate Tech Lead ───────┴── Sr. Software Engineer ── Software Engineer II
+ *
+ * Every position is graded above the leadership threshold and occupied, so
+ * the default chart draws all of them. Levels follow "deepest head + 1".
+ * Returns the ids the spec needs to address edges.
+ */
+export async function seedCoHeadedChart(
+  companyId: string,
+  suffix: string
+): Promise<{ ceoId: string; headAId: string; headBId: string; sharedId: string }> {
+  await seedJobGradeScale(companyId);
+  return withPrisma(async (prisma) => {
+    const grade = await prisma.jobGrade.findFirstOrThrow({
+      where: { companyId, code: "L15", departmentId: null },
+    });
+    const dept = await prisma.department.create({
+      data: { companyId, name: `E2E CoHead Dept ${suffix}`, code: `E2E-CH-${suffix}` },
+    });
+    const make = (title: string, level: number, primary: string | null, co: string | null = null) =>
+      prisma.position.create({
+        data: {
+          companyId,
+          departmentId: dept.id,
+          jobGradeId: grade.id,
+          title,
+          positionCode: `E2E-CH-${randomBytes(3).toString("hex")}`,
+          primaryReportsToPositionId: primary,
+          coReportsToPositionId: co,
+          organizationalLevel: level,
+        },
+      });
+    const ceo = await make(`CoHead CEO ${suffix}`, 1, null);
+    const headA = await make(`Sr. Software Engineer II ${suffix}`, 2, ceo.id);
+    const headB = await make(`Associate Tech Lead ${suffix}`, 2, ceo.id);
+    const shared = await make(`Sr. Software Engineer ${suffix}`, 3, headA.id, headB.id);
+    await make(`Software Engineer II ${suffix}`, 4, shared.id);
+    return { ceoId: ceo.id, headAId: headA.id, headBId: headB.id, sharedId: shared.id };
+  });
+}

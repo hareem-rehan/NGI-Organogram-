@@ -149,6 +149,7 @@ function makePosition(overrides: Partial<Position> = {}): Position {
     location: null,
     status: "ACTIVE",
     primaryReportsToPositionId: null,
+    coReportsToPositionId: null,
     organizationalLevel: 1,
     displayOrder: null,
     createdAt: new Date(),
@@ -388,6 +389,80 @@ describe("PositionFormDialog", () => {
     await waitFor(() => expect(updatePositionActionMock).toHaveBeenCalled());
     const payload = updatePositionActionMock.mock.calls[0]?.[0];
     expect(payload).not.toHaveProperty("primaryReportsToPositionId");
+  });
+
+  describe("Second Reports-To (D27)", () => {
+    const HEAD_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const HEAD_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const root = makePosition({ id: POSITION_ID, title: "CEO", positionCode: "POS-CEO" });
+    const headA = makePosition({
+      id: HEAD_A,
+      title: "Sr. Software Engineer II",
+      positionCode: "POS-A",
+      primaryReportsToPositionId: POSITION_ID,
+    });
+    const headB = makePosition({
+      id: HEAD_B,
+      title: "Associate Tech Lead",
+      positionCode: "POS-B",
+      primaryReportsToPositionId: POSITION_ID,
+    });
+    const secondPicker = () => screen.queryByRole("combobox", { name: /second reports-to/i });
+
+    it("only appears once a first head is chosen, and never offers that head again", async () => {
+      const user = userEvent.setup();
+      renderForm({ allPositions: [root, headA, headB] });
+
+      expect(secondPicker()).not.toBeInTheDocument();
+      await user.selectOptions(screen.getByRole("combobox", { name: /^reports to$/i }), HEAD_A);
+
+      const labels = within(secondPicker()!)
+        .getAllByRole("option")
+        .map((o) => o.textContent);
+      expect(labels).toContain("Associate Tech Lead");
+      expect(labels).not.toContain("Sr. Software Engineer II");
+    });
+
+    it("submits both heads on create", async () => {
+      createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
+      const user = userEvent.setup();
+      renderForm({ allPositions: [root, headA, headB] });
+
+      await user.type(screen.getByLabelText(/title/i), "Sr. Software Engineer");
+      await user.selectOptions(screen.getByRole("combobox", { name: /^reports to$/i }), HEAD_A);
+      await user.selectOptions(secondPicker()!, HEAD_B);
+      await user.click(screen.getByRole("button", { name: /create position/i }));
+
+      await waitFor(() =>
+        expect(createPositionActionMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            primaryReportsToPositionId: HEAD_A,
+            coReportsToPositionId: HEAD_B,
+          })
+        )
+      );
+    });
+
+    it("sends no second head when left as None", async () => {
+      createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition() });
+      const user = userEvent.setup();
+      renderForm({ allPositions: [root, headA, headB] });
+
+      await user.type(screen.getByLabelText(/title/i), "Software Engineer");
+      await user.selectOptions(screen.getByRole("combobox", { name: /^reports to$/i }), HEAD_A);
+      await user.click(screen.getByRole("button", { name: /create position/i }));
+
+      await waitFor(() =>
+        expect(createPositionActionMock).toHaveBeenCalledWith(
+          expect.objectContaining({ coReportsToPositionId: null })
+        )
+      );
+    });
+
+    it("is not offered when editing (reporting lines change through Change Reports-To)", () => {
+      renderForm({ position: headA, allPositions: [root, headA, headB] });
+      expect(secondPicker()).not.toBeInTheDocument();
+    });
   });
 
   describe("Assigned employee", () => {

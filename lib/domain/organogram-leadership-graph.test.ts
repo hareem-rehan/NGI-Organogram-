@@ -619,3 +619,42 @@ describe("projectLeadershipGraph — sub-division tier", () => {
     expect(result.nodes.filter((n) => n.kind === "subdivision")).toHaveLength(2);
   });
 });
+
+describe("projectLeadershipGraph — co-heads (docs/DECISIONS.md D27)", () => {
+  // CEO → CTO → Lead A, CEO → CTO → Lead B; Shared reports to Lead A and
+  // (second head) Lead B.
+  const nodes = [
+    ceo(),
+    node({ positionId: "cto", title: "CTO" }),
+    node({ positionId: "leadA", title: "Lead A", primaryReportsToPositionId: "cto" }),
+    node({ positionId: "leadB", title: "Lead B", primaryReportsToPositionId: "cto" }),
+    node({
+      positionId: "shared",
+      title: "Shared",
+      primaryReportsToPositionId: "leadA",
+      coReportsToPositionId: "leadB",
+    }),
+  ];
+
+  it("draws a CO edge from the second head into the shared position", () => {
+    const result = projectLeadershipGraph(nodes, opts());
+    const intoShared = result.edges.filter((e) => e.targetPositionId === "shared");
+    expect(intoShared.map((e) => [e.sourcePositionId, e.reportingType]).sort()).toEqual([
+      ["leadA", "PRIMARY"],
+      ["leadB", "CO"],
+    ]);
+    // The second head shows the shared report in its child count too.
+    expect(byId(result, "leadB").displayChildCount).toBe(1);
+    expect(byId(result, "leadB").hasChildren).toBe(true);
+  });
+
+  it("drops the CO edge when the second head is not on the chart", () => {
+    const withHiddenLeadB = nodes.map((n) =>
+      n.positionId === "leadB" ? { ...n, occupancyStatus: "vacant" as const } : n
+    );
+    const result = projectLeadershipGraph(withHiddenLeadB, hidingOpts());
+    expect(result.nodes.some((n) => n.positionId === "leadB")).toBe(false);
+    expect(result.edges.some((e) => e.reportingType === "CO")).toBe(false);
+    expect(byId(result, "shared").coReportsToPositionId).toBeNull();
+  });
+});

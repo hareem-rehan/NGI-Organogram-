@@ -73,6 +73,8 @@ export const createPositionSchema = z
     description: descriptionSchema,
     location: locationSchema,
     primaryReportsToPositionId: z.string().uuid().nullable().optional(),
+    /** Optional second head (docs/DECISIONS.md D27); rules re-checked in the service. */
+    coReportsToPositionId: z.string().uuid().nullable().optional(),
   })
   .strict();
 export type CreatePositionValues = z.infer<typeof createPositionSchema>;
@@ -110,6 +112,18 @@ export const movePositionSchema = z
   .object({
     positionId: z.string().uuid(),
     newParentPositionId: z.string().uuid().nullable(),
+  })
+  .strict();
+
+/**
+ * The "Change Reports-To" dialog's save: both reporting lines at once
+ * (docs/DECISIONS.md D27). Head 1 null = make root; head 2 null = none.
+ */
+export const changeReportsToSchema = z
+  .object({
+    positionId: z.string().uuid(),
+    newParentPositionId: z.string().uuid().nullable(),
+    coReportsToPositionId: z.string().uuid().nullable(),
   })
   .strict();
 

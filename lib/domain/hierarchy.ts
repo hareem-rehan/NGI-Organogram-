@@ -161,3 +161,111 @@ export function findCycleInGraph(parentOf: ReadonlyMap<string, string | null>): 
 
   return null;
 }
+
+/**
+ * Co-heads (docs/DECISIONS.md D27): a position reports to one or two heads,
+ * so the reporting structure is a DAG, not a tree. A position's level is
+ * the DEEPEST head's level + 1 (root = 1), so it always sits below both.
+ */
+export function calculateLevelFromHeads(headLevels: readonly number[]): number {
+  return headLevels.length === 0 ? ROOT_LEVEL : Math.max(...headLevels) + 1;
+}
+
+/** Thrown when a supposedly acyclic head graph turns out to contain a cycle. */
+export class HeadGraphCycleError extends Error {
+  constructor(public readonly positionIds: readonly string[]) {
+    super(`Reporting cycle detected among positions: ${positionIds.join(", ")}.`);
+    this.name = "HeadGraphCycleError";
+  }
+}
+
+/**
+ * Recalculates the level of every AFFECTED position (typically a moved
+ * position plus every descendant reachable through either head link),
+ * given each one's head ids. A head outside the affected set keeps its
+ * stored level, supplied via `fixedLevelOf`. Topological (Kahn) order, so a
+ * descendant reached through two paths gets the max of both.
+ *
+ * A head id with neither an affected entry nor a fixed level is treated as
+ * absent (defensive — the caller always fetches every head it references).
+ * Throws `HeadGraphCycleError` if the affected set contains a cycle.
+ */
+export function recalculateDagLevels(
+  affected: readonly { id: string; headIds: readonly string[] }[],
+  fixedLevelOf: ReadonlyMap<string, number>
+): Map<string, number> {
+  const affectedIds = new Set(affected.map((n) => n.id));
+  const pendingHeadCount = new Map<string, number>();
+  const dependents = new Map<string, string[]>();
+
+  for (const node of affected) {
+    const internalHeads = new Set(node.headIds.filter((h) => affectedIds.has(h)));
+    pendingHeadCount.set(node.id, internalHeads.size);
+    for (const head of internalHeads) {
+      const list = dependents.get(head) ?? [];
+      list.push(node.id);
+      dependents.set(head, list);
+    }
+  }
+
+  const headsById = new Map(affected.map((n) => [n.id, n.headIds]));
+  const levels = new Map<string, number>();
+  const ready = affected.filter((n) => pendingHeadCount.get(n.id) === 0).map((n) => n.id);
+
+  while (ready.length > 0) {
+    const id = ready.shift()!;
+    const headLevels: number[] = [];
+    for (const head of headsById.get(id) ?? []) {
+      const level = levels.get(head) ?? fixedLevelOf.get(head);
+      if (level !== undefined) headLevels.push(level);
+    }
+    levels.set(id, calculateLevelFromHeads(headLevels));
+    for (const dependent of dependents.get(id) ?? []) {
+      const remaining = (pendingHeadCount.get(dependent) ?? 0) - 1;
+      pendingHeadCount.set(dependent, remaining);
+      if (remaining === 0) ready.push(dependent);
+    }
+  }
+
+  if (levels.size !== affected.length) {
+    throw new HeadGraphCycleError(affected.filter((n) => !levels.has(n.id)).map((n) => n.id));
+  }
+  return levels;
+}
+
+/**
+ * Multi-parent version of `findCycleInGraph` for the co-head DAG: every
+ * node's head ids (zero, one or two). Returns the ids on some cycle, or
+ * null when acyclic. Iterative three-colour DFS — linear in the graph.
+ */
+export function findCycleInHeadGraph(
+  headsOf: ReadonlyMap<string, readonly string[]>
+): string[] | null {
+  const state = new Map<string, "visiting" | "done">();
+
+  for (const startId of headsOf.keys()) {
+    if (state.has(startId)) continue;
+    const stack: { id: string; next: number }[] = [{ id: startId, next: 0 }];
+    const path: string[] = [startId];
+    state.set(startId, "visiting");
+
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]!;
+      const heads = headsOf.get(frame.id) ?? [];
+      if (frame.next >= heads.length) {
+        state.set(frame.id, "done");
+        stack.pop();
+        path.pop();
+        continue;
+      }
+      const head = heads[frame.next++]!;
+      const headState = state.get(head);
+      if (headState === "visiting") return path.slice(path.indexOf(head));
+      if (headState === "done" || !headsOf.has(head)) continue;
+      state.set(head, "visiting");
+      stack.push({ id: head, next: 0 });
+      path.push(head);
+    }
+  }
+  return null;
+}

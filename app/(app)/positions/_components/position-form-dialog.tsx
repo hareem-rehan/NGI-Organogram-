@@ -143,6 +143,9 @@ export function PositionFormDialog({
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [reportsToQuery, setReportsToQuery] = useState("");
+  // Optional second head on create (docs/DECISIONS.md D27): "" = none.
+  const [coHeadValue, setCoHeadValue] = useState("");
+  const [coHeadQuery, setCoHeadQuery] = useState("");
 
   // "Assigned employee" picker. `occupantValue` is the chosen employee id, ""
   // for vacant. `initialOccupant` is what the position started with, so a save
@@ -249,6 +252,8 @@ export function PositionFormDialog({
     if (!open) return;
     justCreatedIdRef.current = null;
     occupantTouchedRef.current = false;
+    setCoHeadValue("");
+    setCoHeadQuery("");
     setOccupantQuery("");
     setOccupantValue("");
     setInitialOccupant("");
@@ -315,6 +320,20 @@ export function PositionFormDialog({
     [allPositions, reportsToQuery, departmentId, jobFamilyNameById]
   );
 
+  // Second-head options: "None", then the same scoped positions as "Reports
+  // to" minus whichever is already chosen as the first head.
+  const coHeadOptions: ComboboxOption[] = useMemo(
+    () => [
+      { value: "", label: "None (reports to one head only)" },
+      ...scopeReportsToOptions(allPositions, departmentId, coHeadQuery, jobFamilyNameById).filter(
+        (option) => option.value !== primaryReportsToPositionId
+      ),
+    ],
+    [allPositions, departmentId, coHeadQuery, jobFamilyNameById, primaryReportsToPositionId]
+  );
+  const effectiveCoHead =
+    primaryReportsToPositionId && coHeadValue !== primaryReportsToPositionId ? coHeadValue : "";
+
   // "Assigned employee" options: a "Vacant" choice plus every active employee,
   // filtered by the picker's query (name or code).
   const employeeOptionsForCombobox: ComboboxOption[] = useMemo(() => {
@@ -372,6 +391,8 @@ export function PositionFormDialog({
           careerTrackKind: values.careerTrackKind,
           description: values.description,
           primaryReportsToPositionId: values.primaryReportsToPositionId,
+          // Only with a first head, and never the same position twice.
+          coReportsToPositionId: effectiveCoHead || null,
         });
         if (!result.ok) return applyFailure(result);
         positionId = result.data.id;
@@ -575,6 +596,26 @@ export function PositionFormDialog({
                   onQueryChange={setReportsToQuery}
                   placeholder={hasRoot ? "Search positions…" : "None (root position)"}
                   aria-label="Reports to"
+                />
+              )}
+            </Field>
+          ) : null}
+
+          {!isEdit && primaryReportsToPositionId ? (
+            <Field
+              label="Second Reports-To (optional)"
+              hint="Pick a second head if this position reports to two heads. Both are shown equally on the organogram."
+            >
+              {(fieldProps) => (
+                <Combobox
+                  {...fieldProps}
+                  value={effectiveCoHead}
+                  onChange={(value) => setCoHeadValue(value ?? "")}
+                  options={coHeadOptions}
+                  query={coHeadQuery}
+                  onQueryChange={setCoHeadQuery}
+                  placeholder="Search positions…"
+                  aria-label="Second Reports-To"
                 />
               )}
             </Field>

@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildReportingPath,
   calculateLevel,
+  calculateLevelFromHeads,
+  findCycleInHeadGraph,
+  HeadGraphCycleError,
+  recalculateDagLevels,
   findCycleInGraph,
   HierarchyDepthExceededError,
   MAX_HIERARCHY_DEPTH,
@@ -199,5 +203,108 @@ describe("findCycleInGraph", () => {
       parentOf.set(`n${i}`, `n${(i + 1) % size}`); // one big ring — definitely cyclic
     }
     expect(findCycleInGraph(parentOf)).not.toBeNull();
+  });
+});
+
+describe("co-heads (docs/DECISIONS.md D27)", () => {
+  describe("calculateLevelFromHeads", () => {
+    it("is the root level with no heads", () => {
+      expect(calculateLevelFromHeads([])).toBe(ROOT_LEVEL);
+    });
+    it("is one below the DEEPEST head", () => {
+      expect(calculateLevelFromHeads([3])).toBe(4);
+      expect(calculateLevelFromHeads([3, 5])).toBe(6);
+      expect(calculateLevelFromHeads([5, 3])).toBe(6);
+    });
+  });
+
+  describe("recalculateDagLevels", () => {
+    it("levels a diamond: a child of heads at L3 and L5 lands at L6, its report at L7", () => {
+      const levels = recalculateDagLevels(
+        [
+          { id: "T", headIds: ["H3", "H5"] },
+          { id: "T1", headIds: ["T"] },
+        ],
+        new Map([
+          ["H3", 3],
+          ["H5", 5],
+        ])
+      );
+      expect(levels.get("T")).toBe(6);
+      expect(levels.get("T1")).toBe(7);
+    });
+
+    it("takes the max when a descendant is reached through two affected paths", () => {
+      // P → X (L+1), P → Y → Z; W reports to both X and Z.
+      const levels = recalculateDagLevels(
+        [
+          { id: "P", headIds: ["ROOT"] },
+          { id: "X", headIds: ["P"] },
+          { id: "Y", headIds: ["P"] },
+          { id: "Z", headIds: ["Y"] },
+          { id: "W", headIds: ["X", "Z"] },
+        ],
+        new Map([["ROOT", 1]])
+      );
+      expect(levels.get("P")).toBe(2);
+      expect(levels.get("X")).toBe(3);
+      expect(levels.get("Z")).toBe(4);
+      expect(levels.get("W")).toBe(5);
+    });
+
+    it("uses stored levels for heads outside the affected set", () => {
+      const levels = recalculateDagLevels(
+        [{ id: "T", headIds: ["OUTSIDE"] }],
+        new Map([["OUTSIDE", 9]])
+      );
+      expect(levels.get("T")).toBe(10);
+    });
+
+    it("makes a head-less affected position the root level", () => {
+      expect(recalculateDagLevels([{ id: "R", headIds: [] }], new Map()).get("R")).toBe(1);
+    });
+
+    it("throws HeadGraphCycleError on a cycle inside the affected set", () => {
+      expect(() =>
+        recalculateDagLevels(
+          [
+            { id: "A", headIds: ["B"] },
+            { id: "B", headIds: ["A"] },
+          ],
+          new Map()
+        )
+      ).toThrow(HeadGraphCycleError);
+    });
+  });
+
+  describe("findCycleInHeadGraph", () => {
+    it("returns null for an acyclic diamond", () => {
+      const headsOf = new Map<string, string[]>([
+        ["R", []],
+        ["A", ["R"]],
+        ["B", ["R"]],
+        ["T", ["A", "B"]],
+      ]);
+      expect(findCycleInHeadGraph(headsOf)).toBeNull();
+    });
+
+    it("finds a cycle that only closes through a second head", () => {
+      const headsOf = new Map<string, string[]>([
+        ["R", []],
+        ["A", ["R"]],
+        ["B", ["A"]],
+        ["T", ["R", "B"]],
+        ["X", ["T"]],
+        // A's head 1 is R, but give it second head X: A → X → T → B → A
+      ]);
+      headsOf.set("A", ["R", "X"]);
+      const cycle = findCycleInHeadGraph(headsOf);
+      expect(cycle).not.toBeNull();
+      expect(new Set(cycle)).toEqual(new Set(["A", "X", "T", "B"]));
+    });
+
+    it("finds a self-loop", () => {
+      expect(findCycleInHeadGraph(new Map([["A", ["A"]]]))).toEqual(["A"]);
+    });
   });
 });

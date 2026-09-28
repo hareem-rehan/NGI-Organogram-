@@ -231,6 +231,9 @@ async function fetchPositionSnapshots(
       reportsToCode: p.primaryReportsToPositionId
         ? normalizeCode(positionById.get(p.primaryReportsToPositionId)?.positionCode ?? "")
         : null,
+      coReportsToCode: p.coReportsToPositionId
+        ? normalizeCode(positionById.get(p.coReportsToPositionId)?.positionCode ?? "")
+        : null,
       status: p.status === "PLANNED" ? "ACTIVE" : p.status,
     })),
     departmentCodes: departments.map((d) => ({ code: normalizeCode(d.code) })),

@@ -74,6 +74,8 @@ export interface OrganogramPositionInput {
   organizationalLevel: number;
   status: PositionStatus;
   primaryReportsToPositionId: string | null;
+  /** Optional second head (docs/DECISIONS.md D27). Absent means none. */
+  coReportsToPositionId?: string | null;
 }
 
 export interface OrganogramDepartmentInput {
@@ -199,6 +201,14 @@ export interface OrganogramNode {
   occupantEmployeeId: string | null;
   directReportCount: number;
   primaryReportsToPositionId: string | null;
+  /**
+   * The position's SECOND head (docs/DECISIONS.md D27), or null/absent. Both
+   * heads are equal on the chart — each draws a solid line into this card and
+   * the lines meet above it. Null whenever that head is not itself rendered
+   * (never a dangling edge). Tree-shaped structure (display depth, outline
+   * nesting, department grouping) still hangs off head 1.
+   */
+  coReportsToPositionId?: string | null;
   hasChildren: boolean;
   isPlanned: boolean;
   isActive: boolean;
@@ -207,7 +217,18 @@ export interface OrganogramNode {
 export interface OrganogramEdge {
   sourcePositionId: string;
   targetPositionId: string;
-  reportingType: "PRIMARY";
+  /** "CO" = the line from a position's second head (docs/DECISIONS.md D27). Drawn identically to "PRIMARY". */
+  reportingType: "PRIMARY" | "CO";
+}
+
+/** Head ids of a node, head 1 first — the ids of every position it reports to. */
+export function headIdsOfNode(node: {
+  primaryReportsToPositionId: string | null;
+  coReportsToPositionId?: string | null;
+}): string[] {
+  return [node.primaryReportsToPositionId, node.coReportsToPositionId ?? null].filter(
+    (id): id is string => id !== null
+  );
 }
 
 /**
@@ -255,13 +276,13 @@ export function buildOrganogramGraph(args: {
     divisionColorByDeptId.set(id, resolveDivisionColor(id, departmentsById));
   }
 
+  // A report counts under EACH of its heads (docs/DECISIONS.md D27).
   const childCounts = new Map<string, number>();
   for (const p of safePositions) {
-    if (p.primaryReportsToPositionId && safeIdSet.has(p.primaryReportsToPositionId)) {
-      childCounts.set(
-        p.primaryReportsToPositionId,
-        (childCounts.get(p.primaryReportsToPositionId) ?? 0) + 1
-      );
+    for (const headId of headIdsOfNode(p)) {
+      if (headId !== p.id && safeIdSet.has(headId)) {
+        childCounts.set(headId, (childCounts.get(headId) ?? 0) + 1);
+      }
     }
   }
 
@@ -275,6 +296,14 @@ export function buildOrganogramGraph(args: {
       const safeParentId =
         p.primaryReportsToPositionId && safeIdSet.has(p.primaryReportsToPositionId)
           ? p.primaryReportsToPositionId
+          : null;
+      const safeCoHeadId =
+        safeParentId !== null &&
+        p.coReportsToPositionId &&
+        p.coReportsToPositionId !== p.id &&
+        p.coReportsToPositionId !== safeParentId &&
+        safeIdSet.has(p.coReportsToPositionId)
+          ? p.coReportsToPositionId
           : null;
       return {
         positionId: p.id,
@@ -297,6 +326,7 @@ export function buildOrganogramGraph(args: {
         occupantEmployeeId: occupantEmployeeIdsByPositionId.get(p.id) ?? null,
         directReportCount: childCounts.get(p.id) ?? 0,
         primaryReportsToPositionId: safeParentId,
+        coReportsToPositionId: safeCoHeadId,
         hasChildren: (childCounts.get(p.id) ?? 0) > 0,
         isPlanned: p.status === "PLANNED",
         isActive: p.status === "ACTIVE",
@@ -309,26 +339,62 @@ export function buildOrganogramGraph(args: {
         a.positionCode.localeCompare(b.positionCode)
     );
 
-  const edges: OrganogramEdge[] = nodes
-    .filter((n) => n.primaryReportsToPositionId !== null)
-    .map((n) => ({
-      sourcePositionId: n.primaryReportsToPositionId!,
-      targetPositionId: n.positionId,
-      reportingType: "PRIMARY" as const,
-    }))
-    .sort(
-      (a, b) =>
-        a.sourcePositionId.localeCompare(b.sourcePositionId) ||
-        a.targetPositionId.localeCompare(b.targetPositionId)
-    );
+  const edges: OrganogramEdge[] = buildHeadEdges(nodes).sort(
+    (a, b) =>
+      a.sourcePositionId.localeCompare(b.sourcePositionId) ||
+      a.targetPositionId.localeCompare(b.targetPositionId)
+  );
 
   return { nodes, edges };
+}
+
+/** One edge per head: head 1 as "PRIMARY", head 2 as "CO" (docs/DECISIONS.md D27). */
+export function buildHeadEdges(
+  nodes: readonly {
+    positionId: string;
+    primaryReportsToPositionId: string | null;
+    coReportsToPositionId?: string | null;
+  }[]
+): OrganogramEdge[] {
+  const edges: OrganogramEdge[] = [];
+  for (const n of nodes) {
+    if (n.primaryReportsToPositionId !== null) {
+      edges.push({
+        sourcePositionId: n.primaryReportsToPositionId,
+        targetPositionId: n.positionId,
+        reportingType: "PRIMARY",
+      });
+    }
+    if (n.coReportsToPositionId) {
+      edges.push({
+        sourcePositionId: n.coReportsToPositionId,
+        targetPositionId: n.positionId,
+        reportingType: "CO",
+      });
+    }
+  }
+  return edges;
 }
 
 export interface VisibilityInput {
   positionId: string;
   primaryReportsToPositionId: string | null;
+  /** Second head (docs/DECISIONS.md D27) — a node is reachable through either head. */
+  coReportsToPositionId?: string | null;
   isPlanned: boolean;
+}
+
+/** Children by head, counting a co-headed node under BOTH of its heads. */
+function childrenByHead(allNodes: readonly VisibilityInput[]): Map<string, string[]> {
+  const childrenByParent = new Map<string, string[]>();
+  for (const n of allNodes) {
+    for (const headId of headIdsOfNode(n)) {
+      const list = childrenByParent.get(headId) ?? [];
+      list.push(n.positionId);
+      childrenByParent.set(headId, list);
+    }
+  }
+  return childrenByParent;
 }
 
 /**
@@ -356,14 +422,10 @@ export function computeVisiblePositionIds(args: {
 }): Set<string> {
   const { allNodes, collapsedIds, showPlanned, restrictToIds } = args;
   const byId = new Map(allNodes.map((n) => [n.positionId, n]));
-  const childrenByParent = new Map<string, string[]>();
-  for (const n of allNodes) {
-    if (n.primaryReportsToPositionId) {
-      const list = childrenByParent.get(n.primaryReportsToPositionId) ?? [];
-      list.push(n.positionId);
-      childrenByParent.set(n.primaryReportsToPositionId, list);
-    }
-  }
+  // A co-headed node (docs/DECISIONS.md D27) is visible when EITHER of its
+  // heads is visible and expanded — collapsing one head doesn't hide it
+  // while the other still shows it.
+  const childrenByParent = childrenByHead(allNodes);
   const roots = allNodes.filter(
     (n) => n.primaryReportsToPositionId === null || !byId.has(n.primaryReportsToPositionId)
   );
@@ -377,6 +439,7 @@ export function computeVisiblePositionIds(args: {
     if (iterations++ > maxIterations) break;
     const id = stack.pop();
     if (id === undefined) continue;
+    if (visible.has(id)) continue; // reached already through its other head
     const node = byId.get(id);
     if (!node) continue;
     if (!showPlanned && node.isPlanned) continue;
@@ -394,22 +457,17 @@ export function countHiddenDescendants(
   positionId: string,
   allNodes: readonly VisibilityInput[]
 ): number {
-  const childrenByParent = new Map<string, string[]>();
-  for (const n of allNodes) {
-    if (n.primaryReportsToPositionId) {
-      const list = childrenByParent.get(n.primaryReportsToPositionId) ?? [];
-      list.push(n.positionId);
-      childrenByParent.set(n.primaryReportsToPositionId, list);
-    }
-  }
+  const childrenByParent = childrenByHead(allNodes);
   let count = 0;
+  const counted = new Set<string>(); // a co-headed descendant counts once
   const stack = [...(childrenByParent.get(positionId) ?? [])];
-  const maxIterations = allNodes.length + 10;
+  const maxIterations = allNodes.length * 2 + 10;
   let iterations = 0;
   while (stack.length > 0) {
     if (iterations++ > maxIterations) break;
     const id = stack.pop();
-    if (id === undefined) continue;
+    if (id === undefined || counted.has(id)) continue;
+    counted.add(id);
     count++;
     for (const childId of childrenByParent.get(id) ?? []) stack.push(childId);
   }

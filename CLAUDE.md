@@ -35,11 +35,11 @@ Source documents (read before any phase):
 These come from `docs/PROJECT_SPEC.md` §Business Rules and must hold after every change that touches the hierarchy:
 
 - Position and Employee are separate entities; removing/transferring an employee never deletes the position.
-- Every active position has exactly one primary Reports-To position, except the root, which has none.
-- Root position organizational level = 1. Child level = parent level + 1, always system-calculated, never hand-edited.
+- Every active position reports to one or two heads (head 1 = `primaryReportsToPositionId`, optional head 2 = `coReportsToPositionId`, both equal on the chart — docs/DECISIONS.md D27), except the root, which has none. Never more than two; head 2 never equals head 1, and the root never has a head 2.
+- Root position organizational level = 1. Any other position's level = its DEEPEST head's level + 1 (with one head: parent level + 1), always system-calculated, never hand-edited.
 - Department headings / visual grouping do not count as organizational levels.
 - Organizational Level (system-calculated) and Job Grade (HR-maintained) are independent fields — never derive one from the other.
-- No self-reporting, no direct or indirect reporting cycles, no moving a position beneath its own descendant.
+- No self-reporting, no direct or indirect reporting cycles through EITHER head, no making a position report to (either head) one of its own descendants.
 - No duplicate position codes or employee codes (case-insensitive).
 - Moving a position is atomic: update parent, recalculate the position's level and every descendant's level, all inside one DB transaction, full rollback on any failure.
 

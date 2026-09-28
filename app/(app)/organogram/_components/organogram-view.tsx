@@ -45,6 +45,7 @@ import {
 import {
   computeVisiblePositionIds,
   countHiddenDescendants,
+  headIdsOfNode,
   type OrganogramNode,
 } from "@/lib/domain/organogram";
 import { isBelowThreshold } from "@/lib/domain/organogram-leadership";
@@ -92,10 +93,12 @@ function defaultCollapsedIds(data: OrganogramChartData): Set<string> {
   // time, because each rung below is itself collapsed.
   const childrenByParent = new Map<string, OrganogramNode[]>();
   for (const node of data.nodes) {
-    if (!node.primaryReportsToPositionId) continue;
-    const list = childrenByParent.get(node.primaryReportsToPositionId) ?? [];
-    list.push(node);
-    childrenByParent.set(node.primaryReportsToPositionId, list);
+    // A co-headed position is a child of both heads (docs/DECISIONS.md D27).
+    for (const headId of headIdsOfNode(node)) {
+      const list = childrenByParent.get(headId) ?? [];
+      list.push(node);
+      childrenByParent.set(headId, list);
+    }
   }
 
   const collapsed = new Set<string>();

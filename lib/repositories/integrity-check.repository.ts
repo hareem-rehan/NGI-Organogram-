@@ -32,6 +32,7 @@ export async function fetchIntegrityCheckInput(db: PrismaClient): Promise<Integr
         companyId: true,
         positionCode: true,
         primaryReportsToPositionId: true,
+        coReportsToPositionId: true,
         organizationalLevel: true,
       },
     }),

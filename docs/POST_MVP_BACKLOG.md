@@ -2,7 +2,7 @@
 
 Deferred capabilities, none implemented and none to be implemented as part of deployment (CLAUDE.md's MVP Exclusions, restated here for a single reference point). Recording this list is documentation only — it is not an implementation plan, priority order, or commitment.
 
-- **Dotted-line / secondary reporting.** `PositionAssignment.isPrimary` is already reserved for this in the schema (Phase 2) but no dotted-line logic exists anywhere.
+- **Dotted-line / secondary reporting.** `PositionAssignment.isPrimary` is already reserved for this in the schema (Phase 2) but no dotted-line logic exists anywhere. _Partly delivered 2026-09-28 as **co-heads** (docs/DECISIONS.md D27): a position may report to up to two EQUAL heads. Still open: dotted-line (visually secondary) reporting, more than two heads, and a CSV import column for head 2 (A54)._
 - **Graphical drag-and-drop hierarchy editing.** All hierarchy changes go through explicit forms/dialogs today (`docs/DECISIONS.md`).
 - **Approval workflow for organizational changes.** Every mutation applies immediately once submitted by an authorized role; no multi-step approval/review exists.
 - **Future-effective organization planning** (scheduling a hierarchy change to take effect on a future date).

@@ -19,6 +19,7 @@ const {
     createPosition: vi.fn(),
     updatePosition: vi.fn(),
     movePosition: vi.fn(),
+    changeReportsTo: vi.fn(),
     archivePosition: vi.fn(),
     activatePosition: vi.fn(),
     deletePosition: vi.fn(),
@@ -74,6 +75,7 @@ import {
   listJobGradeOptionsAction,
   listPositionsAction,
   movePositionAction,
+  changeReportsToAction,
   updatePositionAction,
   listEmployeeOptionsAction,
   getPositionOccupantAction,
@@ -623,5 +625,74 @@ describe("position actions — assign employee to a position", () => {
 
     expect(result.ok).toBe(false);
     expect(assignmentServiceMock.setPositionPrimaryOccupant).not.toHaveBeenCalled();
+  });
+});
+
+describe("position actions — second head (docs/DECISIONS.md D27)", () => {
+  afterEach(() => vi.clearAllMocks());
+  const HEAD_A = "22222222-2222-4222-8222-222222222222";
+  const HEAD_B = "33333333-3333-4333-8333-333333333333";
+
+  it("changeReportsToAction requires positions:manage and forwards both heads with the trusted company", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.changeReportsTo.mockResolvedValue({});
+
+    const result = await changeReportsToAction({
+      positionId: VALID_UUID,
+      newParentPositionId: HEAD_A,
+      coReportsToPositionId: HEAD_B,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    expect(serviceMocks.changeReportsTo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: "company-trusted",
+        positionId: VALID_UUID,
+        newParentPositionId: HEAD_A,
+        coReportsToPositionId: HEAD_B,
+      })
+    );
+  });
+
+  it("a VIEWER cannot change reporting lines — the service is never reached", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+    const result = await changeReportsToAction({
+      positionId: VALID_UUID,
+      newParentPositionId: HEAD_A,
+      coReportsToPositionId: HEAD_B,
+    });
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.changeReportsTo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a malformed second head", { newParentPositionId: HEAD_A, coReportsToPositionId: "nope" }],
+    ["a missing second-head key", { newParentPositionId: HEAD_A }],
+    [
+      "a client-supplied level",
+      { newParentPositionId: HEAD_A, coReportsToPositionId: null, organizationalLevel: 1 },
+    ],
+  ])("rejects %s before the service", async (_label, extra) => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    const result = await changeReportsToAction({ positionId: VALID_UUID, ...extra });
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.changeReportsTo).not.toHaveBeenCalled();
+  });
+
+  it("createPositionAction forwards an optional second head to the service", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.createPosition.mockResolvedValue({});
+
+    await createPositionAction({
+      title: "Sr. Software Engineer",
+      departmentId: VALID_UUID,
+      primaryReportsToPositionId: HEAD_A,
+      coReportsToPositionId: HEAD_B,
+    });
+
+    expect(serviceMocks.createPosition).toHaveBeenCalledWith(
+      expect.objectContaining({ primaryReportsToPositionId: HEAD_A, coReportsToPositionId: HEAD_B })
+    );
   });
 });

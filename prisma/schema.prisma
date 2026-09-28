@@ -199,20 +199,20 @@ model Company {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  departments         Department[]
-  jobGrades           JobGrade[]
-  jobFamilies         JobFamily[]
-  careerTracks        CareerTrack[]
-  levelMappingEntries LevelMappingEntry[]
+  departments           Department[]
+  jobGrades             JobGrade[]
+  jobFamilies           JobFamily[]
+  careerTracks          CareerTrack[]
+  levelMappingEntries   LevelMappingEntry[]
   departmentLevelTitles DepartmentLevelTitle[]
-  positions           Position[]
-  employees           Employee[]
-  positionAssignments PositionAssignment[]
-  users               User[]
-  importJobs          ImportJob[]
-  exportJobs          ExportJob[]
-  auditEvents         AuditEvent[]
-  settings            CompanySettings?
+  positions             Position[]
+  employees             Employee[]
+  positionAssignments   PositionAssignment[]
+  users                 User[]
+  importJobs            ImportJob[]
+  exportJobs            ExportJob[]
+  auditEvents           AuditEvent[]
+  settings              CompanySettings?
 
   @@unique([code])
   @@map("companies")
@@ -304,17 +304,17 @@ model JobGrade {
 // ---------------------------------------------------------------------
 
 model Position {
-  id                         String         @id @default(uuid()) @db.Uuid
-  companyId                  String         @db.Uuid
-  departmentId               String         @db.Uuid
-  jobGradeId                 String?        @db.Uuid
+  id                         String           @id @default(uuid()) @db.Uuid
+  companyId                  String           @db.Uuid
+  departmentId               String           @db.Uuid
+  jobGradeId                 String?          @db.Uuid
   /// Career framework classification (all optional, all PRESENTATIONAL to
   /// the reporting tree — the organogram is built from
   /// primaryReportsToPositionId ONLY, never from these). jobFamily is the
   /// career roadmap/specialization (e.g. "Software Engineering"),
   /// careerTrack the IC-vs-Manager ladder. See docs/DECISIONS.md.
-  jobFamilyId                String?        @db.Uuid
-  careerTrackId              String?        @db.Uuid
+  jobFamilyId                String?          @db.Uuid
+  careerTrackId              String?          @db.Uuid
   /// The IC/Manager ladder this position sits on, captured directly on the
   /// position (independent of any sub-division). NULL = neither/none. This is
   /// the "position context" chosen on the Add-Position form; when a
@@ -324,16 +324,23 @@ model Position {
   positionCode               String
   description                String?
   location                   String?
-  status                     PositionStatus @default(ACTIVE)
-  primaryReportsToPositionId String?        @db.Uuid
-  /// System-computed reporting depth (root = 1). Never client-settable —
+  status                     PositionStatus   @default(ACTIVE)
+  primaryReportsToPositionId String?          @db.Uuid
+  /// Optional SECOND head ("co-head", docs/DECISIONS.md D27). A position may
+  /// report to at most two heads, both equal on the chart; `primary` is just
+  /// the internal slot name for head 1. Never set on the root, never equal to
+  /// the position itself or to head 1 (CHECK constraints in migration
+  /// 20260928120000_position_co_heads).
+  coReportsToPositionId      String?          @db.Uuid
+  /// System-computed reporting depth (root = 1; otherwise the DEEPEST head's
+  /// level + 1, so a co-headed position always sits below both heads). Never client-settable —
   /// see lib/domain/hierarchy.ts. Recalculated for a position and its
   /// entire descendant subtree inside one transaction on every hierarchy
   /// mutation (docs/adr/0005-transaction-strategy.md).
   organizationalLevel        Int
   displayOrder               Int?
-  createdAt                  DateTime       @default(now())
-  updatedAt                  DateTime       @updatedAt
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
 
   company     Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
   department  Department   @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Restrict)
@@ -348,6 +355,8 @@ model Position {
   /// Prisma's schema language cannot express "not equal to my own id."
   primaryReportsTo Position?  @relation("PositionHierarchy", fields: [primaryReportsToPositionId, companyId], references: [id, companyId], onDelete: Restrict)
   directReports    Position[] @relation("PositionHierarchy")
+  coReportsTo      Position?  @relation("PositionCoHierarchy", fields: [coReportsToPositionId, companyId], references: [id, companyId], onDelete: Restrict)
+  coDirectReports  Position[] @relation("PositionCoHierarchy")
 
   assignments PositionAssignment[]
 
@@ -359,6 +368,7 @@ model Position {
   @@index([jobFamilyId])
   @@index([careerTrackId])
   @@index([primaryReportsToPositionId])
+  @@index([coReportsToPositionId])
   @@index([companyId, organizationalLevel])
   @@map("positions")
 }

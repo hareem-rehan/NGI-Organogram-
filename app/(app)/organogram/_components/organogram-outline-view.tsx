@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { OrganogramNode } from "@/lib/domain/organogram";
+import { headIdsOfNode, type OrganogramNode } from "@/lib/domain/organogram";
 import type { PositionNodeMatchState } from "@/app/(app)/organogram/_components/position-node";
 
 interface OutlineNodeRowProps {
@@ -164,11 +164,13 @@ export function OrganogramOutlineView({
 }: OrganogramOutlineViewProps) {
   const { roots, childrenByParent } = useMemo(() => {
     const childrenByParent = new Map<string, OrganogramNode[]>();
+    // A co-headed position (docs/DECISIONS.md D27) is listed under BOTH of
+    // its heads, matching the two lines drawn into it on the canvas.
     for (const node of nodes) {
-      if (node.primaryReportsToPositionId) {
-        const list = childrenByParent.get(node.primaryReportsToPositionId) ?? [];
+      for (const headId of headIdsOfNode(node)) {
+        const list = childrenByParent.get(headId) ?? [];
         list.push(node);
-        childrenByParent.set(node.primaryReportsToPositionId, list);
+        childrenByParent.set(headId, list);
       }
     }
     const roots = nodes.filter(

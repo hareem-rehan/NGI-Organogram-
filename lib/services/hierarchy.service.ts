@@ -5,11 +5,17 @@ import { Prisma as PrismaNamespace } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
 import { normalizeCode } from "@/lib/domain/normalize";
-import { calculateLevel, recalculateSubtreeLevels, wouldCreateCycle } from "@/lib/domain/hierarchy";
+import {
+  calculateLevelFromHeads,
+  HeadGraphCycleError,
+  recalculateDagLevels,
+  wouldCreateCycle,
+} from "@/lib/domain/hierarchy";
 import {
   ConflictError,
   CrossCompanyError,
   CycleError,
+  DomainValidationError,
   NotFoundError,
   UnsafeMutationError,
 } from "@/lib/domain/errors";
@@ -17,7 +23,7 @@ import {
   countDirectReports,
   findPositionById,
   findRootPosition,
-  getPositionAncestorChain,
+  getPositionAncestorIds,
   getPositionSubtree,
   lockPositionsForUpdate,
 } from "@/lib/repositories/position.repository";
@@ -44,6 +50,8 @@ export interface CreatePositionInput {
   location?: string | null;
   /** null creates the root position — only one is allowed per company (docs/DOMAIN_MODEL.md §1, enforced by a partial unique index). */
   primaryReportsToPositionId?: string | null;
+  /** Optional second head (docs/DECISIONS.md D27). Requires a head 1 and must differ from it. */
+  coReportsToPositionId?: string | null;
   displayOrder?: number | null;
 }
 
@@ -67,22 +75,26 @@ export async function createPosition(
       );
     }
 
-    let organizationalLevel: number;
+    const headIds = [input.primaryReportsToPositionId, input.coReportsToPositionId].filter(
+      (id): id is string => id !== null && id !== undefined
+    );
+    if (input.coReportsToPositionId) {
+      assertValidCoHeadShape(input.primaryReportsToPositionId ?? null, input.coReportsToPositionId);
+    }
 
-    if (
-      input.primaryReportsToPositionId === null ||
-      input.primaryReportsToPositionId === undefined
-    ) {
-      organizationalLevel = calculateLevel(null);
-    } else {
-      const parent = await findPositionById(input.primaryReportsToPositionId, input.companyId, tx);
-      if (!parent) {
+    // Level = deepest head + 1, root = 1 (docs/DECISIONS.md D27). A brand-new
+    // position has no descendants, so neither head can create a cycle here.
+    const headLevels: number[] = [];
+    for (const headId of headIds) {
+      const head = await findPositionById(headId, input.companyId, tx);
+      if (!head) {
         throw new CrossCompanyError(
-          `Reports-to position ${input.primaryReportsToPositionId} does not exist in company ${input.companyId}.`
+          `Reports-to position ${headId} does not exist in company ${input.companyId}.`
         );
       }
-      organizationalLevel = calculateLevel(parent.organizationalLevel);
+      headLevels.push(head.organizationalLevel);
     }
+    const organizationalLevel = calculateLevelFromHeads(headLevels);
 
     if (input.jobGradeId) {
       const jobGrade = await tx.jobGrade.findFirst({
@@ -110,6 +122,7 @@ export async function createPosition(
           description: input.description?.trim() || null,
           location: input.location?.trim() || null,
           primaryReportsToPositionId: input.primaryReportsToPositionId ?? null,
+          coReportsToPositionId: input.coReportsToPositionId ?? null,
           organizationalLevel,
           displayOrder: input.displayOrder ?? null,
         },
@@ -169,11 +182,14 @@ export async function movePosition(
     const position = await findPositionById(input.positionId, input.companyId, tx);
     if (!position) throw new NotFoundError("Position", input.positionId);
 
-    let newParentLevel: number | null = null;
-
     if (input.newParentPositionId !== null) {
       if (input.newParentPositionId === input.positionId) {
         throw new CycleError("A position cannot report to itself.");
+      }
+      if (input.newParentPositionId === position.coReportsToPositionId) {
+        throw new DomainValidationError(
+          "That position is already this position's other head — a position cannot report to the same head twice."
+        );
       }
       const newParent = await findPositionById(input.newParentPositionId, input.companyId, tx);
       if (!newParent) {
@@ -181,30 +197,26 @@ export async function movePosition(
           `Reports-to position ${input.newParentPositionId} does not exist in company ${input.companyId}.`
         );
       }
-      const ancestorChain = await getPositionAncestorChain(
+      const ancestors = await getPositionAncestorIds(
         input.newParentPositionId,
         input.companyId,
         tx
       );
-      if (
-        wouldCreateCycle(
-          input.positionId,
-          ancestorChain.map((n) => n.id)
-        )
-      ) {
+      if (wouldCreateCycle(input.positionId, [...ancestors])) {
         throw new CycleError(
           `Moving position ${input.positionId} under ${input.newParentPositionId} would create a reporting cycle.`
         );
       }
-      newParentLevel = newParent.organizationalLevel;
+    } else if (position.coReportsToPositionId !== null) {
+      throw new DomainValidationError(
+        "A position with a second head cannot become the root. Remove its second head first."
+      );
     }
 
-    const subtree = await getPositionSubtree(input.positionId, input.companyId, tx);
-    const newLevels = recalculateSubtreeLevels(
-      input.positionId,
-      newParentLevel,
-      subtree.map((n) => ({ id: n.id, parentId: n.parentId, currentLevel: n.organizationalLevel }))
-    );
+    const newLevels = await recalculateLevelsBelow(tx, input.companyId, input.positionId, [
+      input.newParentPositionId,
+      position.coReportsToPositionId,
+    ]);
 
     try {
       const movedPositionNewLevel = newLevels.get(input.positionId);
@@ -220,13 +232,7 @@ export async function movePosition(
         },
       });
 
-      for (const [descendantId, level] of newLevels) {
-        if (descendantId === input.positionId) continue;
-        await tx.position.update({
-          where: { id: descendantId },
-          data: { organizationalLevel: level },
-        });
-      }
+      await writeDescendantLevels(tx, input.positionId, newLevels);
 
       await recordAuditEvent(
         {
@@ -247,6 +253,222 @@ export async function movePosition(
     } catch (error) {
       throw translateWriteError(error, position.positionCode, input.newParentPositionId === null);
     }
+  });
+}
+
+/**
+ * Recalculates the level of `positionId` (given its NEW head ids) and of
+ * every descendant reachable through either head link, using the DAG rule
+ * "deepest head + 1" (docs/DECISIONS.md D27). Heads outside that set keep
+ * their stored levels. Pure calculation — the caller writes the result.
+ */
+async function recalculateLevelsBelow(
+  tx: DbClient,
+  companyId: string,
+  positionId: string,
+  newHeadIds: readonly (string | null)[]
+): Promise<Map<string, number>> {
+  const descendants = await getPositionSubtree(positionId, companyId, tx);
+  const affected = [
+    { id: positionId, headIds: newHeadIds.filter((h): h is string => h !== null) },
+    ...descendants.map((d) => ({ id: d.id, headIds: d.headIds })),
+  ];
+  const affectedIds = new Set(affected.map((n) => n.id));
+  const externalHeadIds = [
+    ...new Set(affected.flatMap((n) => n.headIds).filter((h) => !affectedIds.has(h))),
+  ];
+  const externalHeads =
+    externalHeadIds.length === 0
+      ? []
+      : await tx.position.findMany({
+          where: { id: { in: externalHeadIds }, companyId },
+          select: { id: true, organizationalLevel: true },
+        });
+  const fixedLevelOf = new Map(externalHeads.map((h) => [h.id, h.organizationalLevel]));
+
+  try {
+    return recalculateDagLevels(affected, fixedLevelOf);
+  } catch (error) {
+    if (error instanceof HeadGraphCycleError) {
+      throw new CycleError("This change would create a reporting cycle.");
+    }
+    throw error;
+  }
+}
+
+/** Writes recalculated levels for every descendant (not `positionId` itself), skipping unchanged rows. */
+async function writeDescendantLevels(
+  tx: DbClient,
+  positionId: string,
+  newLevels: ReadonlyMap<string, number>
+): Promise<void> {
+  const ids = [...newLevels.keys()].filter((id) => id !== positionId);
+  if (ids.length === 0) return;
+  const current = await tx.position.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, organizationalLevel: true },
+  });
+  for (const row of current) {
+    const level = newLevels.get(row.id);
+    if (level !== undefined && level !== row.organizationalLevel) {
+      await tx.position.update({ where: { id: row.id }, data: { organizationalLevel: level } });
+    }
+  }
+}
+
+/** Shape rules for a second head that need no database read. */
+function assertValidCoHeadShape(primaryHeadId: string | null, coHeadId: string): void {
+  if (primaryHeadId === null) {
+    throw new DomainValidationError(
+      "The top (root) position cannot have a second head. Choose its first head instead."
+    );
+  }
+  if (coHeadId === primaryHeadId) {
+    throw new DomainValidationError(
+      "The second head must be a different position from the first head."
+    );
+  }
+}
+
+export interface SetCoReportsToInput {
+  companyId: string;
+  actor?: AuditActor;
+  positionId: string;
+  /** The second head to set, or null to remove it. */
+  coReportsToPositionId: string | null;
+}
+
+/**
+ * Sets, changes or removes a position's SECOND head (docs/DECISIONS.md D27).
+ * Same guarantees as `movePosition`: rows locked before the cycle read, the
+ * position and every descendant re-levelled ("deepest head + 1"), and the
+ * audit event written, all in one transaction with full rollback.
+ */
+export async function setCoReportsTo(
+  input: SetCoReportsToInput,
+  db: DbClient = prisma
+): Promise<Position> {
+  return withTransaction(db, async (tx) => {
+    await lockPositionsForUpdate(
+      [input.positionId, input.coReportsToPositionId].filter((id): id is string => id !== null),
+      input.companyId,
+      tx
+    );
+
+    const position = await findPositionById(input.positionId, input.companyId, tx);
+    if (!position) throw new NotFoundError("Position", input.positionId);
+
+    if (input.coReportsToPositionId === position.coReportsToPositionId) {
+      return position; // unchanged
+    }
+
+    if (input.coReportsToPositionId !== null) {
+      if (input.coReportsToPositionId === input.positionId) {
+        throw new CycleError("A position cannot report to itself.");
+      }
+      assertValidCoHeadShape(position.primaryReportsToPositionId, input.coReportsToPositionId);
+      const coHead = await findPositionById(input.coReportsToPositionId, input.companyId, tx);
+      if (!coHead) {
+        throw new CrossCompanyError(
+          `Reports-to position ${input.coReportsToPositionId} does not exist in company ${input.companyId}.`
+        );
+      }
+      const ancestors = await getPositionAncestorIds(
+        input.coReportsToPositionId,
+        input.companyId,
+        tx
+      );
+      if (wouldCreateCycle(input.positionId, [...ancestors])) {
+        throw new CycleError(
+          `${coHead.title} reports (directly or indirectly) to ${position.title}, so it cannot also be its head.`
+        );
+      }
+    }
+
+    const newLevels = await recalculateLevelsBelow(tx, input.companyId, input.positionId, [
+      position.primaryReportsToPositionId,
+      input.coReportsToPositionId,
+    ]);
+    const newLevel = newLevels.get(input.positionId);
+    if (newLevel === undefined) {
+      throw new Error("Internal error: position missing from recalculated levels.");
+    }
+
+    let updated: Position;
+    try {
+      updated = await tx.position.update({
+        where: { id: input.positionId },
+        data: {
+          coReportsToPositionId: input.coReportsToPositionId,
+          organizationalLevel: newLevel,
+        },
+      });
+      await writeDescendantLevels(tx, input.positionId, newLevels);
+    } catch (error) {
+      throw translateWriteError(error, position.positionCode, false);
+    }
+
+    await recordAuditEvent(
+      {
+        companyId: input.companyId,
+        actor: input.actor ?? "SYSTEM",
+        action: "UPDATED",
+        category: "HIERARCHY",
+        entityType: "Position",
+        entityId: updated.id,
+        entityDisplayReference: updated.positionCode,
+        before: position,
+        after: updated,
+        metadata: { descendantCount: newLevels.size - 1, coHeadChange: true },
+      },
+      tx
+    );
+    return updated;
+  });
+}
+
+export interface ChangeReportsToInput {
+  companyId: string;
+  actor?: AuditActor;
+  positionId: string;
+  /** New head 1, or null to make the position the root. */
+  newParentPositionId: string | null;
+  /** New head 2, or null for none. */
+  coReportsToPositionId: string | null;
+}
+
+/**
+ * Changes BOTH reporting lines of a position in one transaction — the
+ * "Change Reports-To" dialog's single save (docs/DECISIONS.md D27). Composes
+ * `setCoReportsTo` and `movePosition` (each re-validating every rule) so
+ * that a swap of heads, or a head-2 change alongside a move, is all-or-
+ * nothing: head 2 is cleared first when it is changing, then head 1 moves,
+ * then the new head 2 is set.
+ */
+export async function changeReportsTo(
+  input: ChangeReportsToInput,
+  db: DbClient = prisma
+): Promise<Position> {
+  return withTransaction(db, async (tx) => {
+    const position = await findPositionById(input.positionId, input.companyId, tx);
+    if (!position) throw new NotFoundError("Position", input.positionId);
+    const base = { companyId: input.companyId, actor: input.actor, positionId: input.positionId };
+
+    const coChanging = input.coReportsToPositionId !== position.coReportsToPositionId;
+    let current = position;
+    if (coChanging && position.coReportsToPositionId !== null) {
+      current = await setCoReportsTo({ ...base, coReportsToPositionId: null }, tx);
+    }
+    if (input.newParentPositionId !== current.primaryReportsToPositionId) {
+      current = await movePosition({ ...base, newParentPositionId: input.newParentPositionId }, tx);
+    }
+    if (coChanging && input.coReportsToPositionId !== null) {
+      current = await setCoReportsTo(
+        { ...base, coReportsToPositionId: input.coReportsToPositionId },
+        tx
+      );
+    }
+    return current;
   });
 }
 
@@ -514,6 +736,19 @@ export async function deletePositionSubtree(
       ...descendants.map((d) => ({ id: d.id, organizationalLevel: d.organizationalLevel })),
     ];
     const memberIds = members.map((m) => m.id);
+    const memberIdSet = new Set(memberIds);
+
+    // Co-heads (docs/DECISIONS.md D27): a descendant that ALSO reports to a
+    // head outside this branch would be left pointing at a deleted position.
+    // Refuse rather than silently cut that reporting line.
+    const sharedDescendant = descendants.find((d) =>
+      d.headIds.some((headId) => !memberIdSet.has(headId))
+    );
+    if (sharedDescendant) {
+      throw new UnsafeMutationError(
+        `${root.title} cannot be deleted with its branch: a position in it also reports to someone outside this branch. Remove that second reporting line first.`
+      );
+    }
 
     // Refuse if anyone in the branch is or was assigned — assignment history
     // is kept (PositionAssignment → Position is RESTRICT). A held seat is

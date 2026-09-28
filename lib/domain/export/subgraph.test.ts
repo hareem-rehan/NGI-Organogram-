@@ -250,3 +250,44 @@ describe("buildExportSubgraph", () => {
     }
   });
 });
+
+describe("buildExportSubgraph — co-heads (docs/DECISIONS.md D27)", () => {
+  // SHARED reports to vpSales (head 1) and engMgr (head 2).
+  const SHARED = node({
+    positionId: "shared",
+    primaryReportsToPositionId: "vpSales",
+    coReportsToPositionId: "engMgr",
+    organizationalLevel: 4,
+  });
+  const nodes = [ROOT, VP_ENG, ENG_MGR, SALES_VP, SHARED];
+  const edges: OrganogramEdge[] = [
+    { sourcePositionId: "root", targetPositionId: "vpEng", reportingType: "PRIMARY" },
+    { sourcePositionId: "vpEng", targetPositionId: "engMgr", reportingType: "PRIMARY" },
+    { sourcePositionId: "root", targetPositionId: "vpSales", reportingType: "PRIMARY" },
+    { sourcePositionId: "vpSales", targetPositionId: "shared", reportingType: "PRIMARY" },
+    { sourcePositionId: "engMgr", targetPositionId: "shared", reportingType: "CO" },
+  ];
+  const base = {
+    selectedPositionId: null,
+    selectedDepartmentId: null,
+    descendantDepth: "all" as const,
+    includePlanned: true,
+    filters: EMPTY_FILTERS,
+  };
+
+  it("keeps both lines into the shared position in a full-company export", () => {
+    const result = buildExportSubgraph(nodes, edges, { ...base, scope: "FULL_COMPANY" });
+    expect(result.edges.filter((e) => e.targetPositionId === "shared")).toHaveLength(2);
+  });
+
+  it("a Position Focus on the shared position keeps both heads' chains and both lines", () => {
+    const result = buildExportSubgraph(nodes, edges, {
+      ...base,
+      scope: "POSITION_FOCUS",
+      selectedPositionId: "shared",
+    });
+    const ids = result.nodes.map((n) => n.positionId).sort();
+    expect(ids).toEqual(["engMgr", "root", "shared", "vpEng", "vpSales"]);
+    expect(result.edges.filter((e) => e.targetPositionId === "shared")).toHaveLength(2);
+  });
+});

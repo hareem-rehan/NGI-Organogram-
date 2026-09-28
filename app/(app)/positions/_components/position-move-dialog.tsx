@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
-import { getSubtreeSizeAction, movePositionAction } from "@/app/(app)/positions/actions";
+import { changeReportsToAction, getSubtreeSizeAction } from "@/app/(app)/positions/actions";
 import { reportsToDescription } from "@/app/(app)/positions/_components/position-form-dialog";
 
 interface PositionMoveDialogProps {
@@ -37,6 +37,9 @@ export function PositionMoveDialog({
 }: PositionMoveDialogProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // Optional second head (docs/DECISIONS.md D27): "" = none.
+  const [coHeadId, setCoHeadId] = useState("");
+  const [coQuery, setCoQuery] = useState("");
   const [subtreeSize, setSubtreeSize] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -50,6 +53,8 @@ export function PositionMoveDialog({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedId(position.primaryReportsToPositionId);
     setQuery("");
+    setCoHeadId(position.coReportsToPositionId ?? "");
+    setCoQuery("");
     setError(null);
     getSubtreeSizeAction(position.id).then((result) => {
       if (result.ok) setSubtreeSize(result.data);
@@ -79,14 +84,44 @@ export function PositionMoveDialog({
     ];
   }, [allPositions, position, query, jobFamilyNameById]);
 
+  // Second-head choices: "None", then every other position except this one
+  // and whatever is chosen as the first head (a head can't count twice).
+  const coOptions: ComboboxOption[] = useMemo(() => {
+    if (!position) return [];
+    const q = coQuery.trim().toLowerCase();
+    const candidates = allPositions.filter(
+      (candidate) =>
+        candidate.id !== position.id &&
+        candidate.id !== selectedId &&
+        (q === "" ||
+          candidate.title.toLowerCase().includes(q) ||
+          candidate.positionCode.toLowerCase().includes(q))
+    );
+    return [
+      { value: "", label: "None (reports to one head only)" },
+      ...candidates.map((candidate) => ({
+        value: candidate.id,
+        label: candidate.title,
+        description: reportsToDescription(candidate, jobFamilyNameById),
+      })),
+    ];
+  }, [allPositions, position, selectedId, coQuery, jobFamilyNameById]);
+
   const selectedOption = options.find((option) => option.value === (selectedId ?? "__root__"));
+  const isRootChoice = (selectedId ?? "__root__") === "__root__";
 
   async function handleConfirm() {
     if (!position) return;
     setError(null);
     setPending(true);
     const newParentPositionId = selectedId === "__root__" ? null : selectedId;
-    const result = await movePositionAction({ positionId: position.id, newParentPositionId });
+    const result = await changeReportsToAction({
+      positionId: position.id,
+      newParentPositionId,
+      // The root can't have a second head, and a head can't count twice.
+      coReportsToPositionId:
+        isRootChoice || coHeadId === "" || coHeadId === newParentPositionId ? null : coHeadId,
+    });
     setPending(false);
     if (!result.ok) {
       setError(result.error);
@@ -98,8 +133,10 @@ export function PositionMoveDialog({
 
   if (!position) return null;
 
+  const effectiveCoHead = isRootChoice || coHeadId === selectedId ? "" : coHeadId;
   const unchanged =
-    (selectedId ?? "__root__") === (position.primaryReportsToPositionId ?? "__root__");
+    (selectedId ?? "__root__") === (position.primaryReportsToPositionId ?? "__root__") &&
+    effectiveCoHead === (position.coReportsToPositionId ?? "");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -121,6 +158,26 @@ export function PositionMoveDialog({
             />
           )}
         </Field>
+
+        {!isRootChoice ? (
+          <Field
+            label="Second Reports-To (optional)"
+            hint="Pick a second head if this position reports to two heads. Both are shown equally on the organogram."
+          >
+            {(fieldProps) => (
+              <Combobox
+                {...fieldProps}
+                value={effectiveCoHead}
+                onChange={(value) => setCoHeadId(value ?? "")}
+                options={coOptions}
+                query={coQuery}
+                onQueryChange={setCoQuery}
+                placeholder="Search positions…"
+                aria-label="Second Reports-To position"
+              />
+            )}
+          </Field>
+        ) : null}
 
         {subtreeSize !== null && subtreeSize > 0 ? (
           <p className="text-muted-foreground text-sm" role="status">
@@ -151,7 +208,7 @@ export function PositionMoveDialog({
             Cancel
           </Button>
           <Button type="button" onClick={handleConfirm} disabled={pending || unchanged}>
-            {pending ? "Moving…" : "Confirm move"}
+            {pending ? "Saving…" : "Confirm move"}
           </Button>
         </DialogFooter>
       </DialogContent>

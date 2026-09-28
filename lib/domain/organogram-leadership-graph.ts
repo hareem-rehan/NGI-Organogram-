@@ -1,4 +1,4 @@
-import type { OrganogramEdge, OrganogramNode } from "@/lib/domain/organogram";
+import { buildHeadEdges, type OrganogramEdge, type OrganogramNode } from "@/lib/domain/organogram";
 import {
   buildLeadershipView,
   DEFAULT_LEADERSHIP_VIEW_OPTIONS,
@@ -371,7 +371,27 @@ export function projectLeadershipGraph(
   // synthetic card (docs/DECISIONS.md D25). Reports with no sub-division stay
   // directly under the position. One sub-division (or none) → no card, so the
   // tier never appears where there is nothing to group.
-  const allNodes = insertSubdivisionTier(baseNodes);
+  // Second heads (docs/DECISIONS.md D27): keep a node's second-head link only
+  // when that head is itself on this chart and isn't already the node's
+  // displayed parent — never a dangling or duplicate line.
+  const onChart = new Set(baseNodes.map((node) => node.positionId));
+  const allNodes = insertSubdivisionTier(baseNodes).map((node) => {
+    const co = node.coReportsToPositionId ?? null;
+    const keep = co !== null && onChart.has(co) && co !== node.primaryReportsToPositionId;
+    return keep ? node : { ...node, coReportsToPositionId: null };
+  });
+
+  // A second head counts the shared report among its displayed children too,
+  // so its card offers the expand control and the right count.
+  const coChildCount = new Map<string, number>();
+  for (const node of allNodes) {
+    if (node.coReportsToPositionId) {
+      coChildCount.set(
+        node.coReportsToPositionId,
+        (coChildCount.get(node.coReportsToPositionId) ?? 0) + 1
+      );
+    }
+  }
 
   const childrenByParent = new Map<string, string[]>();
   for (const node of allNodes) {
@@ -401,7 +421,9 @@ export function projectLeadershipGraph(
 
   const projectedNodes = allNodes
     .map((node): OrganogramNode => {
-      const displayChildCount = childrenByParent.get(node.positionId)?.length ?? 0;
+      const displayChildCount =
+        (childrenByParent.get(node.positionId)?.length ?? 0) +
+        (coChildCount.get(node.positionId) ?? 0);
       return {
         ...node,
         displayDepth: depthById.get(node.positionId) ?? 1,
@@ -419,18 +441,11 @@ export function projectLeadershipGraph(
         a.positionCode.localeCompare(b.positionCode)
     );
 
-  const edges: OrganogramEdge[] = projectedNodes
-    .filter((node) => node.primaryReportsToPositionId !== null)
-    .map((node) => ({
-      sourcePositionId: node.primaryReportsToPositionId!,
-      targetPositionId: node.positionId,
-      reportingType: "PRIMARY" as const,
-    }))
-    .sort(
-      (a, b) =>
-        a.sourcePositionId.localeCompare(b.sourcePositionId) ||
-        a.targetPositionId.localeCompare(b.targetPositionId)
-    );
+  const edges: OrganogramEdge[] = buildHeadEdges(projectedNodes).sort(
+    (a, b) =>
+      a.sourcePositionId.localeCompare(b.sourcePositionId) ||
+      a.targetPositionId.localeCompare(b.targetPositionId)
+  );
 
   return {
     nodes: projectedNodes,
