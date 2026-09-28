@@ -92,6 +92,20 @@ Primary-reporting-only. There is no field for a secondary/dotted-line relationsh
 
 Layout runs **only on the currently-visible subgraph** (never the full up-to-2000-position graph), recomputed whenever the visible node/edge _set_ changes (expand/collapse, the planned toggle) — not on every render, and not on selection changes (`organogram-canvas.tsx` separates "positions changed" from "selection/collapse-state changed" into two independent update paths so toggling a node never re-runs ELK).
 
+### Department segregation (2026-09-28)
+
+A flat layered layout lets a wide branch drift sideways under a neighbouring department. For example, Client Delivery Services' Product/Project cards used to land beside Engineering's, with no gap between them.
+
+The layout now segregates the chart by department:
+
+- **Branches:** `lib/domain/organogram-layout-clusters.ts` assigns every card to the top-level branch it descends from, meaning the root's direct child (in the leadership view, a department heading). A sub-department such as Product stays in its division's branch.
+- **One box per branch:** `computeElkLayout` lays each branch out inside its own ELK compound node (`elk.hierarchyHandling: INCLUDE_CHILDREN`). The boxes sit side by side, so a branch can never overlap another.
+- **Gap between departments:** each box has `DEPARTMENT_SIDE_PADDING` (60px) on each side. Two departments are therefore separated by at least 2 × 60px plus the normal spacing, clearly wider than the 36px between two cards of the same department.
+- **Stable order:** departments keep the caller's order (`considerModelOrder`).
+- **Centred root:** the root is re-centred over its direct reports, like the reference chart's CEO.
+
+Returned positions are always absolute. The PDF/PNG export uses the same clusters, so it matches the interactive chart. Regression tests: `elk-layout.test.ts` and `e2e/organogram-department-layout.spec.ts`. The e2e test measures each department's band in flow coordinates and fails without the clustering.
+
 `NODE_WIDTH`/`NODE_HEIGHT` (260×108) are a single source of truth shared between the ELK spacing input and the `PositionNode` component's own fixed box size (`width`/`height` + `overflow-hidden`, with `truncate` on every text line). **Do not let these drift apart** — a height/content mismatch here previously caused adjacent rows to visually overlap, which broke click targeting (see `e2e/organogram.spec.ts`'s expand-toggle test, and the fix history in `docs/phase-reports/PHASE_08_INTERACTIVE_ORGANOGRAM.md`).
 
 ## 3b. Leadership view (Demo 1 stakeholder feedback, 2026-09-14)
@@ -113,6 +127,10 @@ Turning any of it off is a change to `DEFAULT_LEADERSHIP_VIEW_OPTIONS`, in one p
 Occupant name or **Vacant** → role title → job grade code (e.g. "L7", if any) → status badge (Planned/Inactive only; Active is the unmarked default) → direct-report count / expand-collapse control. Department color renders as a left-border accent — paired with the department heading the card sits under, never the sole signal (WCAG 1.4.1).
 
 The position code, the repeated department name and the job-grade NAME were removed on the Demo 1 feedback (`docs/DECISIONS.md` D6); all three remain on the details panel. The card's **accessible name deliberately keeps the department and organizational level** — a screen-reader user cannot see that the card sits underneath its department heading, and removing visual clutter was the request, not removing context from assistive technology.
+
+**Colours (2026-09-28).** A department whose stored colour is one of the Visily reference hues (`lib/domain/visily-level-mappings.ts`) renders with the reference chart's exact fill and border (`VISILY_DEPARTMENT_SWATCHES`, sampled from `visily-multicomponents.pdf`). Before this, a computed 34% tint came out visibly paler, especially HR yellow and Marketing orange. Any other colour keeps the tint.
+
+There is one deliberate deviation: the reference's CEO purple is lightened just enough to keep the card text at WCAG AA. Because the stronger fills drop the muted grey below AA, text on a colour-filled card (screen and export) uses the full foreground colour. Each swatch is asserted at 4.5:1 or better in `organogram-family-colors.test.ts`.
 
 A department heading renders differently on purpose: filled rather than outlined, uppercase, with a role count, no occupancy dot and no status badge — a reader should never have to work out whether a box is a human being. It is not selectable (there is no Position behind it to open), so its whole surface is the expand/collapse control.
 
