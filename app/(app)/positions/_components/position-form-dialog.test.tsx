@@ -566,9 +566,18 @@ describe("PositionFormDialog", () => {
       expect(onOpenChange).not.toHaveBeenCalledWith(false);
       expect(onSaved).toHaveBeenCalled();
 
-      await user.click(screen.getByRole("button", { name: /create position/i }));
+      // The first save's transition must finish before the retry: until then
+      // the button reads "Saving…" (and is disabled), so wait for it to read
+      // "Create position" and be enabled again.
+      const createButton = await screen.findByRole(
+        "button",
+        { name: /create position/i },
+        { timeout: 3000 }
+      );
+      await waitFor(() => expect(createButton).toBeEnabled());
+      await user.click(createButton);
 
-      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false), { timeout: 3000 });
       expect(createPositionActionMock).toHaveBeenCalledTimes(1);
       expect(updatePositionActionMock).toHaveBeenCalledWith(
         expect.objectContaining({ positionId: NEW_ID })

@@ -28,7 +28,7 @@ const {
   },
   positionRepoMocks: {
     searchEligiblePositions: vi.fn(),
-    getPositionAncestorChain: vi.fn(),
+    findPositionById: vi.fn(),
   },
   assignmentRepoMocks: {
     listAssignmentHistoryWithPositionForEmployee: vi.fn(),
@@ -255,5 +255,52 @@ describe("createEmployeeAction — optional first assignment", () => {
 
     expect(result.ok).toBe(false);
     expect(employeeServiceMocks.createEmployeeWithOptionalAssignment).not.toHaveBeenCalled();
+  });
+});
+
+describe("getEmployeeDetailAction — manager line (docs/DECISIONS.md D27)", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("names BOTH heads of a co-headed position", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    employeeRepoMocks.findEmployeeById.mockResolvedValue({
+      id: VALID_UUID,
+      companyId: "company-trusted",
+    });
+    employeeRepoMocks.listCurrentAssignmentsForEmployees.mockResolvedValue(
+      new Map([
+        [
+          VALID_UUID,
+          {
+            assignmentId: "a1",
+            startDate: new Date(),
+            position: {
+              id: "p",
+              departmentId: "d",
+              primaryReportsToPositionId: "head-1",
+              coReportsToPositionId: "head-2",
+            },
+            jobGrade: null,
+            jobFamilyName: null,
+          },
+        ],
+      ])
+    );
+    deptRepoMock.listDepartmentsForCompany.mockResolvedValue([]);
+    assignmentRepoMocks.listAssignmentHistoryWithPositionForEmployee.mockResolvedValue([]);
+    positionRepoMocks.findPositionById.mockImplementation(async (id: string) => ({
+      id,
+      title: id === "head-1" ? "Sr. Software Engineer II" : "Associate Tech Lead",
+    }));
+
+    const result = await getEmployeeDetailAction(VALID_UUID);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.managerPositionTitle).toBe(
+        "Sr. Software Engineer II, Associate Tech Lead"
+      );
+    }
+    expect(positionRepoMocks.findPositionById).toHaveBeenCalledWith("head-1", "company-trusted");
   });
 });

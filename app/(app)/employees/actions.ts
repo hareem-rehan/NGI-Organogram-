@@ -25,7 +25,7 @@ import {
   type EmployeeSearchResult,
 } from "@/lib/repositories/employee.repository";
 import {
-  getPositionAncestorChain,
+  findPositionById,
   searchEligiblePositions,
   type EligiblePosition,
 } from "@/lib/repositories/position.repository";
@@ -103,14 +103,15 @@ export async function getEmployeeDetailAction(
       department =
         departments.find((d) => d.id === currentAssignmentInfo.position.departmentId) ?? null;
 
-      if (currentAssignmentInfo.position.primaryReportsToPositionId) {
-        const ancestorChain = await getPositionAncestorChain(
-          currentAssignmentInfo.position.id,
-          user.companyId
-        );
-        // ancestorChain[0] is the position itself; [1] is its manager, if any.
-        managerPositionTitle = ancestorChain[1]?.title ?? null;
-      }
+      // Every head the position reports to — one, or two for a co-headed
+      // position (docs/DECISIONS.md D27), both shown equally.
+      const headIds = [
+        currentAssignmentInfo.position.primaryReportsToPositionId,
+        currentAssignmentInfo.position.coReportsToPositionId,
+      ].filter((id): id is string => id !== null);
+      const heads = await Promise.all(headIds.map((id) => findPositionById(id, user.companyId)));
+      const titles = heads.map((head) => head?.title).filter((t): t is string => Boolean(t));
+      managerPositionTitle = titles.length > 0 ? titles.join(", ") : null;
     }
 
     const history = await listAssignmentHistoryWithPositionForEmployee(employeeId, user.companyId);
