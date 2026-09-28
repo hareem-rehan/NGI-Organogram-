@@ -6,11 +6,11 @@ import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
  * compute non-overlapping positions; the actual rendered
  * PositionNode uses the same width via Tailwind so the two stay in sync.
  */
-export const NODE_WIDTH = 216;
+export const NODE_WIDTH = 188;
 /**
- * Must be tall enough to fit PositionNode's fixed layout (medium cards,
- * docs/DECISIONS.md D29): a bold title of up to two lines, the person, the
- * level, and the "N roles under" footer row. The node component sets this exact
+ * Must be tall enough to fit PositionNode's fixed layout (compact cards,
+ * docs/DECISIONS.md D30): a bold title of up to two lines, the person, and
+ * one footer row with "N roles under" and the level. The node component sets this exact
  * height + overflow-hidden on its own root element (single source of
  * truth), so ELK's spacing assumption and the actual rendered box never
  * drift apart.
@@ -22,7 +22,7 @@ export const NODE_WIDTH = 216;
  * value below leaves headroom over the content (a two-line title is the
  * tallest case) for exactly that reason.
  */
-export const NODE_HEIGHT = 112;
+export const NODE_HEIGHT = 88;
 
 export interface LayoutPosition {
   x: number;

@@ -106,7 +106,7 @@ The layout now segregates the chart by department:
 
 Returned positions are always absolute. The PDF/PNG export uses the same clusters, so it matches the interactive chart. Regression tests: `elk-layout.test.ts` and `e2e/organogram-department-layout.spec.ts`. The e2e test measures each department's band in flow coordinates and fails without the clustering.
 
-`NODE_WIDTH`/`NODE_HEIGHT` (216×112 since 2026-09-28, medium cards; previously 260×108) are a single source of truth shared between the ELK spacing input and the `PositionNode` component's own fixed box size (`width`/`height` + `overflow-hidden`, with `truncate` on every text line). **Do not let these drift apart** — a height/content mismatch here previously caused adjacent rows to visually overlap, which broke click targeting (see `e2e/organogram.spec.ts`'s expand-toggle test, and the fix history in `docs/phase-reports/PHASE_08_INTERACTIVE_ORGANOGRAM.md`).
+`NODE_WIDTH`/`NODE_HEIGHT` (188×88 since 2026-09-29, compact cards, D30; 216×112 before that; originally 260×108) are a single source of truth shared between the ELK spacing input and the `PositionNode` component's own fixed box size (`width`/`height` + `overflow-hidden`, with `truncate` on every text line). **Do not let these drift apart** — a height/content mismatch here previously caused adjacent rows to visually overlap, which broke click targeting (see `e2e/organogram.spec.ts`'s expand-toggle test, and the fix history in `docs/phase-reports/PHASE_08_INTERACTIVE_ORGANOGRAM.md`).
 
 ## 3b. Leadership view (Demo 1 stakeholder feedback, 2026-09-14)
 
@@ -128,8 +128,7 @@ Turning any of it off is a change to `DEFAULT_LEADERSHIP_VIEW_OPTIONS`, in one p
 
 - **Title**, in bold, up to two lines.
 - **The person** in the role, in semibold. The line is absent when the role is unfilled.
-- **Level** code, with the sub-division alongside it.
-- **Footer:** below a thin divider, a count of **every role in the position's branch** (`totalReportCount`: both heads, each role counted once), for example "48 roles under". This is the same way department headings count their roles. The footer is also the expand/collapse control.
+- **Footer** (one row, below a thin divider): on the left, a count of **every role in the position's branch** (`totalReportCount`: both heads, each role counted once), for example "48 roles under". This is the same way department headings count their roles, and it is also the expand/collapse control. On the right, the **level** code (extra-bold) with the sub-division, truncated to fit (compact card, D30).
 
 **Opening view:** the chart opens framed at a readable zoom. If the whole chart fits at a zoom of at least 0.35 it is shown whole; otherwise the top tiers (root, departments, their leaders) are framed. Fit to View still shows everything. Layout spacing is 48px between rows and 24px between cards.
 

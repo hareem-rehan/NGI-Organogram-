@@ -138,6 +138,10 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
     await dialog.getByRole("button", { name: /create employee/i }).click();
     await expect(dialog).toBeHidden();
 
+    // Every spec shares one company, so the (paginated) employee list may
+    // already hold more than a page of people — find the new one by code
+    // rather than assuming it's on the first page.
+    await page.getByPlaceholder(/search by name, code, or email/i).fill(employeeCode);
     await page
       .getByRole("link", { name: new RegExp(`${employeeFirstName} ${employeeLastName}`, "i") })
       .click();
