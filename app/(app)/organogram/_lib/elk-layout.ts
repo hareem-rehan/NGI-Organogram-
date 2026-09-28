@@ -39,12 +39,25 @@ const elk = new ELK();
  */
 export const DEPARTMENT_SIDE_PADDING = 40;
 
+/**
+ * Vertical gap between one row of cards and the next — tight, like the
+ * reference org chart, where chains of roles stack closely (D31).
+ */
+export const LAYER_GAP = 36;
+
+/**
+ * Where a parent's shared horizontal connector bar sits: halfway down the
+ * gap to the next row. Used by the on-screen connector (org-chart-edge.tsx)
+ * and the PDF/PNG export, so both draw the same shape.
+ */
+export const ORG_EDGE_BUS_OFFSET = LAYER_GAP / 2;
+
 const BASE_LAYOUT_OPTIONS = {
   "elk.algorithm": "layered",
   "elk.direction": "DOWN",
   // Compact spacing (medium cards, 2026-09-28) so more of the chart fits on
   // screen at a readable zoom.
-  "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+  "elk.layered.spacing.nodeNodeBetweenLayers": String(LAYER_GAP),
   "elk.spacing.nodeNode": "24",
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
   // Keep siblings (and so departments) in the caller's order, left to right,

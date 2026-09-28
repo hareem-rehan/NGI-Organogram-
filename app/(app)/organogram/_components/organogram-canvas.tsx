@@ -34,6 +34,7 @@ import {
   type PositionNodeData,
   type PositionNodeMatchState,
 } from "@/app/(app)/organogram/_components/position-node";
+import { EDGE_TYPES } from "@/app/(app)/organogram/_components/org-chart-edge";
 import {
   OrganogramLegend,
   type FamilyLegendEntry,
@@ -459,7 +460,8 @@ function CanvasInner({
           id: `${edge.sourcePositionId}-${edge.targetPositionId}`,
           source: edge.sourcePositionId,
           target: edge.targetPositionId,
-          type: "smoothstep",
+          // Org-chart connector: one shared bar per parent (D31).
+          type: "org",
         })),
     [visibleEdges, positions]
   );
@@ -475,6 +477,7 @@ function CanvasInner({
       nodes={flowNodes}
       edges={flowEdges}
       nodeTypes={NODE_TYPES}
+      edgeTypes={EDGE_TYPES}
       nodesDraggable={arrangeMode}
       onNodesChange={arrangeMode ? onNodesChange : undefined}
       onNodeDragStart={arrangeMode ? onNodeDragStart : undefined}

@@ -1,4 +1,8 @@
-import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
+import {
+  NODE_HEIGHT,
+  NODE_WIDTH,
+  ORG_EDGE_BUS_OFFSET,
+} from "@/app/(app)/organogram/_lib/elk-layout";
 import { lightTint, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 import { EXPORT_COLORS, resolveDepartmentColor } from "./colors";
@@ -399,8 +403,10 @@ function renderEdgePath(source: SvgLayoutPosition, target: SvgLayoutPosition): s
   const sy = source.y + NODE_HEIGHT;
   const tx = target.x + NODE_WIDTH / 2;
   const ty = target.y;
-  const midY = sy + (ty - sy) / 2;
-  const d = `M ${sx} ${sy} L ${sx} ${midY} L ${tx} ${midY} L ${tx} ${ty}`;
+  // The same connector as on screen (org-chart-edge.tsx): one shared bar a
+  // fixed distance below the parent, so siblings' lines coincide exactly.
+  const busY = Math.min(sy + ORG_EDGE_BUS_OFFSET, ty);
+  const d = `M ${sx} ${sy} L ${sx} ${busY} L ${tx} ${busY} L ${tx} ${ty}`;
   return `<path d="${d}" fill="none" stroke="${EXPORT_COLORS.mutedForeground}" stroke-width="1.5" />`;
 }
 
