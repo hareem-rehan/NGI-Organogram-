@@ -184,3 +184,8 @@ Every pre-existing test passes. Tests whose **specified behaviour changed on req
 ## Recommended Next Phase
 
 Re-baseline `organogram-visual.spec.ts`, then do a UAT pass on staging data.
+
+## Follow-up (2026-09-28, after merge)
+
+- The screenshot-comparison suite `organogram-visual.spec.ts` was re-baselined for the redesigned cards. Only `organogram-visual-view` changed. A second run matches the new baseline: 19/19 passed.
+- The employee detail page's "Manager" line now lists **both** heads of a position with two heads (e.g. "Sr. Software Engineer II, Associate Tech Lead"). Covered in `app/(app)/employees/actions.test.ts`.
