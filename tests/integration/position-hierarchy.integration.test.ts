@@ -335,7 +335,7 @@ describe("Position hierarchy", () => {
     ).resolves.not.toBeNull();
   });
 
-  it("blocks hard deletion of a position that has employment history", async () => {
+  it("blocks hard deletion of a position someone currently holds, naming the holder", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const root = await makeRootPosition(company.id, dept.id);
@@ -355,6 +355,67 @@ describe("Position hierarchy", () => {
     });
 
     await expect(deletePosition(child.id, company.id)).rejects.toBeInstanceOf(UnsafeMutationError);
+    await expect(deletePosition(child.id, company.id)).rejects.toThrow(
+      new RegExp(`currently held by ${employee.firstName}`)
+    );
+  });
+
+  it("deletes a vacant position with only PAST assignments, removing and auditing that history (D20 amended)", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const child = await makeChildPosition(company.id, dept.id, root.id, 1, {
+      positionCode: "POS-PAST",
+    });
+    const employee = await makeEmployee(company.id);
+    const past = await testPrisma.positionAssignment.create({
+      data: {
+        companyId: company.id,
+        employeeId: employee.id,
+        positionId: child.id,
+        isPrimary: true,
+        startDate: new Date("2023-01-01"),
+        endDate: new Date("2024-01-01"),
+      },
+    });
+
+    await deletePosition(child.id, company.id, "SYSTEM");
+
+    await expect(testPrisma.position.findUnique({ where: { id: child.id } })).resolves.toBeNull();
+    await expect(
+      testPrisma.positionAssignment.findUnique({ where: { id: past.id } })
+    ).resolves.toBeNull();
+    // The employee record itself is untouched.
+    await expect(
+      testPrisma.employee.findUnique({ where: { id: employee.id } })
+    ).resolves.not.toBeNull();
+    const assignmentEvents = await testPrisma.auditEvent.findMany({
+      where: { companyId: company.id, category: "ASSIGNMENT", action: "DELETED" },
+    });
+    expect(assignmentEvents.map((e) => e.entityId)).toEqual([past.id]);
+  });
+
+  it("still blocks a delete when an assignment ends in the future (someone is booked to hold it)", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const child = await makeChildPosition(company.id, dept.id, root.id, 1);
+    const employee = await makeEmployee(company.id);
+    await testPrisma.positionAssignment.create({
+      data: {
+        companyId: company.id,
+        employeeId: employee.id,
+        positionId: child.id,
+        isPrimary: true,
+        startDate: new Date("2023-01-01"),
+        endDate: new Date("2999-01-01"),
+      },
+    });
+
+    await expect(deletePosition(child.id, company.id)).rejects.toBeInstanceOf(UnsafeMutationError);
+    await expect(
+      testPrisma.positionAssignment.count({ where: { positionId: child.id } })
+    ).resolves.toBe(1);
   });
 
   it("deletes an empty leaf position and records what was removed, in the same transaction", async () => {
@@ -435,7 +496,33 @@ describe("Position hierarchy", () => {
     await expect(testPrisma.position.findUnique({ where: { id: leaf.id } })).resolves.toBeNull();
   });
 
-  it("deletePositionSubtree refuses (and changes nothing) when any branch position has employment history", async () => {
+  it("deletePositionSubtree removes a branch whose only history is past assignments", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const branch = await makeChildPosition(company.id, dept.id, root.id, 1);
+    const leaf = await makeChildPosition(company.id, dept.id, branch.id, 2);
+    const employee = await makeEmployee(company.id);
+    await testPrisma.positionAssignment.create({
+      data: {
+        companyId: company.id,
+        employeeId: employee.id,
+        positionId: leaf.id,
+        isPrimary: true,
+        startDate: new Date("2023-01-01"),
+        endDate: new Date("2024-01-01"),
+      },
+    });
+
+    const result = await deletePositionSubtree(branch.id, company.id);
+
+    expect(result.deletedCount).toBe(2);
+    await expect(
+      testPrisma.positionAssignment.count({ where: { positionId: leaf.id } })
+    ).resolves.toBe(0);
+  });
+
+  it("deletePositionSubtree refuses (and changes nothing) when anyone in the branch currently holds a seat", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const root = await makeRootPosition(company.id, dept.id);

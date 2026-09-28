@@ -6,12 +6,11 @@ import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
  * compute non-overlapping positions; the actual rendered
  * PositionNode uses the same width via Tailwind so the two stay in sync.
  */
-export const NODE_WIDTH = 260;
+export const NODE_WIDTH = 216;
 /**
- * Must be tall enough to fit PositionNode's fixed layout — now 3 content
- * rows (occupant name, role title, grade level) plus the expand-toggle
- * row, down from 5 after the Demo 1 feedback removed the position code
- * and the repeated department name. The node component sets this exact
+ * Must be tall enough to fit PositionNode's fixed layout (medium cards,
+ * docs/DECISIONS.md D29): a bold title of up to two lines, the person, the
+ * level, and the "N roles under" footer row. The node component sets this exact
  * height + overflow-hidden on its own root element (single source of
  * truth), so ELK's spacing assumption and the actual rendered box never
  * drift apart.
@@ -20,10 +19,10 @@ export const NODE_WIDTH = 260;
  * height/content mismatch caused adjacent rows to visually overlap, which
  * made e2e/organogram.spec.ts's expand-toggle clicks land on the wrong
  * element (a neighbouring node's pane area intercepted the click). The
- * value below leaves deliberate headroom over the measured content height
- * (~99px) for exactly that reason.
+ * value below leaves headroom over the content (a two-line title is the
+ * tallest case) for exactly that reason.
  */
-export const NODE_HEIGHT = 108;
+export const NODE_HEIGHT = 112;
 
 export interface LayoutPosition {
   x: number;
@@ -38,13 +37,15 @@ const elk = new ELK();
  * spacing — clearly wider than the gap between two cards of the same
  * department, which is what makes the segregation readable.
  */
-export const DEPARTMENT_SIDE_PADDING = 60;
+export const DEPARTMENT_SIDE_PADDING = 40;
 
 const BASE_LAYOUT_OPTIONS = {
   "elk.algorithm": "layered",
   "elk.direction": "DOWN",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "72",
-  "elk.spacing.nodeNode": "36",
+  // Compact spacing (medium cards, 2026-09-28) so more of the chart fits on
+  // screen at a readable zoom.
+  "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+  "elk.spacing.nodeNode": "24",
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
   // Keep siblings (and so departments) in the caller's order, left to right,
   // so the chart doesn't reshuffle between renders.

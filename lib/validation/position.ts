@@ -127,6 +127,14 @@ export const changeReportsToSchema = z
   })
   .strict();
 
+/** Drop a position (and its branch) onto a department heading (docs/DECISIONS.md D29). */
+export const movePositionToDepartmentSchema = z
+  .object({
+    positionId: z.string().uuid(),
+    departmentId: z.string().uuid(),
+  })
+  .strict();
+
 export const positionStatusChangeSchema = z
   .object({
     positionId: z.string().uuid(),

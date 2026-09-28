@@ -259,9 +259,11 @@ describe("PositionNode", () => {
     expect(screen.queryByText("Inactive")).not.toBeInTheDocument();
   });
 
-  it('shows "No direct reports" and no toggle for a leaf position', () => {
-    renderNode({ node: makeNode({ hasChildren: false, directReportCount: 0 }) });
-    expect(screen.getByText("No direct reports")).toBeInTheDocument();
+  it('shows "No roles under" and no toggle for a leaf position', () => {
+    renderNode({
+      node: makeNode({ hasChildren: false, directReportCount: 0, totalReportCount: 0 }),
+    });
+    expect(screen.getByText("No roles under")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Expand/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Collapse/ })).not.toBeInTheDocument();
   });
@@ -373,20 +375,33 @@ describe("PositionNode — department tier (Demo 1 feedback)", () => {
   });
 });
 
-describe("PositionNode — displayed vs. real report counts", () => {
-  it("promises only the reports expanding will actually reveal", () => {
-    // The real position has four reports; the leadership filter leaves
-    // one of them on the chart. Showing "4" would be a promise the
-    // expand toggle cannot keep.
+// The footer counts every role in the position's whole branch (docs/DECISIONS.md
+// D29) — the same way a department heading counts its roles — replacing the
+// earlier "N direct reports" footer.
+describe("PositionNode — roles-under footer", () => {
+  it("shows the whole-branch count, not just direct reports", () => {
     renderNode({
-      node: makeNode({ hasChildren: true, directReportCount: 4, displayChildCount: 1 }),
+      node: makeNode({
+        hasChildren: true,
+        directReportCount: 3,
+        displayChildCount: 1,
+        totalReportCount: 48,
+      }),
     });
-    expect(screen.getByText(/1 direct report$/)).toBeInTheDocument();
+    const footer = screen.getByRole("button", { name: /^Collapse/ });
+    expect(footer).toHaveTextContent(/^48 roles under$/);
   });
 
-  it("falls back to the real count on an unprojected graph", () => {
+  it("uses the singular for one role", () => {
+    renderNode({
+      node: makeNode({ hasChildren: true, directReportCount: 1, totalReportCount: 1 }),
+    });
+    expect(screen.getByRole("button", { name: /^Collapse/ })).toHaveTextContent(/^1 role under$/);
+  });
+
+  it("falls back to the displayed, then direct, count when the total is absent", () => {
     renderNode({ node: makeNode({ hasChildren: true, directReportCount: 2 }) });
-    expect(screen.getByText(/2 direct reports/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Collapse/ })).toHaveTextContent(/^2 roles under$/);
   });
 });
 

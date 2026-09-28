@@ -645,7 +645,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
           open={deleteDialog.open}
           onOpenChange={deleteDialog.setOpen}
           title="Delete position?"
-          description={`${deleteTarget.title} (${deleteTarget.positionCode}) will be permanently removed. This cannot be undone. A position can only be deleted while nothing reports to it and no one is or was assigned to it — otherwise deactivate it instead.`}
+          description={`${deleteTarget.title} (${deleteTarget.positionCode}) will be permanently removed. This cannot be undone. A position can only be deleted while nothing reports to it and no one currently holds it — any past assignment record is removed with it. Otherwise deactivate it instead.`}
           confirmLabel="Delete"
           destructive
           pending={deletePending}
@@ -668,7 +668,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
             open={bulkDeleteDialog.open}
             onOpenChange={bulkDeleteDialog.setOpen}
             title={`Delete ${selectedIds.size} position${selectedIds.size === 1 ? "" : "s"}?`}
-            description="Each selected position is permanently removed. This cannot be undone. A position can only be deleted while nothing reports to it and no one is or was assigned to it — any that can't be are kept and listed."
+            description="Each selected position is permanently removed. This cannot be undone. A position can only be deleted while nothing reports to it and no one currently holds it (past assignment records are removed with it) — any that can't be are kept and listed."
             confirmLabel="Delete"
             destructive
             pending={bulkPending}

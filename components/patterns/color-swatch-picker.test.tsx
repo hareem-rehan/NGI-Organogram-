@@ -25,6 +25,25 @@ describe("ColorSwatchPicker", () => {
     expect(onChange).toHaveBeenCalledWith("#123abc");
   });
 
+  it("labels the full-spectrum picker visibly, not just with an icon", () => {
+    render(<ColorSwatchPicker id="color" value={null} onChange={() => {}} />);
+    expect(screen.getByText(/custom colour/i)).toBeVisible();
+  });
+
+  it("offers the Visily reference hues as quick picks", () => {
+    for (const hex of [
+      "#4fae2f",
+      "#3aa4e8",
+      "#d9a400",
+      "#e8811a",
+      "#ec6fa8",
+      "#9b7fe0",
+      "#6d28d9",
+    ]) {
+      expect(DEPARTMENT_COLOR_PRESETS).toContain(hex);
+    }
+  });
+
   it("shows a custom (non-preset) color as selected on the picker swatch", () => {
     render(<ColorSwatchPicker id="color" value="#123abc" onChange={() => {}} />);
     // A non-preset value drives the picker to that value, not black.

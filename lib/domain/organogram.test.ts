@@ -610,3 +610,35 @@ describe("co-heads (docs/DECISIONS.md D27)", () => {
     expect(countHiddenDescendants("root", nodes)).toBe(4);
   });
 });
+
+describe("totalReportCount (card footer: roles under)", () => {
+  it("counts a position's whole branch, through both heads, each role once", () => {
+    const positions = [
+      pos({ id: "root" }),
+      pos({ id: "A", primaryReportsToPositionId: "root", organizationalLevel: 2 }),
+      pos({ id: "B", primaryReportsToPositionId: "root", organizationalLevel: 2 }),
+      pos({ id: "A1", primaryReportsToPositionId: "A", organizationalLevel: 3 }),
+      // T is under B and (second head) A1.
+      pos({
+        id: "T",
+        primaryReportsToPositionId: "B",
+        coReportsToPositionId: "A1",
+        organizationalLevel: 4,
+      }),
+      pos({ id: "T1", primaryReportsToPositionId: "T", organizationalLevel: 5 }),
+    ];
+    const { nodes } = buildOrganogramGraph({
+      positions,
+      safePositionIds: new Set(positions.map((p) => p.id)),
+      departmentsById: new Map([[DEPT.id, DEPT]]),
+      jobGradeNamesById: new Map(),
+      occupantNamesByPositionId: new Map(),
+      occupantEmployeeIdsByPositionId: new Map(),
+    });
+    const total = (id: string) => nodes.find((n) => n.positionId === id)!.totalReportCount;
+    expect(total("root")).toBe(5); // A, B, A1, T, T1 — T counted once
+    expect(total("A")).toBe(3); // A1, T, T1
+    expect(total("B")).toBe(2); // T, T1
+    expect(total("T1")).toBe(0);
+  });
+});

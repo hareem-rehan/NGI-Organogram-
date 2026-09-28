@@ -200,6 +200,13 @@ export interface OrganogramNode {
   /** Present only when occupied — lets an authorized viewer navigate to the employee's own (independently authorization-gated) detail page. Never a substitute for exposing the raw Employee record. */
   occupantEmployeeId: string | null;
   directReportCount: number;
+  /**
+   * Every role below this position in the REAL hierarchy — its whole branch,
+   * through either head, each role counted once. What the card's footer shows
+   * ("48 roles under"), matching how department headings count their roles.
+   * Unaffected by collapse, filters or the leadership view.
+   */
+  totalReportCount?: number;
   primaryReportsToPositionId: string | null;
   /**
    * The position's SECOND head (docs/DECISIONS.md D27), or null/absent. Both
@@ -286,6 +293,28 @@ export function buildOrganogramGraph(args: {
     }
   }
 
+  // Whole-branch size per position (both heads, each descendant once).
+  const childrenOf = new Map<string, string[]>();
+  for (const p of safePositions) {
+    for (const headId of headIdsOfNode(p)) {
+      if (headId === p.id || !safeIdSet.has(headId)) continue;
+      const list = childrenOf.get(headId) ?? [];
+      list.push(p.id);
+      childrenOf.set(headId, list);
+    }
+  }
+  const totalReportCountOf = (id: string): number => {
+    const seen = new Set<string>();
+    const stack = [...(childrenOf.get(id) ?? [])];
+    while (stack.length > 0) {
+      const next = stack.pop()!;
+      if (seen.has(next) || next === id) continue;
+      seen.add(next);
+      for (const child of childrenOf.get(next) ?? []) stack.push(child);
+    }
+    return seen.size;
+  };
+
   const nodes: OrganogramNode[] = safePositions
     .map((p): OrganogramNode => {
       const department = departmentsById.get(p.departmentId);
@@ -325,6 +354,7 @@ export function buildOrganogramGraph(args: {
         occupantDisplayName,
         occupantEmployeeId: occupantEmployeeIdsByPositionId.get(p.id) ?? null,
         directReportCount: childCounts.get(p.id) ?? 0,
+        totalReportCount: totalReportCountOf(p.id),
         primaryReportsToPositionId: safeParentId,
         coReportsToPositionId: safeCoHeadId,
         hasChildren: (childCounts.get(p.id) ?? 0) > 0,

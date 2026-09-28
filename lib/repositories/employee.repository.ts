@@ -112,6 +112,10 @@ export interface CurrentAssignmentInfo {
   assignmentId: string;
   startDate: Date;
   position: Position;
+  /** The position's job level (e.g. code "L7", name "Lead / Principal"), or null when ungraded. */
+  jobGrade: { code: string; name: string } | null;
+  /** The position's sub-division name, or null when it has none. */
+  jobFamilyName: string | null;
 }
 
 /**
@@ -139,14 +143,24 @@ export async function listCurrentAssignmentsForEmployees(
       startDate: { lte: onDate },
       OR: [{ endDate: null }, { endDate: { gt: onDate } }],
     },
-    include: { position: true },
+    include: {
+      position: {
+        include: {
+          jobGrade: { select: { code: true, name: true } },
+          jobFamily: { select: { name: true } },
+        },
+      },
+    },
   });
 
   for (const row of rows) {
+    const { jobGrade, jobFamily, ...position } = row.position;
     result.set(row.employeeId, {
       assignmentId: row.id,
       startDate: row.startDate,
-      position: row.position,
+      position,
+      jobGrade,
+      jobFamilyName: jobFamily?.name ?? null,
     });
   }
   return result;

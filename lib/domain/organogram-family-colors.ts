@@ -30,7 +30,10 @@ export const FAMILY_COLOR_PALETTE: readonly FamilyColor[] = [
   { fill: "#ffd5e9", accent: "#ec6fa8" }, // pink
   { fill: "#e7d2fd", accent: "#9b5fe0" }, // lavender
   { fill: "#ffa42f", accent: "#e8811a" }, // orange
-  { fill: "#aa57e5", accent: "#8a3fd0" }, // purple
+  // The reference's deep purple (#aa57e5) left dark card text at 3.4:1 —
+  // below WCAG AA — so the fill is lifted to the lightest shade that still
+  // reads as the same vivid purple.
+  { fill: "#c08cf0", accent: "#8a3fd0" }, // purple
 ];
 
 /**
@@ -105,5 +108,41 @@ export function departmentColorFromHex(color: string | null | undefined): Family
   const accent = color && /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : NEUTRAL_ACCENT;
   const swatch = VISILY_DEPARTMENT_SWATCHES.get(accent.toLowerCase());
   if (swatch) return swatch;
-  return { fill: lightTint(accent, 0.34), accent };
+  return { fill: vividFill(accent), accent };
+}
+
+/** The card text colour (app/globals.css --color-foreground). */
+export const CARD_TEXT_COLOR = "#2d2d2d";
+
+function relativeLuminance(hex: string): number {
+  const int = parseInt(hex.replace("#", ""), 16);
+  const channel = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return (
+    0.2126 * channel((int >> 16) & 0xff) +
+    0.7152 * channel((int >> 8) & 0xff) +
+    0.0722 * channel(int & 0xff)
+  );
+}
+
+/** WCAG 2.x contrast ratio between two #rrggbb colours. */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+/**
+ * A vivid card fill for any department colour that isn't one of the
+ * reference swatches: half-strength (much livelier than the old 34% tint),
+ * lightened only as far as needed to keep the card text at WCAG AA
+ * (>= 4.5:1). A very dark colour therefore still yields a readable fill.
+ */
+export function vividFill(accent: string): string {
+  for (let weight = 0.5; weight > 0; weight -= 0.05) {
+    const fill = lightTint(accent, weight);
+    if (contrastRatio(fill, CARD_TEXT_COLOR) >= 4.5) return fill;
+  }
+  return lightTint(accent, 0.1);
 }

@@ -8,15 +8,24 @@ import { Input } from "@/components/ui/input";
 const FULL_HEX = /^#[0-9a-fA-F]{6}$/;
 
 /** Department chart-grouping palette, aligned to the stakeholder's Visily reference (green Engineering, blue Client Delivery/Project, purple Product, gold HR, orange Marketing, pink Delivery/Admin, lavender Finance, teal IT). The organogram cards colour by each department's own chosen hue. */
+/**
+ * Quick picks. The first seven are the Visily reference hues, so a department
+ * given one of them renders with the reference chart's exact card colours
+ * (lib/domain/organogram-family-colors.ts VISILY_DEPARTMENT_SWATCHES); the
+ * rest are extra vivid options. Any other colour can be chosen with the
+ * "Custom colour" picker.
+ */
 export const DEPARTMENT_COLOR_PRESETS = [
   "#4fae2f",
   "#3aa4e8",
-  "#7c3aed",
   "#d9a400",
   "#e8811a",
   "#ec6fa8",
   "#9b7fe0",
+  "#6d28d9",
   "#00b8d4",
+  "#e11d48",
+  "#0d9488",
 ] as const;
 
 interface ColorSwatchPickerProps {
@@ -62,17 +71,19 @@ export function ColorSwatchPicker({
             {value === preset ? <Check aria-hidden="true" className="size-4 text-white" /> : null}
           </button>
         ))}
+      </div>
 
-        {/* Full-spectrum picker. A label wraps the native colour input so
-            the whole swatch is the trigger; the input itself is visually
-            hidden but keyboard- and screen-reader-reachable. */}
+      {/* Full-spectrum picker, as a clearly labelled control (not just an
+          icon): a label wraps the native colour input so the whole pill is
+          the trigger; the input itself is visually hidden but keyboard- and
+          screen-reader-reachable. The pill's swatch previews the current
+          colour. */}
+      <div className="flex flex-wrap items-center gap-2">
         <label
-          title="Pick a custom color"
           className={cn(
-            "relative flex size-8 cursor-pointer items-center justify-center rounded-full border-2 transition-transform",
-            isCustom ? "border-foreground scale-110" : "border-border border-dashed"
+            "hover:bg-accent focus-within:ring-ring relative inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium focus-within:ring-2",
+            isCustom ? "border-foreground" : "border-border"
           )}
-          style={isCustom ? { backgroundColor: normalized } : undefined}
         >
           <input
             type="color"
@@ -81,22 +92,28 @@ export function ColorSwatchPicker({
             aria-label="Pick a custom color"
             className="absolute inset-0 size-full cursor-pointer opacity-0"
           />
-          {isCustom ? (
-            <Check aria-hidden="true" className="size-4 text-white" />
-          ) : (
-            <Pipette aria-hidden="true" className="text-muted-foreground size-4" />
-          )}
+          <span
+            aria-hidden="true"
+            className="border-border inline-block size-5 rounded-full border"
+            style={{
+              background: FULL_HEX.test(normalized)
+                ? normalized
+                : "conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)",
+            }}
+          />
+          <Pipette aria-hidden="true" className="text-muted-foreground size-4" />
+          Custom colour…
         </label>
+        <Input
+          id={id}
+          value={value ?? ""}
+          onChange={(event) => onChange(event.target.value || null)}
+          placeholder="#16a34a (optional)"
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
+          className="max-w-32"
+        />
       </div>
-      <Input
-        id={id}
-        value={value ?? ""}
-        onChange={(event) => onChange(event.target.value || null)}
-        placeholder="#16a34a (optional)"
-        aria-invalid={ariaInvalid}
-        aria-describedby={ariaDescribedBy}
-        className="max-w-40"
-      />
     </div>
   );
 }

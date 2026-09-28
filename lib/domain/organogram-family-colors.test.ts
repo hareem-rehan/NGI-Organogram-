@@ -4,6 +4,9 @@ import {
   FAMILY_COLOR_PALETTE,
   buildFamilyColorMap,
   departmentColorFromHex,
+  contrastRatio,
+  vividFill,
+  CARD_TEXT_COLOR,
   VISILY_DEPARTMENT_SWATCHES,
   lightTint,
 } from "./organogram-family-colors";
@@ -68,8 +71,9 @@ describe("departmentColorFromHex", () => {
     expect(c.accent).toBe("#16a34a");
     expect(c.fill).toMatch(/^#[0-9a-f]{6}$/i);
     expect(c.fill).not.toBe(c.accent);
-    // The fill is lighter than the accent (blended toward white).
-    expect(c.fill).toBe(lightTint("#16a34a", 0.34));
+    // A vivid (half-strength) fill, lightened only as far as readability needs.
+    expect(c.fill).toBe(vividFill("#16a34a"));
+    expect(contrastRatio(c.fill, CARD_TEXT_COLOR)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("renders a Visily reference colour with the reference's exact fill and border", () => {
@@ -113,6 +117,38 @@ describe("VISILY_DEPARTMENT_SWATCHES — readability (WCAG AA)", () => {
     "%s fill keeps card text at >= 4.5:1",
     (_hex, swatch) => {
       expect(contrast(swatch.fill, CARD_TEXT)).toBeGreaterThanOrEqual(4.5);
+    }
+  );
+});
+
+describe("vividFill / palette readability (WCAG AA)", () => {
+  it("keeps card text readable on ANY department colour, even very dark ones", () => {
+    for (const hex of [
+      "#000000",
+      "#1e3a8a",
+      "#7f1d1d",
+      "#16a34a",
+      "#2563eb",
+      "#f97316",
+      "#ffffff",
+    ]) {
+      expect(contrastRatio(vividFill(hex), CARD_TEXT_COLOR)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("is more vivid than the old 34% tint for a mid-tone colour", () => {
+    // Further from white = more colour.
+    const distanceFromWhite = (hex: string) =>
+      [1, 3, 5].reduce((sum, i) => sum + (255 - parseInt(hex.slice(i, i + 2), 16)), 0);
+    expect(distanceFromWhite(vividFill("#2563eb"))).toBeGreaterThan(
+      distanceFromWhite(lightTint("#2563eb", 0.34))
+    );
+  });
+
+  it.each(FAMILY_COLOR_PALETTE.map((c) => [c.fill, c]))(
+    "sub-division fill %s keeps card text at >= 4.5:1",
+    (_fill, colour) => {
+      expect(contrastRatio(colour.fill, CARD_TEXT_COLOR)).toBeGreaterThanOrEqual(4.5);
     }
   );
 });

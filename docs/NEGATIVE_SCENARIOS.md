@@ -400,6 +400,25 @@ All search/filter/focus logic is client-side, operating only on the `OrganogramN
 | Chart: second head filtered off the chart                                         | No dangling line drawn                       | Unit                    |
 | VIEWER calls the change-reports-to action / malformed ids / client-supplied level | Rejected before the service                  | Unit                    |
 
+## Organogram round 3 (D29)
+
+| Scenario                                                                            | Expected result                                                                                               | Test layer        |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Drop a card onto a department heading                                               | Joins that department under its top position; branch moves along, keeps reporting lines, joins the department | Integration, E2E  |
+| Drop onto an empty department                                                       | Reports to the company root                                                                                   | Integration       |
+| Department move re-maps levels / clears a foreign sub-division                      | Same level code in the new department; old-department sub-division cleared                                    | Integration       |
+| Drop the root into a department                                                     | Refused                                                                                                       | Integration       |
+| Drop that would cycle through a second head                                         | Refused (`CycleError`), nothing changes                                                                       | Integration       |
+| Drop a card onto itself or a subordinate (incl. one drawn under another department) | Refused before any dialog, reason shown; red ring while hovering                                              | Unit, E2E         |
+| Drop onto a sub-division box                                                        | Refused (grouping only)                                                                                       | Unit              |
+| Delete a vacant position with only past assignments                                 | Deleted; past assignments removed with per-assignment audit events                                            | Integration       |
+| Delete a position someone currently holds / is booked to hold                       | Refused, naming the holder; nothing changes                                                                   | Integration       |
+| Delete a branch with only past history                                              | Whole branch deleted                                                                                          | Integration       |
+| Any department colour (even black) as a card fill                                   | Card text stays ≥ 4.5:1                                                                                       | Unit              |
+| Sub-division colour mode                                                            | Department headings and unclassified cards neutral (screen and export)                                        | Unit              |
+| Employees list level                                                                | Job level (e.g. L7 — Lead), never the chart depth; Sub-division column                                        | Unit, Integration |
+| VIEWER calls the department-move action / malformed ids                             | Rejected before the service                                                                                   | Unit              |
+
 ## Organizational Levels
 
 | Scenario                                                                             | Expected result                                                                                       | Test layer               |

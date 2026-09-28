@@ -52,6 +52,19 @@ export interface PositionNodeData extends Record<string, unknown> {
   onEdit?: (positionId: string) => void;
   onAddChild?: (positionId: string) => void;
   onRequestDelete?: (positionId: string) => void;
+  /**
+   * Arrange-mode drop feedback while another card is dragged over this one:
+   * "valid" (green ring — dropping here is allowed) or "invalid" (red ring —
+   * e.g. it is the dragged card's own subordinate). Absent otherwise.
+   */
+  dropHint?: "valid" | "invalid";
+}
+
+/** Ring shown on a card while a dragged card hovers over it (arrange mode). */
+function dropHintClass(hint: PositionNodeData["dropHint"]): string | false {
+  if (hint === "valid") return "ring-4 ring-emerald-500 ring-offset-2";
+  if (hint === "invalid") return "ring-4 ring-red-600 ring-offset-2";
+  return false;
 }
 
 /**
@@ -100,6 +113,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
     <div
       className={cn(
         "pointer-events-auto flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        dropHintClass(data.dropHint),
         !fill && "bg-muted"
       )}
       style={{
@@ -162,6 +176,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
     <div
       className={cn(
         "pointer-events-auto flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        dropHintClass(data.dropHint),
         !fill && "bg-muted"
       )}
       style={{ width: NODE_WIDTH, height: NODE_HEIGHT, borderColor: border, backgroundColor: fill }}
@@ -238,7 +253,9 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
   // filter hides some of a manager's reports, that is fewer than the real
   // `directReportCount` — which stays intact on the node for the details
   // panel, where the truthful number belongs.
-  const displayChildCount = node.displayChildCount ?? node.directReportCount;
+  // The footer counts EVERY role under this position (its whole branch, as a
+  // department heading does), not just direct reports — docs/DECISIONS.md D29.
+  const rolesUnder = node.totalReportCount ?? node.displayChildCount ?? node.directReportCount;
   const matchStateLabel =
     matchState === "match"
       ? " Search or filter match."
@@ -258,6 +275,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // receive events — see e2e/organogram.spec.ts, which caught this
         // as a real click-through-to-the-pane failure before this fix.
         "pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm transition-colors",
+        dropHintClass(data.dropHint),
         // Neutral card background only when no colour fill applies.
         !cardBackground && "bg-background",
         // Selection/search override the border with a stronger ring; otherwise
@@ -336,7 +354,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // is released without moving — so a click edits and a press-drag
         // re-parents, sharing one surface. The +/Delete/collapse controls stay
         // `nodrag` so they never start a drag.
-        className="focus-visible:ring-ring flex flex-1 flex-col rounded-t-[calc(0.5rem-2px)] p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex min-h-0 flex-1 flex-col rounded-t-[calc(0.5rem-2px)] px-2.5 pt-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         {/* Compact leadership card (Demo 1 feedback): role, then the
             person in it, then the level. Deliberately NOT shown — the
@@ -347,7 +365,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             three characters). All of it is still on the details panel,
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
-          <p className="text-foreground truncate text-sm leading-tight font-semibold">
+          <p className="text-foreground line-clamp-2 text-[13px] leading-tight font-bold">
             {node.title}
           </p>
           <div className="flex shrink-0 items-center gap-1">
@@ -364,21 +382,21 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           <p
             className={cn(
               cardBackground ? "text-foreground" : "text-foreground/80",
-              "mt-1 truncate text-xs"
+              "mt-0.5 truncate text-xs font-semibold"
             )}
           >
             {occupantName}
           </p>
         ) : null}
         {node.jobGradeCode || node.jobFamilyName ? (
-          <p className={cn(secondaryTextClass(cardBackground), "mt-0.5 truncate text-xs")}>
-            {node.jobGradeCode ? <span className="font-medium">{node.jobGradeCode}</span> : null}
+          <p className={cn(secondaryTextClass(cardBackground), "mt-0.5 truncate text-[11px]")}>
+            {node.jobGradeCode ? <span className="font-bold">{node.jobGradeCode}</span> : null}
             {node.jobGradeCode && node.jobFamilyName ? " · " : null}
             {node.jobFamilyName ?? null}
           </p>
         ) : null}
       </button>
-      <div className="px-3 pb-3">
+      <div className="border-foreground/10 mx-2.5 mb-1.5 border-t pt-1">
         {node.hasChildren ? (
           <button
             type="button"
@@ -399,11 +417,11 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             ) : (
               <ChevronDown aria-hidden="true" className="size-3.5" />
             )}
-            {displayChildCount} direct report{displayChildCount === 1 ? "" : "s"}
-            {isCollapsed && hiddenDescendantCount > 0 ? ` (+${hiddenDescendantCount} hidden)` : ""}
+            <span className="font-bold">{rolesUnder}</span>
+            {rolesUnder === 1 ? " role under" : " roles under"}
           </button>
         ) : (
-          <p className={cn(secondaryTextClass(cardBackground), "text-xs")}>No direct reports</p>
+          <p className={cn(secondaryTextClass(cardBackground), "text-[11px]")}>No roles under</p>
         )}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-border !border-none" />

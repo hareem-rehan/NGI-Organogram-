@@ -105,3 +105,20 @@ export async function seedDepartmentLayoutChart(
     await prisma.$disconnect();
   }
 }
+
+/** Reads one position (by exact title) for asserting a drag-and-drop move. */
+export async function readPositionByTitle(
+  companyId: string,
+  title: string
+): Promise<{ id: string; departmentId: string; primaryReportsToPositionId: string | null }> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  const prisma = new PrismaClient();
+  try {
+    return await prisma.position.findFirstOrThrow({
+      where: { companyId, title },
+      select: { id: true, departmentId: true, primaryReportsToPositionId: true },
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}

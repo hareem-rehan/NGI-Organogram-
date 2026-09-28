@@ -73,7 +73,7 @@ function mockDefaults() {
 describe("EmployeesView", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("renders an assigned employee with derived position/department/level", async () => {
+  it("renders an assigned employee with derived position/department/sub-division/job level", async () => {
     mockDefaults();
     const employee = makeEmployee();
     const position = makePosition();
@@ -83,7 +83,13 @@ describe("EmployeesView", () => {
         items: [employee],
         totalCount: 1,
         currentAssignments: {
-          [employee.id]: { assignmentId: "a1", startDate: new Date(), position },
+          [employee.id]: {
+            assignmentId: "a1",
+            startDate: new Date(),
+            position,
+            jobGrade: { code: "L18", name: "Founder / CEO" },
+            jobFamilyName: "Leadership",
+          },
         },
       },
     });
@@ -112,7 +118,12 @@ describe("EmployeesView", () => {
     expect(screen.getByText("EMP-001")).toBeInTheDocument();
     expect(screen.getByText("Chief Executive Officer")).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "Executive" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "1" })).toBeInTheDocument();
+    // The job LEVEL, as on the Positions page — never the chart depth
+    // (organizationalLevel 1 here), which is a different number.
+    expect(screen.getByRole("cell", { name: "L18 — Founder / CEO" })).toBeInTheDocument();
+    expect(screen.queryByRole("cell", { name: "1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Sub-division" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Leadership" })).toBeInTheDocument();
     expect(screen.getByText("Currently Assigned")).toBeInTheDocument();
   });
 

@@ -1156,3 +1156,42 @@ describe("setPositionPrimaryOccupant (Position form 'Assigned employee')", () =>
     expect(active).toBeNull();
   });
 });
+
+describe("listCurrentAssignmentsForEmployees — job level and sub-division (employees list)", () => {
+  it("returns the current position's job level and sub-division alongside the position", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const grade = await testPrisma.jobGrade.create({
+      data: {
+        companyId: company.id,
+        departmentId: dept.id,
+        code: "L7",
+        name: "Lead",
+        displayOrder: 7,
+      },
+    });
+    const family = await testPrisma.jobFamily.create({
+      data: { companyId: company.id, departmentId: dept.id, name: "Backend", code: "BE" },
+    });
+    const position = await makeRootPosition(company.id, dept.id);
+    await testPrisma.position.update({
+      where: { id: position.id },
+      data: { jobGradeId: grade.id, jobFamilyId: family.id },
+    });
+    const employee = await makeEmployee(company.id);
+    await createAssignment({
+      companyId: company.id,
+      employeeId: employee.id,
+      positionId: position.id,
+      startDate: new Date("2024-01-01"),
+    });
+
+    const current = await listCurrentAssignmentsForEmployees([employee.id], company.id, new Date());
+    const info = current.get(employee.id)!;
+    expect(info.jobGrade).toEqual({ code: "L7", name: "Lead" });
+    expect(info.jobFamilyName).toBe("Backend");
+    expect(info.position.id).toBe(position.id);
+    // The joined relations are not leaked onto the position object itself.
+    expect(info.position).not.toHaveProperty("jobGrade");
+  });
+});
