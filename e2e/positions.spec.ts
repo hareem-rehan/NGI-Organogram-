@@ -179,8 +179,10 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     await page.getByRole("button", { name: /add employee/i }).click();
     let dialog = page.getByRole("dialog");
     await dialog.getByLabel(/employee code/i).fill(employeeCode);
-    await dialog.getByLabel(/first name/i).fill("Grace");
-    await dialog.getByLabel(/last name/i).fill(`Hopper ${suffix}`);
+    // A name no other spec looks up by regex (employees.spec.ts matches
+    // /grace hopper/i and /ada lovelace/i in this same shared company).
+    await dialog.getByLabel(/first name/i).fill("Occupant");
+    await dialog.getByLabel(/last name/i).fill(`Fixture ${suffix}`);
     await dialog.getByRole("button", { name: /create employee/i }).click();
     await expect(dialog).toBeHidden();
 
@@ -194,7 +196,7 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     const picker = dialog.getByRole("combobox", { name: /assigned employee/i });
     await picker.click();
     await picker.fill(employeeCode);
-    await page.getByRole("option", { name: new RegExp(`Hopper ${suffix}`) }).click();
+    await page.getByRole("option", { name: new RegExp(`Occupant Fixture ${suffix}`) }).click();
     await dialog.getByRole("button", { name: /create position/i }).click();
     await expect(dialog).toBeHidden();
 
@@ -205,7 +207,7 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     await row.getByRole("button", { name: /^edit$/i }).click();
     dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("combobox", { name: /assigned employee/i })).toHaveValue(
-      `Grace Hopper ${suffix}`
+      `Occupant Fixture ${suffix}`
     );
     await dialog.getByRole("combobox", { name: /assigned employee/i }).click();
     await page.getByRole("option", { name: /vacant/i }).click();
