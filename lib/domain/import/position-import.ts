@@ -27,6 +27,8 @@ export const POSITION_ALLOWED_COLUMNS = [
   "departmentCode",
   "jobGradeCode",
   "primaryManagerPositionCode",
+  /** Optional SECOND head (docs/DECISIONS.md D27, A54 resolved). */
+  "coManagerPositionCode",
   "status",
   "location",
 ] as const;
@@ -59,8 +61,9 @@ export interface ExistingPositionSnapshot {
   reportsToCode: string | null;
   /**
    * Normalized code of the position's SECOND head, if any (docs/DECISIONS.md
-   * D27). Import cannot set or change it (A54) — it is read so the combined
-   * cycle check sees every reporting line. Optional: absent means none.
+   * D27). The `coManagerPositionCode` column can set, change or clear it; the
+   * current value is also what "keep" (a blank cell) resolves to, and it is
+   * part of the combined cycle check. Optional: absent means none.
    */
   coReportsToCode?: string | null;
   status: "ACTIVE" | "INACTIVE";
@@ -83,6 +86,11 @@ export interface NormalizedPositionRow {
   jobGradeCode: ResolvedField<string>;
   /** "value" = report to this code; a resolved null means root. */
   reportsToCode: ResolvedField<string>;
+  /**
+   * Second head (docs/DECISIONS.md D27): "value" = also report to this code;
+   * "clear" (__NONE__/__CLEAR__) = remove it; "keep" (blank) = unchanged.
+   */
+  coReportsToCode: ResolvedField<string>;
   status: "ACTIVE" | "INACTIVE" | null;
 }
 
@@ -145,6 +153,7 @@ export function validatePositionRows(
       departmentCode: departmentCodeRaw,
       jobGradeCode: row.values.jobGradeCode ?? "",
       primaryManagerPositionCode: row.values.primaryManagerPositionCode ?? "",
+      coManagerPositionCode: row.values.coManagerPositionCode ?? "",
     })) {
       if (raw.trim() !== "" && isFormulaInjectionRisk(raw.trim())) {
         rowIssues.push(
@@ -329,6 +338,37 @@ export function validatePositionRows(
       );
     }
 
+    // Second head (docs/DECISIONS.md D27). Blank keeps the current one;
+    // __NONE__ or __CLEAR__ removes it; __ROOT__ makes no sense here.
+    const coIntentRaw = interpretFieldValue(row.values.coManagerPositionCode ?? "");
+    let coIntent: ResolvedField<string> = { kind: "keep" };
+    if (coIntentRaw.kind === "none" || coIntentRaw.kind === "clear") {
+      coIntent = { kind: "clear" };
+    } else if (coIntentRaw.kind === "root") {
+      rowIssues.push(
+        issue(
+          row.rowNumber,
+          "coManagerPositionCode",
+          "ERROR",
+          IMPORT_ERROR_CODES.INVALID_FORMAT,
+          "coManagerPositionCode does not support __ROOT__ — use __NONE__ to remove the second head."
+        )
+      );
+    } else if (coIntentRaw.kind === "value") {
+      coIntent = { kind: "value", value: normalizeCode(coIntentRaw.value) };
+      if (trimmedCode.length > 0 && coIntent.value === normalizeCode(trimmedCode)) {
+        rowIssues.push(
+          issue(
+            row.rowNumber,
+            "coManagerPositionCode",
+            "ERROR",
+            IMPORT_ERROR_CODES.SELF_REFERENCE,
+            "A position cannot report to itself."
+          )
+        );
+      }
+    }
+
     let status: "ACTIVE" | "INACTIVE" | null = null;
     const statusRaw = (row.values.status ?? "").trim();
     if (statusRaw.length > 0) {
@@ -381,6 +421,7 @@ export function validatePositionRows(
             departmentCode,
             jobGradeCode: jobGradeIntent,
             reportsToCode: reportsToIntent,
+            coReportsToCode: coIntent,
             status,
           },
     });
@@ -428,6 +469,25 @@ export function validatePositionRows(
         continue;
       }
     }
+    const { coReportsToCode } = draft.normalized;
+    if (
+      coReportsToCode.kind === "value" &&
+      !fileCodesSet.has(coReportsToCode.value) &&
+      !existingByCode.has(coReportsToCode.value)
+    ) {
+      issues.push(
+        issue(
+          draft.rowNumber,
+          "coManagerPositionCode",
+          "ERROR",
+          IMPORT_ERROR_CODES.UNKNOWN_REFERENCE,
+          `coManagerPositionCode "${coReportsToCode.value}" does not match any position in this file or company.`
+        )
+      );
+      draft.hasError = true;
+      draft.normalized = null;
+      continue;
+    }
     if (mode === "CREATE_ONLY" && existingByCode.has(draft.code)) {
       issues.push(
         issue(
@@ -465,29 +525,34 @@ export function validatePositionRows(
     }
   }
 
-  // A row cannot make its existing SECOND head its first head too, nor make
-  // a co-headed position the root (docs/DECISIONS.md D27) — the same rules
-  // movePosition enforces, surfaced here per row instead of failing the run.
+  // Second-head shape rules on the RESOLVED values (docs/DECISIONS.md D27) —
+  // the same rules createPosition/movePosition/setCoReportsTo enforce,
+  // surfaced here per row instead of failing the run: the root has no second
+  // head, and a position can't report to the same head twice.
+  const resolvedCoOf = (draft: RowDraft): string | null =>
+    resolveFieldForWrite(
+      draft.normalized!.coReportsToCode,
+      existingByCode.get(draft.code)?.coReportsToCode ?? null
+    );
   for (const draft of drafts) {
     if (draft.hasError || !draft.normalized) continue;
-    const current = existingByCode.get(draft.code);
-    const coHead = current?.coReportsToCode ?? null;
-    if (!current || coHead === null) continue;
+    const resolvedCo = resolvedCoOf(draft);
+    if (resolvedCo === null) continue;
     const resolvedParent = resolveFieldForWrite(
       draft.normalized.reportsToCode,
-      current.reportsToCode
+      existingByCode.get(draft.code)?.reportsToCode ?? null
     );
     const message =
       resolvedParent === null
-        ? "This position has a second head, so it cannot become the root. Remove its second head in the app first."
-        : resolvedParent === coHead
-          ? `${coHead} is already this position's second head — a position cannot report to the same head twice.`
+        ? "The root position cannot have a second head — give it no coManagerPositionCode (or __NONE__)."
+        : resolvedParent === resolvedCo
+          ? `${resolvedCo} can't be both the first and the second head — a position cannot report to the same head twice.`
           : null;
     if (message) {
       issues.push(
         issue(
           draft.rowNumber,
-          "primaryManagerPositionCode",
+          "coManagerPositionCode",
           "ERROR",
           IMPORT_ERROR_CODES.HIERARCHY_CYCLE,
           message
@@ -512,6 +577,9 @@ export function validatePositionRows(
     const currentParent = existingByCode.get(draft.code)?.reportsToCode ?? null;
     const resolvedParent = resolveFieldForWrite(draft.normalized.reportsToCode, currentParent);
     parentOf.set(draft.code, resolvedParent);
+    const resolvedCo = resolvedCoOf(draft);
+    if (resolvedCo) coHeadOf.set(draft.code, resolvedCo);
+    else coHeadOf.delete(draft.code);
   }
   const headsOf = new Map<string, string[]>();
   for (const [code, parent] of parentOf) {
@@ -601,6 +669,10 @@ export function validatePositionRows(
       draft.normalized.reportsToCode,
       existingRow.reportsToCode
     );
+    const proposedCo = resolveFieldForWrite(
+      draft.normalized.coReportsToCode,
+      existingRow.coReportsToCode ?? null
+    );
     const proposedStatus = draft.normalized.status ?? existingRow.status;
 
     const diffs = [
@@ -613,6 +685,11 @@ export function validatePositionRows(
         field: "primaryManagerPositionCode",
         from: existingRow.reportsToCode,
         to: proposedReportsTo,
+      },
+      {
+        field: "coManagerPositionCode",
+        from: existingRow.coReportsToCode ?? null,
+        to: proposedCo,
       },
       { field: "status", from: existingRow.status, to: proposedStatus },
     ]

@@ -575,3 +575,106 @@ describe("CSV import service — end-to-end against a real database", () => {
     expect(issues.length).toBeGreaterThan(0);
   });
 });
+
+describe("CSV import — coManagerPositionCode (second heads, docs/DECISIONS.md D27)", () => {
+  const HEAD =
+    "positionCode,positionTitle,departmentCode,primaryManagerPositionCode,coManagerPositionCode\n";
+
+  async function importAndRun(companyId: string, userId: string, csv: string) {
+    const { validated } = await runFullImport({
+      companyId,
+      userId,
+      importType: "POSITION",
+      importMode: "UPSERT",
+      csv,
+    });
+    expect(validated.status).toBe("VALIDATED");
+    await confirmImportJob(validated.id, companyId, false);
+    const executed = await executeImportJob(validated.id, companyId);
+    expect(executed.job.status).toBe("COMPLETED");
+    return executed;
+  }
+
+  const byCode = (companyId: string, code: string) =>
+    testPrisma.position.findFirstOrThrow({ where: { companyId, positionCode: code } });
+
+  it("creates a two-head position in one file, levelled from the DEEPER head", async () => {
+    const company = await makeCompany();
+    const user = await makeUser(company.id);
+    await makeDepartment(company.id, { code: "EXEC" });
+
+    // CEO(1) → B(2) → A(3); T reports to B and (second head) A → level 4;
+    // T1 under T → level 5. Listed out of order on purpose.
+    await importAndRun(
+      company.id,
+      user.id,
+      HEAD +
+        "HT1,Report,EXEC,HT,\n" +
+        "HT,Shared,EXEC,HB,HA\n" +
+        "HA,Head A,EXEC,HB,\n" +
+        "CEO,Chief Executive,EXEC,__ROOT__,\n" +
+        "HB,Head B,EXEC,CEO,\n"
+    );
+
+    const [a, t, t1] = await Promise.all([
+      byCode(company.id, "HA"),
+      byCode(company.id, "HT"),
+      byCode(company.id, "HT1"),
+    ]);
+    expect(t.coReportsToPositionId).toBe(a.id);
+    expect(t.organizationalLevel).toBe(4);
+    expect(t1.organizationalLevel).toBe(5);
+  });
+
+  it("swaps a position's two heads, then removes the second head, in later imports", async () => {
+    const company = await makeCompany();
+    const user = await makeUser(company.id);
+    await makeDepartment(company.id, { code: "EXEC" });
+    await importAndRun(
+      company.id,
+      user.id,
+      HEAD +
+        "CEO,Chief Executive,EXEC,__ROOT__,\n" +
+        "HB,Head B,EXEC,CEO,\n" +
+        "HA,Head A,EXEC,HB,\n" +
+        "HT,Shared,EXEC,HB,HA\n"
+    );
+    const [a, b] = await Promise.all([byCode(company.id, "HA"), byCode(company.id, "HB")]);
+
+    // Swap: head 1 becomes A, head 2 becomes B.
+    await importAndRun(company.id, user.id, HEAD + "HT,Shared,EXEC,HA,HB\n");
+    let t = await byCode(company.id, "HT");
+    expect(t.primaryReportsToPositionId).toBe(a.id);
+    expect(t.coReportsToPositionId).toBe(b.id);
+    expect(t.organizationalLevel).toBe(4);
+
+    // Remove the second head: level follows head 1 alone (A is level 3).
+    await importAndRun(company.id, user.id, HEAD + "HT,Shared,EXEC,HA,__NONE__\n");
+    t = await byCode(company.id, "HT");
+    expect(t.coReportsToPositionId).toBeNull();
+    expect(t.organizationalLevel).toBe(4);
+  });
+
+  it("refuses (at validation) a second head that would loop back through the database", async () => {
+    const company = await makeCompany();
+    const user = await makeUser(company.id);
+    await makeDepartment(company.id, { code: "EXEC" });
+    await importAndRun(
+      company.id,
+      user.id,
+      HEAD + "CEO,Chief Executive,EXEC,__ROOT__,\nHA,Head A,EXEC,CEO,\nHC,Child,EXEC,HA,\n"
+    );
+
+    const { validated } = await runFullImport({
+      companyId: company.id,
+      userId: user.id,
+      importType: "POSITION",
+      importMode: "UPSERT",
+      csv: HEAD + "HA,Head A,EXEC,CEO,HC\n", // HA → HC → HA
+    });
+
+    expect(validated.status).not.toBe("VALIDATED");
+    const a = await byCode(company.id, "HA");
+    expect(a.coReportsToPositionId).toBeNull();
+  });
+});

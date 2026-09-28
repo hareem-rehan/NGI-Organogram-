@@ -129,7 +129,7 @@ Sometimes one role reports to two heads at once (for example, a Sr. Software Eng
 - Its level is one below the **lower** of its two heads, so it always sits beneath both.
 - The system refuses a second head that is the same as the first, a second head on the top (root) position, and any choice that would create a loop through either head.
 - A position that is still someone's head (first or second) can't be deleted, and a branch can't be deleted while a position in it also reports to someone outside that branch; remove the second head first.
-- CSV import doesn't set second heads yet; use the Positions page for that. Import still respects existing second heads when checking for loops.
+- **CSV import** can set second heads too: fill the optional **coManagerPositionCode** column with the second head's position code. Leave it blank to keep the current second head, or write `__NONE__` to remove it. The same rules apply as on the Positions page.
 
 ### 5.5 Archiving and reactivating a position
 
