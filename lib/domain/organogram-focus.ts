@@ -31,6 +31,8 @@ export type DescendantDepth = 1 | 2 | 3 | "all";
 export interface FocusNodeInput {
   positionId: string;
   primaryReportsToPositionId: string | null;
+  /** Second head (docs/DECISIONS.md D27); its chain is context too. */
+  coReportsToPositionId?: string | null;
   departmentId: string;
 }
 
@@ -71,13 +73,41 @@ export function computeAncestorChain(
   return chain;
 }
 
+/**
+ * Every position above `positionId` through EITHER head (docs/DECISIONS.md
+ * D27), plus the position itself — the reporting-chain context a focused or
+ * matched co-headed position needs so both of its heads stay on screen.
+ * Unordered; use `computeAncestorChain` when a head-1 path order matters.
+ */
+export function computeAncestorIds(
+  positionId: string,
+  byId: ReadonlyMap<string, FocusNodeInput>
+): Set<string> {
+  const seen = new Set<string>();
+  const stack = [positionId];
+  let steps = 0;
+  while (stack.length > 0) {
+    if (steps++ > MAX_WALK_STEPS * 2) break;
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    const node = byId.get(id);
+    if (!node) continue;
+    seen.add(id);
+    if (node.primaryReportsToPositionId) stack.push(node.primaryReportsToPositionId);
+    if (node.coReportsToPositionId) stack.push(node.coReportsToPositionId);
+  }
+  return seen;
+}
+
 export function buildChildrenByParent(nodes: readonly FocusNodeInput[]): Map<string, string[]> {
   const map = new Map<string, string[]>();
   for (const n of nodes) {
-    if (n.primaryReportsToPositionId) {
-      const list = map.get(n.primaryReportsToPositionId) ?? [];
+    // A co-headed position is a child of BOTH heads (docs/DECISIONS.md D27).
+    for (const headId of [n.primaryReportsToPositionId, n.coReportsToPositionId ?? null]) {
+      if (!headId) continue;
+      const list = map.get(headId) ?? [];
       list.push(n.positionId);
-      map.set(n.primaryReportsToPositionId, list);
+      map.set(headId, list);
     }
   }
   return map;
@@ -104,6 +134,7 @@ export function computeDescendantIds(
     const next: string[] = [];
     for (const id of frontier) {
       if (steps++ > MAX_DESCENDANT_STEPS) return result;
+      if (result.has(id)) continue; // reached through its other head already
       result.add(id);
       for (const childId of childrenByParent.get(id) ?? []) next.push(childId);
     }
@@ -127,7 +158,7 @@ export function buildFilteredVisibleSet(
   const byId = new Map(nodes.map((n) => [n.positionId, n]));
   const contextIds = new Set<string>();
   for (const matchId of matchIds) {
-    for (const ancestorId of computeAncestorChain(matchId, byId)) {
+    for (const ancestorId of computeAncestorIds(matchId, byId)) {
       if (!matchIds.has(ancestorId)) contextIds.add(ancestorId);
     }
   }
@@ -159,7 +190,7 @@ export function buildPositionFocusVisibleSet(
   }
 
   const childrenByParent = buildChildrenByParent(nodes);
-  const ancestorChain = computeAncestorChain(selectedPositionId, byId);
+  const ancestorChain = computeAncestorIds(selectedPositionId, byId);
   const descendantIds = computeDescendantIds(selectedPositionId, childrenByParent, depth);
 
   const matchIds = new Set([selectedPositionId]);

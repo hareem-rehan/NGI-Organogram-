@@ -1,4 +1,4 @@
-import { findCycleInGraph } from "@/lib/domain/hierarchy";
+import { findCycleInHeadGraph } from "@/lib/domain/hierarchy";
 import { normalizeCode } from "@/lib/domain/normalize";
 
 import type { ParsedCsvFile } from "./csv";
@@ -57,6 +57,12 @@ export interface ExistingPositionSnapshot {
   jobGradeCode: string | null;
   /** Normalized code of the manager position, or null for the root. */
   reportsToCode: string | null;
+  /**
+   * Normalized code of the position's SECOND head, if any (docs/DECISIONS.md
+   * D27). Import cannot set or change it (A54) — it is read so the combined
+   * cycle check sees every reporting line. Optional: absent means none.
+   */
+  coReportsToCode?: string | null;
   status: "ACTIVE" | "INACTIVE";
 }
 
@@ -459,16 +465,63 @@ export function validatePositionRows(
     }
   }
 
-  // Combined-state cycle detection, keyed by stable positionCode.
+  // A row cannot make its existing SECOND head its first head too, nor make
+  // a co-headed position the root (docs/DECISIONS.md D27) — the same rules
+  // movePosition enforces, surfaced here per row instead of failing the run.
+  for (const draft of drafts) {
+    if (draft.hasError || !draft.normalized) continue;
+    const current = existingByCode.get(draft.code);
+    const coHead = current?.coReportsToCode ?? null;
+    if (!current || coHead === null) continue;
+    const resolvedParent = resolveFieldForWrite(
+      draft.normalized.reportsToCode,
+      current.reportsToCode
+    );
+    const message =
+      resolvedParent === null
+        ? "This position has a second head, so it cannot become the root. Remove its second head in the app first."
+        : resolvedParent === coHead
+          ? `${coHead} is already this position's second head — a position cannot report to the same head twice.`
+          : null;
+    if (message) {
+      issues.push(
+        issue(
+          draft.rowNumber,
+          "primaryManagerPositionCode",
+          "ERROR",
+          IMPORT_ERROR_CODES.HIERARCHY_CYCLE,
+          message
+        )
+      );
+      draft.hasError = true;
+      draft.normalized = null;
+    }
+  }
+
+  // Combined-state cycle detection, keyed by stable positionCode. Second
+  // heads (docs/DECISIONS.md D27) are part of the graph: a new head 1 can
+  // close a cycle that only exists through someone's second head.
   const parentOf = new Map<string, string | null>();
-  for (const position of existing) parentOf.set(position.code, position.reportsToCode);
+  const coHeadOf = new Map<string, string>();
+  for (const position of existing) {
+    parentOf.set(position.code, position.reportsToCode);
+    if (position.coReportsToCode) coHeadOf.set(position.code, position.coReportsToCode);
+  }
   for (const draft of drafts) {
     if (draft.hasError || !draft.normalized) continue;
     const currentParent = existingByCode.get(draft.code)?.reportsToCode ?? null;
     const resolvedParent = resolveFieldForWrite(draft.normalized.reportsToCode, currentParent);
     parentOf.set(draft.code, resolvedParent);
   }
-  const cycle = findCycleInGraph(parentOf);
+  const headsOf = new Map<string, string[]>();
+  for (const [code, parent] of parentOf) {
+    const co = coHeadOf.get(code);
+    headsOf.set(
+      code,
+      [parent, co ?? null].filter((h): h is string => h !== null)
+    );
+  }
+  const cycle = findCycleInHeadGraph(headsOf);
   if (cycle) {
     const cycleSet = new Set(cycle);
     for (const draft of drafts) {

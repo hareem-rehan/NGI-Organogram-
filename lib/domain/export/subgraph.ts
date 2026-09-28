@@ -76,6 +76,7 @@ export function buildExportSubgraph(
   const focusInputs = plannedFilteredNodes.map((n) => ({
     positionId: n.positionId,
     primaryReportsToPositionId: n.primaryReportsToPositionId,
+    coReportsToPositionId: n.coReportsToPositionId ?? null,
     departmentId: n.departmentId,
   }));
 

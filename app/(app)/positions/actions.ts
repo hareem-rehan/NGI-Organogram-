@@ -15,6 +15,7 @@ import {
   deletePosition,
   deletePositionSubtree,
   movePosition,
+  changeReportsTo,
   updatePosition,
   type DeleteSubtreeResult,
 } from "@/lib/services/hierarchy.service";
@@ -37,6 +38,7 @@ import {
   createPositionSchema,
   listPositionsQuerySchema,
   movePositionSchema,
+  changeReportsToSchema,
   positionStatusChangeSchema,
   deletePositionSchema,
   setPositionOccupantSchema,
@@ -231,6 +233,21 @@ export async function movePositionAction(input: unknown): Promise<ActionResult<P
     const user = await requirePermission("positions:manage");
     const values = movePositionSchema.parse(input);
     return movePosition({ companyId: user.companyId, actor: toAuditActor(user), ...values });
+  });
+}
+
+/**
+ * Saves both reporting lines of a position at once — head 1 and the optional
+ * head 2 (docs/DECISIONS.md D27) — in one transaction. A hierarchy change,
+ * so gated on positions:manage like a move; every rule (not root, heads
+ * differ, no cycle, same company) is re-checked in the service regardless
+ * of what the client sent.
+ */
+export async function changeReportsToAction(input: unknown): Promise<ActionResult<Position>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const values = changeReportsToSchema.parse(input);
+    return changeReportsTo({ companyId: user.companyId, actor: toAuditActor(user), ...values });
   });
 }
 

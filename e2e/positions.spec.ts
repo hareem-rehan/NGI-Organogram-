@@ -169,6 +169,45 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     await expect(page.getByText(sharedTitle)).toHaveCount(2);
   });
 
+  test("HR_EDITOR/ADMIN can create a position that reports to two heads (D27)", async ({
+    page,
+  }) => {
+    const sharedTitle = `E2E Two Heads ${suffix}`;
+    await page.goto("/positions");
+
+    await page.getByRole("button", { name: /add position/i }).click();
+    const dialog = page.getByRole("dialog");
+    await fillTitle(dialog, sharedTitle);
+    await dialog.getByRole("combobox", { name: /^reports to$/i }).click();
+    await dialog.getByRole("combobox", { name: /^reports to$/i }).fill(altParentTitle);
+    await page.getByRole("option", { name: new RegExp(altParentTitle) }).click();
+    const second = dialog.getByRole("combobox", { name: /second reports-to/i });
+    await second.click();
+    await second.fill(childTitle);
+    await page.getByRole("option", { name: new RegExp(childTitle) }).click();
+    await dialog.getByRole("button", { name: /create position/i }).click();
+    await expect(dialog).toBeHidden();
+
+    // Both heads are listed, equally, in the Reports to column.
+    const row = page.getByRole("row", { name: new RegExp(sharedTitle) });
+    await expect(row.getByText(`${altParentTitle}, ${childTitle}`)).toBeVisible();
+
+    // Remove the second head through Change Reports-To.
+    await row.getByRole("button", { name: /change reports-to/i }).click();
+    const moveDialog = page.getByRole("dialog");
+    const moveSecond = moveDialog.getByRole("combobox", { name: /second reports-to position/i });
+    await expect(moveSecond).toHaveValue(childTitle);
+    await moveSecond.click();
+    await page.getByRole("option", { name: /none \(reports to one head only\)/i }).click();
+    await moveDialog.getByRole("button", { name: /confirm move/i }).click();
+    await expect(moveDialog).toBeHidden();
+    await expect(
+      page.getByRole("row", { name: new RegExp(sharedTitle) }).getByText(altParentTitle, {
+        exact: true,
+      })
+    ).toBeVisible();
+  });
+
   test("HR_EDITOR/ADMIN can assign, then vacate, a position's employee from the Position form", async ({
     page,
   }) => {

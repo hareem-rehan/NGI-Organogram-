@@ -532,3 +532,81 @@ describe("countHiddenDescendants", () => {
     expect(countHiddenDescendants("root", nodes)).toBe(0);
   });
 });
+
+describe("co-heads (docs/DECISIONS.md D27)", () => {
+  // root → A → A1, root → B; T reports to B (head 1) and A1 (head 2).
+  const positions = [
+    pos({ id: "root" }),
+    pos({ id: "A", primaryReportsToPositionId: "root", organizationalLevel: 2 }),
+    pos({ id: "A1", primaryReportsToPositionId: "A", organizationalLevel: 3 }),
+    pos({ id: "B", primaryReportsToPositionId: "root", organizationalLevel: 2 }),
+    pos({
+      id: "T",
+      primaryReportsToPositionId: "B",
+      coReportsToPositionId: "A1",
+      organizationalLevel: 4,
+    }),
+  ];
+  const allSafe = new Set(positions.map((p) => p.id));
+
+  function graph(safe: ReadonlySet<string> = allSafe) {
+    return buildOrganogramGraph({
+      positions,
+      safePositionIds: safe,
+      departmentsById: new Map([[DEPT.id, DEPT]]),
+      jobGradeNamesById: new Map(),
+      occupantNamesByPositionId: new Map(),
+      occupantEmployeeIdsByPositionId: new Map(),
+    });
+  }
+
+  it("emits one edge per head — a PRIMARY and a CO edge into the shared position", () => {
+    const { edges } = graph();
+    const intoT = edges.filter((e) => e.targetPositionId === "T");
+    expect(intoT).toEqual(
+      expect.arrayContaining([
+        { sourcePositionId: "B", targetPositionId: "T", reportingType: "PRIMARY" },
+        { sourcePositionId: "A1", targetPositionId: "T", reportingType: "CO" },
+      ])
+    );
+    expect(intoT).toHaveLength(2);
+  });
+
+  it("counts the shared position as a direct report of BOTH heads", () => {
+    const { nodes } = graph();
+    const find = (id: string) => nodes.find((n) => n.positionId === id)!;
+    expect(find("B").directReportCount).toBe(1);
+    expect(find("A1").directReportCount).toBe(1);
+    expect(find("A1").hasChildren).toBe(true);
+    expect(find("T").coReportsToPositionId).toBe("A1");
+  });
+
+  it("drops the second-head link (never a dangling edge) when that head is not rendered", () => {
+    const { nodes, edges } = graph(new Set(["root", "B", "T"]));
+    expect(nodes.find((n) => n.positionId === "T")!.coReportsToPositionId).toBeNull();
+    expect(edges.some((e) => e.reportingType === "CO")).toBe(false);
+  });
+
+  it("keeps the shared position visible while EITHER head is expanded", () => {
+    const { nodes } = graph();
+    const visibleWithBCollapsed = computeVisiblePositionIds({
+      allNodes: nodes,
+      collapsedIds: new Set(["B"]),
+      showPlanned: true,
+    });
+    expect(visibleWithBCollapsed.has("T")).toBe(true); // still shown under A1
+
+    const visibleWithBothCollapsed = computeVisiblePositionIds({
+      allNodes: nodes,
+      collapsedIds: new Set(["B", "A1"]),
+      showPlanned: true,
+    });
+    expect(visibleWithBothCollapsed.has("T")).toBe(false);
+  });
+
+  it("counts a descendant reached through two heads once when collapsed", () => {
+    const { nodes } = graph();
+    // Under root: A, A1, B, T — T is reachable through both B and A1.
+    expect(countHiddenDescendants("root", nodes)).toBe(4);
+  });
+});

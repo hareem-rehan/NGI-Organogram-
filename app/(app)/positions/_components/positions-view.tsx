@@ -295,9 +295,11 @@ export function PositionsView({ canManage }: PositionsViewProps) {
 
   function reportsToTitle(position: Position): string {
     if (!position.primaryReportsToPositionId) return "— (root)";
-    return (
-      allPositions.find((p) => p.id === position.primaryReportsToPositionId)?.title ?? "Unknown"
-    );
+    // Both heads, equal (docs/DECISIONS.md D27).
+    return [position.primaryReportsToPositionId, position.coReportsToPositionId]
+      .filter((id): id is string => id !== null)
+      .map((id) => allPositions.find((p) => p.id === id)?.title ?? "Unknown")
+      .join(", ");
   }
 
   return (

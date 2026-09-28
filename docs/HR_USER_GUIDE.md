@@ -108,7 +108,7 @@ Click **Create position** to save. **Edit** opens the same fields pre-filled wit
 
 ### 5.3 Organizational Level and Job Grade — not the same thing
 
-- **Organizational Level** is calculated automatically by the system: your root position is Level 1, and every position is exactly one level below whoever it reports to. You cannot set this yourself, anywhere in the app — it's always derived from the reporting chain.
+- **Organizational Level** is calculated automatically by the system: your root position is Level 1, and every position is exactly one level below whoever it reports to (for a position with two heads, one level below the lower of the two). You cannot set this yourself, anywhere in the app — it's always derived from the reporting chain.
 - **Job Grade** is a separate, HR-maintained value (seniority/pay band) you choose from a list. It has nothing to do with a position's depth in the chart — a Director-grade position can sit at Level 2 in one department and Level 4 in another. Never assume one implies the other.
 
 ### 5.4 Changing who a position reports to
@@ -118,6 +118,18 @@ Click **Change Reports-To** on a position. Search for and select the new manager
 - Rejects the change outright if it would create a loop (a position reporting to itself, or to one of its own descendants).
 - Recalculates the organizational level of the position you moved **and every position beneath it**, all at once, so the chart stays consistent.
 - Either the whole move succeeds, or none of it does — you'll never end up with a half-moved branch.
+
+### 5.4a A position that reports to two heads
+
+Sometimes one role reports to two heads at once (for example, a Sr. Software Engineer who reports to both a Sr. Software Engineer II and an Associate Tech Lead). A position can have **at most two heads**, and both count equally:
+
+- **When adding a position**, pick its first head in **Reports to**. A **Second Reports-To (optional)** field then appears; pick the second head there, or leave it as **None**.
+- **For an existing position**, open **Change Reports-To**. You can change either head, add a second one, or set the second back to **None**. Both are saved together, all or nothing.
+- On the **Organogram**, the position appears once, below both heads, with a solid line from each head; the two lines meet above the card. The Outline View lists it under both heads, and the Positions list shows both names in **Reports to**.
+- Its level is one below the **lower** of its two heads, so it always sits beneath both.
+- The system refuses a second head that is the same as the first, a second head on the top (root) position, and any choice that would create a loop through either head.
+- A position that is still someone's head (first or second) can't be deleted, and a branch can't be deleted while a position in it also reports to someone outside that branch; remove the second head first.
+- CSV import doesn't set second heads yet; use the Positions page for that. Import still respects existing second heads when checking for loops.
 
 ### 5.5 Archiving and reactivating a position
 

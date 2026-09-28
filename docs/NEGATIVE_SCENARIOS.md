@@ -378,6 +378,28 @@ All search/filter/focus logic is client-side, operating only on the `OrganogramN
 | Two users concurrently move overlapping branches                       | Defined conflict behavior (second writer sees a stale-state conflict error, must reload and retry) — not a silent last-write-wins that corrupts levels                                                      | Integration (concurrency) |
 | Move the root position under another position                          | Rejected (root must remain rootless/level 1, or a separate "designate new root" operation is required if org restructuring at the top is ever needed — treat as rejected in MVP unless explicitly designed) | Integration               |
 
+## Co-heads (D27)
+
+| Scenario                                                                          | Expected result                              | Test layer              |
+| --------------------------------------------------------------------------------- | -------------------------------------------- | ----------------------- |
+| Set a second head; position and descendants re-levelled to deepest head + 1       | Levels correct; one HIERARCHY audit event    | Integration             |
+| Second head = the position itself                                                 | Rejected (`CycleError`), no write            | Integration, DB `CHECK` |
+| Second head = first head                                                          | Rejected (`DomainValidationError`), no write | Integration, DB `CHECK` |
+| Second head on the root                                                           | Rejected, no write                           | Integration, DB `CHECK` |
+| Second head is a direct or indirect descendant                                    | Rejected (`CycleError`), no write            | Integration             |
+| A move whose cycle closes only through another position's second head             | Rejected (`CycleError`), no write            | Integration, Unit       |
+| Second head from another company                                                  | Rejected (`CrossCompanyError`)               | Integration             |
+| Move head 1 onto the current head 2 / make a co-headed position the root          | Rejected, no write                           | Integration             |
+| Delete a position that is still someone's second head                             | Rejected (`UnsafeMutationError`)             | Integration             |
+| Delete a branch containing a position with a head outside the branch              | Rejected, nothing deleted                    | Integration             |
+| Change both heads at once with a later step failing                               | Full rollback — every step undone            | Integration             |
+| Two concurrent second-head changes A→B and B→A                                    | Exactly one wins; no cycle (row locks)       | Integration             |
+| Concurrent move + second-head change forming a cycle together                     | Exactly one wins; no cycle                   | Integration             |
+| CSV import move that would cycle through an existing second head                  | Row rejected (`HIERARCHY_CYCLE`)             | Unit                    |
+| Chart: one head collapsed, other expanded                                         | Shared position still visible                | Unit                    |
+| Chart: second head filtered off the chart                                         | No dangling line drawn                       | Unit                    |
+| VIEWER calls the change-reports-to action / malformed ids / client-supplied level | Rejected before the service                  | Unit                    |
+
 ## Organizational Levels
 
 | Scenario                                                                             | Expected result                                                                                       | Test layer               |

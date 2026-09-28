@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import type { Position } from "@prisma/client";
 
-const { getSubtreeSizeActionMock, movePositionActionMock } = vi.hoisted(() => ({
+const { getSubtreeSizeActionMock, changeReportsToActionMock } = vi.hoisted(() => ({
   getSubtreeSizeActionMock: vi.fn(),
-  movePositionActionMock: vi.fn(),
+  changeReportsToActionMock: vi.fn(),
 }));
 
 vi.mock("@/app/(app)/positions/actions", () => ({
   getSubtreeSizeAction: getSubtreeSizeActionMock,
-  movePositionAction: movePositionActionMock,
+  changeReportsToAction: changeReportsToActionMock,
 }));
 
 import { PositionMoveDialog } from "./position-move-dialog";
@@ -32,6 +32,7 @@ function makePosition(overrides: Partial<Position> = {}): Position {
     location: null,
     status: "ACTIVE",
     primaryReportsToPositionId: null,
+    coReportsToPositionId: null,
     organizationalLevel: 1,
     displayOrder: null,
     createdAt: new Date(),

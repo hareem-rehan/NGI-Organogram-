@@ -205,3 +205,52 @@ describe("buildDepartmentFocusVisibleSet", () => {
     expect(result.matchIds).toEqual(new Set());
   });
 });
+
+describe("co-heads (docs/DECISIONS.md D27)", () => {
+  // root → A → A1; root → B; T reports to B and (second head) A1; T → T1.
+  const NODES: FocusNodeInput[] = [
+    { positionId: "root", primaryReportsToPositionId: null, departmentId: "d" },
+    { positionId: "A", primaryReportsToPositionId: "root", departmentId: "d" },
+    { positionId: "A1", primaryReportsToPositionId: "A", departmentId: "d" },
+    { positionId: "B", primaryReportsToPositionId: "root", departmentId: "d" },
+    {
+      positionId: "T",
+      primaryReportsToPositionId: "B",
+      coReportsToPositionId: "A1",
+      departmentId: "other",
+    },
+    { positionId: "T1", primaryReportsToPositionId: "T", departmentId: "d" },
+  ];
+
+  it("focusing a co-headed position keeps BOTH heads' chains as context", () => {
+    const result = buildPositionFocusVisibleSet(NODES, "T", "all");
+    expect([...result.contextIds].sort()).toEqual(["A", "A1", "B", "root"]);
+    expect(result.visibleIds.has("T1")).toBe(true);
+  });
+
+  it("focusing a second head includes the shared report among its descendants", () => {
+    const result = buildPositionFocusVisibleSet(NODES, "A1", "all");
+    expect(result.visibleIds.has("T")).toBe(true);
+    expect(result.visibleIds.has("T1")).toBe(true);
+  });
+
+  it("a department focus on the shared position keeps both heads as context", () => {
+    const result = buildDepartmentFocusVisibleSet(NODES, "other");
+    expect([...result.matchIds]).toEqual(["T"]);
+    expect(result.contextIds.has("A1")).toBe(true);
+    expect(result.contextIds.has("B")).toBe(true);
+  });
+
+  it("lists the shared position under both heads, and counts descendants once", () => {
+    const children = buildChildrenByParent(NODES);
+    expect(children.get("B")).toContain("T");
+    expect(children.get("A1")).toContain("T");
+    expect([...computeDescendantIds("root", children, "all")].sort()).toEqual([
+      "A",
+      "A1",
+      "B",
+      "T",
+      "T1",
+    ]);
+  });
+});

@@ -53,6 +53,7 @@ export async function getOrganogramRawData(
         organizationalLevel: true,
         status: true,
         primaryReportsToPositionId: true,
+        coReportsToPositionId: true,
       },
       take: 2000,
     }),

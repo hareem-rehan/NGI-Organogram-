@@ -120,6 +120,69 @@ describe("validatePositionRows", () => {
     expect(outcome.issues).toContainEqual(expect.objectContaining({ code: "HIERARCHY_CYCLE" }));
   });
 
+  it("rejects a cycle that closes only through an existing SECOND head (D27)", () => {
+    // DB: CEO ← A ← B, and T reports to CEO with second head B.
+    // File: move A under T → A → T → (second head) B → A.
+    const parsed = csv(
+      "positionCode,positionTitle,departmentCode,primaryManagerPositionCode\nPOSA,Pos A,ENG,POST\n"
+    );
+    const outcome = validatePositionRows(
+      parsed,
+      "UPSERT",
+      [
+        existing({ id: "ceo", code: "CEO", reportsToCode: null }),
+        existing({ id: "a", code: "POSA", reportsToCode: "CEO" }),
+        existing({ id: "b", code: "POSB", reportsToCode: "POSA" }),
+        existing({ id: "t", code: "POST", reportsToCode: "CEO", coReportsToCode: "POSB" }),
+      ],
+      DEPT,
+      GRADES
+    );
+    expect(outcome.issues).toContainEqual(expect.objectContaining({ code: "HIERARCHY_CYCLE" }));
+  });
+
+  it("rejects making a position's existing second head its first head too (D27)", () => {
+    const parsed = csv(
+      "positionCode,positionTitle,departmentCode,primaryManagerPositionCode\nPOST,Pos T,ENG,POSB\n"
+    );
+    const outcome = validatePositionRows(
+      parsed,
+      "UPSERT",
+      [
+        existing({ id: "ceo", code: "CEO", reportsToCode: null }),
+        existing({ id: "b", code: "POSB", reportsToCode: "CEO" }),
+        existing({ id: "t", code: "POST", reportsToCode: "CEO", coReportsToCode: "POSB" }),
+      ],
+      DEPT,
+      GRADES
+    );
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({
+        code: "HIERARCHY_CYCLE",
+        safeMessage: expect.stringMatching(/same head twice/),
+      })
+    );
+  });
+
+  it("accepts moving a co-headed position's first head elsewhere (D27)", () => {
+    const parsed = csv(
+      "positionCode,positionTitle,departmentCode,primaryManagerPositionCode\nPOST,Pos T,ENG,POSA\n"
+    );
+    const outcome = validatePositionRows(
+      parsed,
+      "UPSERT",
+      [
+        existing({ id: "ceo", code: "CEO", reportsToCode: null }),
+        existing({ id: "a", code: "POSA", reportsToCode: "CEO" }),
+        existing({ id: "b", code: "POSB", reportsToCode: "CEO" }),
+        existing({ id: "t", code: "POST", reportsToCode: "CEO", coReportsToCode: "POSB" }),
+      ],
+      DEPT,
+      GRADES
+    );
+    expect(outcome.issues.filter((i) => i.severity === "ERROR")).toEqual([]);
+  });
+
   it("rejects a cycle formed against existing database state", () => {
     const parsed = csv(
       "positionCode,positionTitle,departmentCode,primaryManagerPositionCode\nCEO,CEO,EXEC,VPENG\n"

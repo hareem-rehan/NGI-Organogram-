@@ -9,14 +9,15 @@ The organogram's entire value proposition depends on these invariants holding at
 
 ## Invariants to enforce
 
-1. **Root level is 1.** Exactly one position has `reportsToPositionId = null`, and it has `organizationalLevel = 1`.
-2. **Child level equals parent level + 1.** Always computed, never client-supplied or hand-edited.
-3. **No self-reporting.** A position's `reportsToPositionId` must never equal its own id.
+1. **Root level is 1.** Exactly one position has `reportsToPositionId = null`, and it has `organizationalLevel = 1`. The root never has a second head.
+   - **Co-heads (docs/DECISIONS.md D27):** a position may report to at most TWO heads — head 1 (`primaryReportsToPositionId`) and an optional head 2 (`coReportsToPositionId`). Every rule below applies through BOTH links: ancestors, descendants, cycles and levels all follow either head.
+2. **Child level equals its deepest head's level + 1** (parent level + 1 with a single head). Always computed (`recalculateDagLevels`), never client-supplied or hand-edited.
+3. **No self-reporting.** Neither head may equal the position's own id, and head 2 may never equal head 1.
 4. **No direct cycle.** A→B and B→A simultaneously is rejected.
-5. **No indirect cycle.** A→B→C→...→A at any depth is rejected — check the full ancestor chain of the proposed new parent, not just its immediate parent.
+5. **No indirect cycle.** A→B→C→...→A at any depth is rejected — check the full ancestor SET of the proposed new head through both links (`getPositionAncestorIds`), not just its head-1 chain. A cycle can close through someone else's second head.
 6. **No move beneath a descendant.** A position's new `reportsToPositionId` must not be found anywhere in its own current descendant subtree.
 7. **Department headings do not affect levels.** Department is a grouping/color attribute on a Position, never a node in the reporting chain itself.
-8. **Subtree moves recalculate all descendants.** Moving position P recalculates P's level and the level of every position in P's descendant subtree, not just P itself.
+8. **Subtree moves recalculate all descendants.** Moving position P (or changing its second head) recalculates P's level and the level of every position reachable below P through either head, not just P itself.
 9. **Moves are atomic.** All of the above writes happen inside one database transaction ([ADR-0005](../../../docs/adr/0005-transaction-strategy.md)).
 10. **Failed moves roll back completely.** Any failure partway through leaves the database exactly as it was before the operation started — verified by test, not assumed.
 11. **Removing an employee does not remove the position.** Deactivating/transferring/unassigning an employee sets the position to `VACANT`; the position row itself, its code, its place in the hierarchy, and its history are untouched.

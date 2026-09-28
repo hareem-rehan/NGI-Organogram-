@@ -30,6 +30,7 @@ function makePosition(overrides: Partial<Position> = {}): Position {
     location: null,
     status: "ACTIVE",
     primaryReportsToPositionId: null,
+    coReportsToPositionId: null,
     organizationalLevel: 1,
     displayOrder: null,
     createdAt: new Date(),

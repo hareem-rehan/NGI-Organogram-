@@ -236,7 +236,14 @@ export async function countDirectReports(
   companyId: string,
   db: DbClient = prisma
 ): Promise<number> {
-  return db.position.count({ where: { primaryReportsToPositionId: positionId, companyId } });
+  // Either head counts (docs/DECISIONS.md D27): a position that is anyone's
+  // head 1 OR head 2 has reports.
+  return db.position.count({
+    where: {
+      companyId,
+      OR: [{ primaryReportsToPositionId: positionId }, { coReportsToPositionId: positionId }],
+    },
+  });
 }
 
 export async function findRootPosition(
@@ -292,18 +299,73 @@ export async function getPositionAncestorChain(
 }
 
 /**
+ * Every position that sits ABOVE `startPositionId` through either head link
+ * (docs/DECISIONS.md D27), plus the start itself. Used for cycle detection:
+ * making X a head of P is a cycle exactly when P is in X's ancestor set.
+ * Breadth-first, one query per tier, depth-guarded like the chain walk.
+ */
+export async function getPositionAncestorIds(
+  startPositionId: string,
+  companyId: string,
+  db: DbClient = prisma
+): Promise<Set<string>> {
+  const seen = new Set<string>([startPositionId]);
+  let frontier = [startPositionId];
+  let depth = 0;
+
+  while (frontier.length > 0) {
+    if (depth++ > MAX_HIERARCHY_DEPTH) {
+      throw new HierarchyDepthExceededError(MAX_HIERARCHY_DEPTH);
+    }
+    const rows = await db.position.findMany({
+      where: { id: { in: frontier }, companyId },
+      select: { primaryReportsToPositionId: true, coReportsToPositionId: true },
+    });
+    const next: string[] = [];
+    for (const row of rows) {
+      for (const head of [row.primaryReportsToPositionId, row.coReportsToPositionId]) {
+        if (head && !seen.has(head)) {
+          seen.add(head);
+          next.push(head);
+        }
+      }
+    }
+    frontier = next;
+  }
+
+  return seen;
+}
+
+/**
  * Breadth-first fetch of every descendant of `rootPositionId` (not
- * including the root itself), each annotated with its immediate parent
- * id. Used when moving a branch: every descendant's stored
- * organizationalLevel must be recalculated in the same transaction as
- * the move (docs/adr/0005-transaction-strategy.md).
+ * including the root itself) through EITHER head link (docs/DECISIONS.md
+ * D27), each annotated with its head ids. `parentId` is head 1, kept for
+ * callers that only need the display parent. Used when moving a branch:
+ * every descendant's stored organizationalLevel must be recalculated in the
+ * same transaction as the move (docs/adr/0005-transaction-strategy.md).
+ * A descendant reachable through both heads appears once.
  */
 export async function getPositionSubtree(
   rootPositionId: string,
   companyId: string,
   db: DbClient = prisma
-): Promise<{ id: string; parentId: string | null; organizationalLevel: number }[]> {
-  const subtree: { id: string; parentId: string | null; organizationalLevel: number }[] = [];
+): Promise<
+  {
+    id: string;
+    parentId: string | null;
+    coParentId: string | null;
+    headIds: string[];
+    organizationalLevel: number;
+  }[]
+> {
+  const subtree: {
+    id: string;
+    parentId: string | null;
+    coParentId: string | null;
+    headIds: string[];
+    organizationalLevel: number;
+  }[] = [];
+  const seen = new Set<string>([rootPositionId]);
   let frontier = [rootPositionId];
   let depth = 0;
 
@@ -312,18 +374,36 @@ export async function getPositionSubtree(
       throw new HierarchyDepthExceededError(MAX_HIERARCHY_DEPTH);
     }
     const children = await db.position.findMany({
-      where: { primaryReportsToPositionId: { in: frontier }, companyId },
-      select: { id: true, primaryReportsToPositionId: true, organizationalLevel: true },
+      where: {
+        companyId,
+        OR: [
+          { primaryReportsToPositionId: { in: frontier } },
+          { coReportsToPositionId: { in: frontier } },
+        ],
+      },
+      select: {
+        id: true,
+        primaryReportsToPositionId: true,
+        coReportsToPositionId: true,
+        organizationalLevel: true,
+      },
     });
-    if (children.length === 0) break;
+    const next: string[] = [];
     for (const child of children) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      next.push(child.id);
       subtree.push({
         id: child.id,
         parentId: child.primaryReportsToPositionId,
+        coParentId: child.coReportsToPositionId,
+        headIds: [child.primaryReportsToPositionId, child.coReportsToPositionId].filter(
+          (h): h is string => h !== null
+        ),
         organizationalLevel: child.organizationalLevel,
       });
     }
-    frontier = children.map((c) => c.id);
+    frontier = next;
   }
 
   return subtree;

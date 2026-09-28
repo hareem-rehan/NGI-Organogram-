@@ -13,6 +13,7 @@ import {
   checkOverlappingAssignments,
   checkPositionLevelsAndRoots,
   checkReportingCycles,
+  checkSecondHeads,
   runAllIntegrityChecks,
   type IntegrityAssignmentRow,
   type IntegrityAuditEventRow,
@@ -479,5 +480,71 @@ describe("runAllIntegrityChecks", () => {
     expect(categories).toContain("SELF_REPORTING_POSITION");
     expect(categories).toContain("MISSING_ROOT_POSITION");
     expect(categories).toContain("COMPANY_WITHOUT_ACTIVE_ADMIN");
+  });
+});
+
+describe("co-heads (docs/DECISIONS.md D27)", () => {
+  const root = position({ id: "root", organizationalLevel: 1 });
+  const a = position({ id: "a", primaryReportsToPositionId: "root", organizationalLevel: 2 });
+  const a1 = position({ id: "a1", primaryReportsToPositionId: "a", organizationalLevel: 3 });
+  const b = position({ id: "b", primaryReportsToPositionId: "root", organizationalLevel: 2 });
+
+  it("accepts a co-headed position at deepest head + 1", () => {
+    const t = position({
+      id: "t",
+      primaryReportsToPositionId: "b",
+      coReportsToPositionId: "a1",
+      organizationalLevel: 4,
+    });
+    expect(checkPositionLevelsAndRoots([root, a, a1, b, t])).toEqual([]);
+  });
+
+  it("flags a co-headed position levelled from the shallower head only", () => {
+    const t = position({
+      id: "t",
+      primaryReportsToPositionId: "b",
+      coReportsToPositionId: "a1",
+      organizationalLevel: 3,
+    });
+    const violations = checkPositionLevelsAndRoots([root, a, a1, b, t]);
+    expect(violations.map((v) => v.category)).toEqual(["CHILD_LEVEL_MISMATCH"]);
+    expect(violations[0]?.recordIds).toEqual(["t", "a1"]);
+  });
+
+  it("flags a cycle that closes only through a second head", () => {
+    // a's second head is a1, and a1 reports to a.
+    const cyclicA = { ...a, coReportsToPositionId: "a1" };
+    const violations = checkReportingCycles([root, cyclicA, a1, b]);
+    expect(violations.map((v) => v.category)).toEqual(["REPORTING_CYCLE"]);
+    expect(new Set(violations[0]?.recordIds)).toEqual(new Set(["a", "a1"]));
+  });
+
+  it("flags invalid second-head shapes", () => {
+    const self = position({
+      id: "s",
+      primaryReportsToPositionId: "root",
+      coReportsToPositionId: "s",
+    });
+    const same = position({
+      id: "d",
+      primaryReportsToPositionId: "root",
+      coReportsToPositionId: "root",
+    });
+    const rootWithCo = position({ id: "r2", coReportsToPositionId: "a" });
+    const violations = checkSecondHeads([self, same, rootWithCo, a]);
+    expect(violations.map((v) => v.recordIds[0])).toEqual(["s", "d", "r2"]);
+    expect(violations.every((v) => v.category === "INVALID_SECOND_HEAD")).toBe(true);
+  });
+
+  it("flags a second head in another company", () => {
+    const foreign = position({ id: "f", companyId: "other-company", organizationalLevel: 1 });
+    const t = position({
+      id: "t",
+      primaryReportsToPositionId: "b",
+      coReportsToPositionId: "f",
+      organizationalLevel: 3,
+    });
+    const violations = checkCrossCompanyReportsTo([root, b, t, foreign]);
+    expect(violations.map((v) => v.recordIds)).toEqual([["t", "f"]]);
   });
 });
