@@ -36,6 +36,8 @@ test.describe("Health endpoint", () => {
     // not readiness — the schema has to be there too.
     expect(body.schema).toBe("ready");
     expect(body.migrationsApplied).toBeGreaterThan(0);
+    // Every migration this code needs is applied — not merely "some".
+    expect(body.migrationsApplied).toBeGreaterThanOrEqual(body.migrationsExpected);
 
     // A probe that anyone can call before signing in must give away
     // nothing beyond reachable/not — no host, no driver, no error text.

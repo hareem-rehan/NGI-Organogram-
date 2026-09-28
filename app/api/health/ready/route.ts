@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db/prisma";
+import { EXPECTED_MIGRATIONS, findPendingMigrations } from "@/lib/db/expected-migrations";
 import { logger } from "@/lib/logger";
 
 /**
@@ -12,7 +13,10 @@ import { logger } from "@/lib/logger";
  * request?", which takes two things, not one:
  *
  *   1. the database is reachable, and
- *   2. the schema has been migrated into it.
+ *   2. the schema has been migrated into it — ALL of the migrations this
+ *      version of the code needs (lib/db/expected-migrations.ts), not just
+ *      some. A database one migration behind the code (the 2026-09-28
+ *      staging incident) is reported as "pending", not "ready".
  *
  * Both are worth separating. On a deployment where the app connects
  * through a pooled URL while migrations use a direct one, a wrong pooled
@@ -42,9 +46,10 @@ export async function GET() {
     // distinguishes both from a healthy schema, and reads no application
     // data — this table holds migration names, nothing about the company.
     const rows = await prisma.$queryRaw<
-      { count: bigint }[]
-    >`SELECT COUNT(*) AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`;
-    const applied = Number(rows[0]?.count ?? 0);
+      { migration_name: string }[]
+    >`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`;
+    const appliedNames = rows.map((row) => row.migration_name);
+    const applied = appliedNames.length;
 
     if (applied === 0) {
       logger.error("readiness check failed", { reason: "no migrations applied" });
@@ -54,8 +59,36 @@ export async function GET() {
       );
     }
 
+    // The code is ahead of the database: some migration this version needs
+    // has not been applied. Pages touching the new schema would fail, so
+    // this is not ready. The response gives counts only; the missing
+    // migration names go to the server log for whoever runs the deploy.
+    const pending = findPendingMigrations(EXPECTED_MIGRATIONS, appliedNames);
+    if (pending.length > 0) {
+      logger.error("readiness check failed", {
+        reason: "migrations pending",
+        pendingMigrations: pending.join(","),
+      });
+      return NextResponse.json(
+        {
+          status: "error",
+          database: "reachable",
+          schema: "pending",
+          migrationsApplied: applied,
+          migrationsPending: pending.length,
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
-      { status: "ok", database: "reachable", schema: "ready", migrationsApplied: applied },
+      {
+        status: "ok",
+        database: "reachable",
+        schema: "ready",
+        migrationsApplied: applied,
+        migrationsExpected: EXPECTED_MIGRATIONS.length,
+      },
       { status: 200 }
     );
   } catch (error) {
