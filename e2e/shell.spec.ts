@@ -15,6 +15,7 @@ const IMPLEMENTED_ROUTES = new Set([
   "/positions",
   "/employees",
   "/career-framework",
+  "/levels-mapping",
   "/imports",
   "/audit-log",
   "/users",
