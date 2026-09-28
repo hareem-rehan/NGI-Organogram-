@@ -87,30 +87,42 @@ export interface OrganogramDepartmentInput {
    * department simply reads as top-level when it is absent). Used to colour
    * every card in a division with that division's colour — a child department
    * (e.g. IT under Delivery Org, or Product under Client Delivery) inherits its
-   * top-level ancestor's colour so each division reads as one colour band.
+   * division's colour so each division reads as one colour band. See
+   * `resolveDivisionColor` for how the division is chosen.
    */
   parentDepartmentId?: string | null;
 }
 
 /**
- * The colour a department's cards should use: the colour of its top-level
- * ancestor ("division"), so child departments share their parent division's
- * hue. Walks `parentDepartmentId` up to the root, guarding against a missing
- * parent or a cycle. A top-level department resolves to its own colour.
+ * The colour a department's cards should use: its "division" colour, so child
+ * departments share their parent division's hue.
+ *
+ * The division is the highest ancestor that still sits BELOW the company root
+ * (the single parent-less department that holds the CEO, e.g. "Founder") — not
+ * the root itself. Walking all the way to the root would collapse every
+ * division onto one colour, since every department ultimately rolls up to that
+ * root. So the walk stops one level below it: a department directly under the
+ * root (Engineering, Client Delivery Services, …) is its own division and keeps
+ * its own colour, while a deeper department (IT under Delivery Org, Product /
+ * Project under Client Delivery) inherits its division's colour. The root
+ * department itself, and any department in a company with no nesting, resolves
+ * to its own colour. Guards against a missing parent and a parent cycle.
  */
 export function resolveDivisionColor(
   departmentId: string,
   departmentsById: ReadonlyMap<string, OrganogramDepartmentInput>
 ): string | null {
   let current = departmentsById.get(departmentId);
+  if (!current) return null;
   const seen = new Set<string>();
-  while (current && current.parentDepartmentId && !seen.has(current.id)) {
+  while (current.parentDepartmentId && !seen.has(current.id)) {
     seen.add(current.id);
     const parent = departmentsById.get(current.parentDepartmentId);
-    if (!parent) break;
+    if (!parent) break; // dangling parent — current is as high as we can resolve
+    if (!parent.parentDepartmentId) break; // parent is the company root — current is the division
     current = parent;
   }
-  return current?.color ?? null;
+  return current.color ?? null;
 }
 
 export interface OrganogramNode {
