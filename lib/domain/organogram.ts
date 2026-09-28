@@ -81,6 +81,36 @@ export interface OrganogramDepartmentInput {
   name: string;
   code: string;
   color: string | null;
+  /**
+   * Parent department in the department hierarchy, or null for a top-level
+   * "division". Optional so existing callers and fixtures keep working (a
+   * department simply reads as top-level when it is absent). Used to colour
+   * every card in a division with that division's colour — a child department
+   * (e.g. IT under Delivery Org, or Product under Client Delivery) inherits its
+   * top-level ancestor's colour so each division reads as one colour band.
+   */
+  parentDepartmentId?: string | null;
+}
+
+/**
+ * The colour a department's cards should use: the colour of its top-level
+ * ancestor ("division"), so child departments share their parent division's
+ * hue. Walks `parentDepartmentId` up to the root, guarding against a missing
+ * parent or a cycle. A top-level department resolves to its own colour.
+ */
+export function resolveDivisionColor(
+  departmentId: string,
+  departmentsById: ReadonlyMap<string, OrganogramDepartmentInput>
+): string | null {
+  let current = departmentsById.get(departmentId);
+  const seen = new Set<string>();
+  while (current && current.parentDepartmentId && !seen.has(current.id)) {
+    seen.add(current.id);
+    const parent = departmentsById.get(current.parentDepartmentId);
+    if (!parent) break;
+    current = parent;
+  }
+  return current?.color ?? null;
 }
 
 export interface OrganogramNode {
@@ -206,6 +236,13 @@ export function buildOrganogramGraph(args: {
   const safePositions = positions.filter((p) => safePositionIds.has(p.id));
   const safeIdSet = new Set(safePositions.map((p) => p.id));
 
+  // Colour every department's cards by its division (top-level ancestor), so
+  // child departments share their parent division's hue. Precomputed once.
+  const divisionColorByDeptId = new Map<string, string | null>();
+  for (const id of departmentsById.keys()) {
+    divisionColorByDeptId.set(id, resolveDivisionColor(id, departmentsById));
+  }
+
   const childCounts = new Map<string, number>();
   for (const p of safePositions) {
     if (p.primaryReportsToPositionId && safeIdSet.has(p.primaryReportsToPositionId)) {
@@ -234,7 +271,7 @@ export function buildOrganogramGraph(args: {
         departmentId: p.departmentId,
         departmentName: department?.name ?? "Unknown Department",
         departmentCode: department?.code ?? "—",
-        departmentColor: department?.color ?? null,
+        departmentColor: divisionColorByDeptId.get(p.departmentId) ?? department?.color ?? null,
         jobGradeId: p.jobGradeId,
         jobGradeName: p.jobGradeId ? (jobGradeNamesById.get(p.jobGradeId) ?? null) : null,
         jobGradeCode: p.jobGradeId ? (jobGradesById?.get(p.jobGradeId)?.code ?? null) : null,
