@@ -294,6 +294,8 @@ test.describe("Accessibility smoke checks", () => {
     await createDialog.getByRole("button", { name: /create employee/i }).click();
     await expect(createDialog).toBeHidden();
 
+    // The shared company's employee list is paginated; find this one by code.
+    await page.getByPlaceholder(/search by name, code, or email/i).fill(employeeName);
     await page.getByRole("link", { name: new RegExp(employeeName, "i") }).click();
     await expect(page).toHaveURL(/\/employees\/[^/]+$/);
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
