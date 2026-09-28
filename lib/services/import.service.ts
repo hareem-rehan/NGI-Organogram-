@@ -68,6 +68,7 @@ import {
   archivePosition,
   createPosition,
   movePosition,
+  setCoReportsTo,
   translateWriteError as translatePositionWriteError,
   updatePosition,
 } from "@/lib/services/hierarchy.service";
@@ -1075,6 +1076,19 @@ async function applyOrderedRows(
     (r) => r.action !== "CREATE" && r.action !== "UNCHANGED" && r.action !== "ERROR"
   );
 
+  // Second heads (docs/DECISIONS.md D27): clear every second head that is
+  // CHANGING before any reporting line moves, so no intermediate state ever
+  // has a position reporting to the same head twice; the new ones are set
+  // after every position exists (a second head may be created later in the
+  // same file). Validation already proved the final graph acyclic.
+  if (importType === "POSITION") {
+    await clearChangingCoHeads(
+      companyId,
+      remainingRows as RowPlanEntry<NormalizedPositionRow>[],
+      tx
+    );
+  }
+
   if (importType === "POSITION" && createRows.length > 0) {
     const [departments, jobGrades, positions] = await Promise.all([
       listDepartmentsForCompany(companyId, tx),
@@ -1119,6 +1133,90 @@ async function applyOrderedRows(
 
   for (const row of remainingRows) {
     await applyRow(importType, companyId, row, tx);
+  }
+
+  if (importType === "POSITION") {
+    await applyCoHeads(
+      companyId,
+      [...createRows, ...remainingRows] as RowPlanEntry<NormalizedPositionRow>[],
+      tx
+    );
+  }
+}
+
+/** Code → id and current second head, for the POSITION rows being applied. */
+async function loadPositionsByCode(
+  companyId: string,
+  codes: readonly string[],
+  tx: DbClient
+): Promise<Map<string, { id: string; coReportsToPositionId: string | null }>> {
+  if (codes.length === 0) return new Map();
+  const rows = await tx.position.findMany({
+    where: { companyId, positionCode: { in: [...codes] } },
+    select: { id: true, positionCode: true, coReportsToPositionId: true },
+  });
+  return new Map(rows.map((r) => [normalizeCode(r.positionCode), r]));
+}
+
+/**
+ * Pre-pass: remove the second head of every UPDATE row whose second head is
+ * changing (to another position or to none). Goes through `setCoReportsTo`,
+ * so it is validated, locked and audited like a manual change.
+ */
+async function clearChangingCoHeads(
+  companyId: string,
+  rows: readonly RowPlanEntry<NormalizedPositionRow>[],
+  tx: DbClient
+): Promise<void> {
+  const changing = rows.filter((r) => r.normalized && r.normalized.coReportsToCode.kind !== "keep");
+  const byCode = await loadPositionsByCode(
+    companyId,
+    changing.map((r) => r.matchingCode),
+    tx
+  );
+  for (const row of changing) {
+    const position = byCode.get(row.matchingCode);
+    if (!position || position.coReportsToPositionId === null) continue;
+    await setCoReportsTo({ companyId, positionId: position.id, coReportsToPositionId: null }, tx);
+  }
+}
+
+/**
+ * Post-pass: set the requested second head on every row that names one
+ * (creates included), once every position in the file exists. Each goes
+ * through `setCoReportsTo` — the same cycle, shape, company and level rules
+ * as the Change Reports-To dialog.
+ */
+async function applyCoHeads(
+  companyId: string,
+  rows: readonly RowPlanEntry<NormalizedPositionRow>[],
+  tx: DbClient
+): Promise<void> {
+  const wanted = rows.filter(
+    (
+      r
+    ): r is RowPlanEntry<NormalizedPositionRow> & {
+      normalized: NormalizedPositionRow & { coReportsToCode: { kind: "value"; value: string } };
+    } => r.normalized?.coReportsToCode.kind === "value"
+  );
+  const byCode = await loadPositionsByCode(
+    companyId,
+    [
+      ...wanted.map((r) => r.matchingCode),
+      ...wanted.map((r) => r.normalized.coReportsToCode.value),
+    ],
+    tx
+  );
+  for (const row of wanted) {
+    const position = byCode.get(row.matchingCode);
+    const coHead = byCode.get(row.normalized.coReportsToCode.value);
+    if (!position) throw new NotFoundError("Position", row.matchingCode);
+    if (!coHead) throw new NotFoundError("Position", row.normalized.coReportsToCode.value);
+    if (position.coReportsToPositionId === coHead.id) continue;
+    await setCoReportsTo(
+      { companyId, positionId: position.id, coReportsToPositionId: coHead.id },
+      tx
+    );
   }
 }
 

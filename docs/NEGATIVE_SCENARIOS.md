@@ -380,25 +380,29 @@ All search/filter/focus logic is client-side, operating only on the `OrganogramN
 
 ## Co-heads (D27)
 
-| Scenario                                                                          | Expected result                              | Test layer              |
-| --------------------------------------------------------------------------------- | -------------------------------------------- | ----------------------- |
-| Set a second head; position and descendants re-levelled to deepest head + 1       | Levels correct; one HIERARCHY audit event    | Integration             |
-| Second head = the position itself                                                 | Rejected (`CycleError`), no write            | Integration, DB `CHECK` |
-| Second head = first head                                                          | Rejected (`DomainValidationError`), no write | Integration, DB `CHECK` |
-| Second head on the root                                                           | Rejected, no write                           | Integration, DB `CHECK` |
-| Second head is a direct or indirect descendant                                    | Rejected (`CycleError`), no write            | Integration             |
-| A move whose cycle closes only through another position's second head             | Rejected (`CycleError`), no write            | Integration, Unit       |
-| Second head from another company                                                  | Rejected (`CrossCompanyError`)               | Integration             |
-| Move head 1 onto the current head 2 / make a co-headed position the root          | Rejected, no write                           | Integration             |
-| Delete a position that is still someone's second head                             | Rejected (`UnsafeMutationError`)             | Integration             |
-| Delete a branch containing a position with a head outside the branch              | Rejected, nothing deleted                    | Integration             |
-| Change both heads at once with a later step failing                               | Full rollback — every step undone            | Integration             |
-| Two concurrent second-head changes A→B and B→A                                    | Exactly one wins; no cycle (row locks)       | Integration             |
-| Concurrent move + second-head change forming a cycle together                     | Exactly one wins; no cycle                   | Integration             |
-| CSV import move that would cycle through an existing second head                  | Row rejected (`HIERARCHY_CYCLE`)             | Unit                    |
-| Chart: one head collapsed, other expanded                                         | Shared position still visible                | Unit                    |
-| Chart: second head filtered off the chart                                         | No dangling line drawn                       | Unit                    |
-| VIEWER calls the change-reports-to action / malformed ids / client-supplied level | Rejected before the service                  | Unit                    |
+| Scenario                                                                                                        | Expected result                                                                                                     | Test layer              |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| Set a second head; position and descendants re-levelled to deepest head + 1                                     | Levels correct; one HIERARCHY audit event                                                                           | Integration             |
+| Second head = the position itself                                                                               | Rejected (`CycleError`), no write                                                                                   | Integration, DB `CHECK` |
+| Second head = first head                                                                                        | Rejected (`DomainValidationError`), no write                                                                        | Integration, DB `CHECK` |
+| Second head on the root                                                                                         | Rejected, no write                                                                                                  | Integration, DB `CHECK` |
+| Second head is a direct or indirect descendant                                                                  | Rejected (`CycleError`), no write                                                                                   | Integration             |
+| A move whose cycle closes only through another position's second head                                           | Rejected (`CycleError`), no write                                                                                   | Integration, Unit       |
+| Second head from another company                                                                                | Rejected (`CrossCompanyError`)                                                                                      | Integration             |
+| Move head 1 onto the current head 2 / make a co-headed position the root                                        | Rejected, no write                                                                                                  | Integration             |
+| Delete a position that is still someone's second head                                                           | Rejected (`UnsafeMutationError`)                                                                                    | Integration             |
+| Delete a branch containing a position with a head outside the branch                                            | Rejected, nothing deleted                                                                                           | Integration             |
+| Change both heads at once with a later step failing                                                             | Full rollback — every step undone                                                                                   | Integration             |
+| Two concurrent second-head changes A→B and B→A                                                                  | Exactly one wins; no cycle (row locks)                                                                              | Integration             |
+| Concurrent move + second-head change forming a cycle together                                                   | Exactly one wins; no cycle                                                                                          | Integration             |
+| CSV import move that would cycle through an existing second head                                                | Row rejected (`HIERARCHY_CYCLE`)                                                                                    | Unit                    |
+| CSV `coManagerPositionCode`: unknown code / the position itself / `__ROOT__` / same as first head / on the root | Row rejected with the matching code (`UNKNOWN_REFERENCE` / `SELF_REFERENCE` / `INVALID_FORMAT` / `HIERARCHY_CYCLE`) | Unit                    |
+| CSV `coManagerPositionCode` that closes a loop (in-file or against the database)                                | Row rejected (`HIERARCHY_CYCLE`); nothing applied                                                                   | Unit, Integration       |
+| CSV file creates a two-head position whose second head appears later in the file                                | Created; level = deeper head + 1                                                                                    | Unit, Integration       |
+| CSV swaps a position's two heads / removes the second head (`__NONE__`)                                         | Applied in one transaction; levels recalculated                                                                     | Unit, Integration       |
+| Chart: one head collapsed, other expanded                                                                       | Shared position still visible                                                                                       | Unit                    |
+| Chart: second head filtered off the chart                                                                       | No dangling line drawn                                                                                              | Unit                    |
+| VIEWER calls the change-reports-to action / malformed ids / client-supplied level                               | Rejected before the service                                                                                         | Unit                    |
 
 ## Organogram round 3 (D29)
 

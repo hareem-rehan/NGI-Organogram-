@@ -263,3 +263,128 @@ describe("validatePositionRows", () => {
     expect(outcome.rows[0]!.action).toBe("UNCHANGED");
   });
 });
+
+describe("validatePositionRows — coManagerPositionCode (second head, D27)", () => {
+  const HEAD =
+    "positionCode,positionTitle,departmentCode,primaryManagerPositionCode,coManagerPositionCode\n";
+  const db = [
+    existing({ id: "ceo", code: "CEO", reportsToCode: null }),
+    existing({ id: "a", code: "POSA", reportsToCode: "CEO" }),
+    existing({ id: "b", code: "POSB", reportsToCode: "CEO" }),
+  ];
+  const errorsOf = (outcome: ReturnType<typeof validatePositionRows>) =>
+    outcome.issues.filter((i) => i.severity === "ERROR");
+
+  it("accepts a new position with two heads", () => {
+    const outcome = validatePositionRows(
+      csv(HEAD + "NEW,New Role,ENG,POSA,POSB\n"),
+      "UPSERT",
+      db,
+      DEPT,
+      GRADES
+    );
+    expect(errorsOf(outcome)).toEqual([]);
+    expect(outcome.rows[0]!.action).toBe("CREATE");
+    expect(outcome.rows[0]!.normalized!.coReportsToCode).toEqual({ kind: "value", value: "POSB" });
+  });
+
+  it("accepts a second head that appears later in the same file", () => {
+    const outcome = validatePositionRows(
+      csv(HEAD + "NEW,New Role,ENG,POSA,LATER\nLATER,Later Head,ENG,CEO,\n"),
+      "UPSERT",
+      db,
+      DEPT,
+      GRADES
+    );
+    expect(errorsOf(outcome)).toEqual([]);
+  });
+
+  it("shows a second-head change on an existing position as a diff", () => {
+    const withCo = [
+      ...db,
+      existing({ id: "t", code: "POST", reportsToCode: "POSA", coReportsToCode: "POSB" }),
+    ];
+    const outcome = validatePositionRows(
+      csv(HEAD + "POST,Chief Executive Officer,EXEC,POSA,__NONE__\n"),
+      "UPSERT",
+      withCo,
+      DEPT,
+      GRADES
+    );
+    expect(errorsOf(outcome)).toEqual([]);
+    expect(outcome.rows[0]!.diffs).toContainEqual({
+      field: "coManagerPositionCode",
+      currentValue: "POSB",
+      proposedValue: null,
+    });
+  });
+
+  it("keeps the current second head when the cell is blank", () => {
+    const withCo = [
+      ...db,
+      existing({ id: "t", code: "POST", reportsToCode: "POSA", coReportsToCode: "POSB" }),
+    ];
+    const outcome = validatePositionRows(
+      csv(HEAD + "POST,Chief Executive Officer,EXEC,POSA,\n"),
+      "UPSERT",
+      withCo,
+      DEPT,
+      GRADES
+    );
+    expect(errorsOf(outcome)).toEqual([]);
+    expect(outcome.rows[0]!.diffs.find((d) => d.field === "coManagerPositionCode")).toBeUndefined();
+  });
+
+  it.each([
+    ["an unknown code", "NEW,New Role,ENG,POSA,NOPE", "UNKNOWN_REFERENCE"],
+    ["the position itself", "NEW,New Role,ENG,POSA,NEW", "SELF_REFERENCE"],
+    ["__ROOT__", "NEW,New Role,ENG,POSA,__ROOT__", "INVALID_FORMAT"],
+    ["the same code as the first head", "NEW,New Role,ENG,POSA,POSA", "HIERARCHY_CYCLE"],
+  ])("rejects %s as the second head", (_label, row, code) => {
+    const outcome = validatePositionRows(csv(HEAD + row + "\n"), "UPSERT", db, DEPT, GRADES);
+    expect(errorsOf(outcome)).toContainEqual(
+      expect.objectContaining({ field: "coManagerPositionCode", code })
+    );
+  });
+
+  it("rejects a second head on the root", () => {
+    const outcome = validatePositionRows(
+      csv(HEAD + "CEO,Chief Executive Officer,EXEC,__ROOT__,POSA\n"),
+      "UPSERT",
+      db,
+      DEPT,
+      GRADES
+    );
+    expect(errorsOf(outcome)).toContainEqual(
+      expect.objectContaining({ field: "coManagerPositionCode", code: "HIERARCHY_CYCLE" })
+    );
+  });
+
+  it("rejects a second head that closes a reporting loop", () => {
+    // POSA gets second head POSC, and POSC reports to POSA: POSA → POSC → POSA.
+    const outcome = validatePositionRows(
+      csv(HEAD + "POSA,Pos A,ENG,CEO,POSC\nPOSC,Pos C,ENG,POSA,\n"),
+      "UPSERT",
+      db,
+      DEPT,
+      GRADES
+    );
+    expect(errorsOf(outcome)).toContainEqual(expect.objectContaining({ code: "HIERARCHY_CYCLE" }));
+  });
+
+  it("lets a row move its first head onto its OLD second head when it also replaces the second head", () => {
+    // Before: T reports to POSA (+ POSB). After: POSB (+ POSA) — a swap.
+    const withCo = [
+      ...db,
+      existing({ id: "t", code: "POST", reportsToCode: "POSA", coReportsToCode: "POSB" }),
+    ];
+    const outcome = validatePositionRows(
+      csv(HEAD + "POST,Chief Executive Officer,EXEC,POSB,POSA\n"),
+      "UPSERT",
+      withCo,
+      DEPT,
+      GRADES
+    );
+    expect(errorsOf(outcome)).toEqual([]);
+  });
+});
