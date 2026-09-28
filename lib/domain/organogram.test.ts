@@ -5,6 +5,7 @@ import {
   buildOrganogramGraph,
   computeVisiblePositionIds,
   countHiddenDescendants,
+  resolveDivisionColor,
   type OrganogramDepartmentInput,
   type OrganogramPositionInput,
 } from "./organogram";
@@ -31,6 +32,69 @@ function pos(
     ...overrides,
   };
 }
+
+describe("resolveDivisionColor", () => {
+  const division: OrganogramDepartmentInput = {
+    id: "div",
+    name: "Client Delivery Services",
+    code: "CDS",
+    color: "#3aa4e8",
+  };
+  const child: OrganogramDepartmentInput = {
+    id: "child",
+    name: "Product",
+    code: "PROD",
+    color: "#7c3aed",
+    parentDepartmentId: "div",
+  };
+  const grandchild: OrganogramDepartmentInput = {
+    id: "grandchild",
+    name: "Product Design",
+    code: "PROD-DES",
+    color: "#e8811a",
+    parentDepartmentId: "child",
+  };
+  const map = new Map([
+    [division.id, division],
+    [child.id, child],
+    [grandchild.id, grandchild],
+  ]);
+
+  it("returns a top-level department's own colour", () => {
+    expect(resolveDivisionColor("div", map)).toBe("#3aa4e8");
+  });
+
+  it("returns the top-level ancestor's colour for a child department", () => {
+    expect(resolveDivisionColor("child", map)).toBe("#3aa4e8");
+  });
+
+  it("walks multiple levels up to the division", () => {
+    expect(resolveDivisionColor("grandchild", map)).toBe("#3aa4e8");
+  });
+
+  it("falls back to the department's own colour when its parent is missing", () => {
+    const orphan = new Map([
+      [
+        "orphan",
+        { id: "orphan", name: "X", code: "X", color: "#111111", parentDepartmentId: "gone" },
+      ],
+    ]);
+    expect(resolveDivisionColor("orphan", orphan)).toBe("#111111");
+  });
+
+  it("does not loop forever on a parent cycle", () => {
+    const cyclic = new Map([
+      ["a", { id: "a", name: "A", code: "A", color: "#aaaaaa", parentDepartmentId: "b" }],
+      ["b", { id: "b", name: "B", code: "B", color: "#bbbbbb", parentDepartmentId: "a" }],
+    ]);
+    // Terminates and returns one of the two colours, never hangs.
+    expect(["#aaaaaa", "#bbbbbb"]).toContain(resolveDivisionColor("a", cyclic));
+  });
+
+  it("returns null for an unknown department id", () => {
+    expect(resolveDivisionColor("nope", map)).toBeNull();
+  });
+});
 
 describe("analyzeOrganogramSafety", () => {
   it("marks a clean single-root tree fully safe", () => {
@@ -102,6 +166,39 @@ describe("buildOrganogramGraph", () => {
       occupantEmployeeId: "employee-1",
       isActive: true,
       isPlanned: false,
+    });
+  });
+
+  it("paints a child department's node with its division (top-level ancestor) colour", () => {
+    const parentDept: OrganogramDepartmentInput = {
+      id: "cds",
+      name: "Client Delivery Services",
+      code: "CDS",
+      color: "#3aa4e8",
+    };
+    const childDept: OrganogramDepartmentInput = {
+      id: "product",
+      name: "Product",
+      code: "PROD",
+      color: "#7c3aed",
+      parentDepartmentId: "cds",
+    };
+    const positions = [pos({ id: "p1", departmentId: "product" })];
+    const { nodes } = buildOrganogramGraph({
+      positions,
+      safePositionIds: new Set(["p1"]),
+      departmentsById: new Map([
+        [parentDept.id, parentDept],
+        [childDept.id, childDept],
+      ]),
+      jobGradeNamesById: new Map(),
+      occupantNamesByPositionId: new Map(),
+      occupantEmployeeIdsByPositionId: new Map(),
+    });
+    // Keeps its own department identity, but takes the division's colour.
+    expect(nodes[0]).toMatchObject({
+      departmentName: "Product",
+      departmentColor: "#3aa4e8",
     });
   });
 

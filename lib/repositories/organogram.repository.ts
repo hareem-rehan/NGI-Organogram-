@@ -58,7 +58,7 @@ export async function getOrganogramRawData(
     }),
     db.department.findMany({
       where: { companyId },
-      select: { id: true, name: true, code: true, color: true },
+      select: { id: true, name: true, code: true, color: true, parentDepartmentId: true },
     }),
     db.jobGrade.findMany({
       where: { companyId },
