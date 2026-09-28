@@ -243,13 +243,16 @@ The pipeline will:
 
 If step 6 fails, treat it as a security incident, not a flaky test.
 
-Steps 4 and 5 answer different questions, which is why both exist. Liveness stays green when `DATABASE_URL` points somewhere unreachable, and stays green again when the database is reachable but was never migrated — connecting to an empty database succeeds perfectly well. Readiness reports which of the three states you are in:
+Steps 4 and 5 answer different questions, which is why both exist. Liveness stays green when `DATABASE_URL` points somewhere unreachable, and stays green again when the database is reachable but was never migrated — connecting to an empty database succeeds perfectly well. Readiness reports which of the four states you are in:
 
 ```jsonc
-{ "status": "ok",    "database": "reachable",   "schema": "ready",   "migrationsApplied": 6 }
+{ "status": "ok",    "database": "reachable",   "schema": "ready",   "migrationsApplied": 11, "migrationsExpected": 11 }
+{ "status": "error", "database": "reachable",   "schema": "pending", "migrationsApplied": 10, "migrationsPending": 1 }  // 503 — code is ahead of the DB: run `prisma migrate deploy`
 { "status": "error", "database": "reachable",   "schema": "missing" }  // 503 — run the migrations
 { "status": "error", "database": "unreachable" }                       // 503 — check DATABASE_URL
 ```
+
+**Vercel deploys do not run migrations** (the build is `prisma generate && next build`). After merging a PR that adds a migration, apply it to each environment's database with `prisma migrate deploy` (steps above). Until you do, readiness reports `"schema": "pending"`. The missing migration names are in the server log (`pendingMigrations`). The expected list lives in `lib/db/expected-migrations.ts`, and a unit test keeps it in sync with `prisma/migrations`, so add each new migration's folder name there.
 
 It is also the quickest way to confirm a database from outside, without signing in:
 
