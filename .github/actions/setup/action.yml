@@ -1,0 +1,32 @@
+# Shared job setup for .github/workflows/ci.yml: Node, dependencies and the
+# Prisma client. Restores node_modules straight from cache when
+# package-lock.json is unchanged, which skips `npm ci` entirely (the
+# slowest part of a cold job).
+name: Setup
+description: Node.js, cached node_modules, and the Prisma client
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Restore node_modules
+      id: modules
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+
+    - name: Install dependencies (cache miss only)
+      if: steps.modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    # Always regenerate: the client depends on prisma/schema.prisma, which
+    # the node_modules cache key does not cover.
+    - name: Prisma — generate client
+      shell: bash
+      run: npx prisma generate
