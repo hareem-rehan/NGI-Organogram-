@@ -28,6 +28,7 @@ const DEPT: Department = {
   parentDepartmentId: null,
   hasIcLadder: true,
   hasManagerLadder: true,
+  showInLevelsMapping: true,
   status: "ACTIVE",
   displayOrder: null,
   createdAt: new Date(),
@@ -43,6 +44,7 @@ const FAMILY: JobFamily = {
   description: null,
   displayOrder: null,
   status: "ACTIVE",
+  showInLevelsMapping: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

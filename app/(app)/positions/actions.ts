@@ -5,9 +5,11 @@ import type {
   Department,
   DepartmentLevelTitle,
   JobFamily,
+  JobFamilyLevelTitle,
   JobGrade,
   Position,
 } from "@prisma/client";
+import { listJobFamilyLevelTitlesForCompany } from "@/lib/repositories/job-family-level-title.repository";
 import { listDepartmentLevelTitlesForCompany } from "@/lib/repositories/department-level-title.repository";
 
 import { requirePermission } from "@/lib/auth/current-user";
@@ -110,6 +112,8 @@ export interface PositionCareerOptions {
   careerTracks: CareerTrack[];
   /** Each department's own level names from Levels Mapping (D32) — named in the Level dropdown. */
   levelTitles: DepartmentLevelTitle[];
+  /** Each sub-division's own level names (D34) — preferred when that sub-division is chosen. */
+  subDivisionLevelTitles: JobFamilyLevelTitle[];
 }
 
 /** Career-framework options for the Position form's Sub-division / Career-track dropdowns. Read-only, needs only positions:view. */
@@ -118,12 +122,13 @@ export async function listPositionCareerOptionsAction(): Promise<
 > {
   return runAction(async () => {
     const user = await requirePermission("positions:view");
-    const [jobFamilies, careerTracks, levelTitles] = await Promise.all([
+    const [jobFamilies, careerTracks, levelTitles, subDivisionLevelTitles] = await Promise.all([
       listJobFamiliesForCompany(user.companyId),
       listCareerTracksForCompany(user.companyId),
       listDepartmentLevelTitlesForCompany(user.companyId),
+      listJobFamilyLevelTitlesForCompany(user.companyId),
     ]);
-    return { jobFamilies, careerTracks, levelTitles };
+    return { jobFamilies, careerTracks, levelTitles, subDivisionLevelTitles };
   });
 }
 

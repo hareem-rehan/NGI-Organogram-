@@ -31,6 +31,7 @@ function makeDepartment(overrides: Partial<Department> = {}): Department {
     parentDepartmentId: null,
     hasIcLadder: true,
     hasManagerLadder: true,
+    showInLevelsMapping: true,
     status: "ACTIVE",
     displayOrder: null,
     createdAt: new Date(),

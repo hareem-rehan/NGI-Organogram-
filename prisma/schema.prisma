@@ -205,6 +205,7 @@ model Company {
   careerTracks          CareerTrack[]
   levelMappingEntries   LevelMappingEntry[]
   departmentLevelTitles DepartmentLevelTitle[]
+  jobFamilyLevelTitles  JobFamilyLevelTitle[]
   positions             Position[]
   employees             Employee[]
   positionAssignments   PositionAssignment[]
@@ -223,22 +224,26 @@ model Company {
 // ---------------------------------------------------------------------
 
 model Department {
-  id                 String           @id @default(uuid()) @db.Uuid
-  companyId          String           @db.Uuid
-  name               String
-  code               String
-  description        String?
-  color              String?
+  id                  String           @id @default(uuid()) @db.Uuid
+  companyId           String           @db.Uuid
+  name                String
+  code                String
+  description         String?
+  color               String?
   /// Which career ladders this department runs. Both true = IC + Manager;
   /// one true = that ladder only; both false = NONE (no career ladders, e.g.
   /// the Founder/root department) — excluded from the Level Mapping grid.
-  hasIcLadder        Boolean          @default(true)
-  hasManagerLadder   Boolean          @default(true)
-  parentDepartmentId String?          @db.Uuid
-  status             DepartmentStatus @default(ACTIVE)
-  displayOrder       Int?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  hasIcLadder         Boolean          @default(true)
+  hasManagerLadder    Boolean          @default(true)
+  /// Whether this department has columns on the Levels Mapping page
+  /// (docs/DECISIONS.md D34). Separate from the ladders above so hiding a
+  /// column there never changes the Position form's career-track choices.
+  showInLevelsMapping Boolean          @default(false)
+  parentDepartmentId  String?          @db.Uuid
+  status              DepartmentStatus @default(ACTIVE)
+  displayOrder        Int?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
@@ -387,16 +392,19 @@ model Position {
 // ---------------------------------------------------------------------
 
 model JobFamily {
-  id           String           @id @default(uuid()) @db.Uuid
-  companyId    String           @db.Uuid
-  departmentId String           @db.Uuid
-  name         String
-  code         String
-  description  String?
-  displayOrder Int?
-  status       DepartmentStatus @default(ACTIVE)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id                  String           @id @default(uuid()) @db.Uuid
+  companyId           String           @db.Uuid
+  departmentId        String           @db.Uuid
+  name                String
+  code                String
+  description         String?
+  displayOrder        Int?
+  status              DepartmentStatus @default(ACTIVE)
+  /// Whether this sub-division has its own columns on the Levels Mapping
+  /// page (docs/DECISIONS.md D34). Off by default.
+  showInLevelsMapping Boolean          @default(false)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
   /// Company-scoped composite FK: a family's department must be in the
@@ -406,6 +414,7 @@ model JobFamily {
 
   careerTracks        CareerTrack[]
   levelMappingEntries LevelMappingEntry[]
+  levelTitles         JobFamilyLevelTitle[]
   positions           Position[]
 
   @@unique([companyId, code])
@@ -486,6 +495,35 @@ model LevelMappingEntry {
 // already speaks in level codes (Position jobGradeCode). This keeps the
 // feature decoupled from per-department JobGrade materialisation.
 // ---------------------------------------------------------------------
+
+// ---------------------------------------------------------------------
+// Sub-division level title (Levels Mapping, docs/DECISIONS.md D34)
+//
+// The same idea as DepartmentLevelTitle, one level down: for a
+// sub-division (JobFamily), on a ladder (IC or Manager), at a level code,
+// the NAME of the role at that rung. Shown as the sub-division's own
+// columns on Levels Mapping and preferred by the Position form's Level
+// dropdown when that sub-division is chosen. Career progression only.
+// ---------------------------------------------------------------------
+model JobFamilyLevelTitle {
+  id           String          @id @default(uuid()) @db.Uuid
+  companyId    String          @db.Uuid
+  jobFamilyId  String          @db.Uuid
+  jobGradeCode String
+  kind         CareerTrackKind
+  title        String
+  displayOrder Int?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  jobFamily JobFamily @relation(fields: [jobFamilyId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@unique([companyId, jobFamilyId, kind, jobGradeCode, title])
+  @@index([companyId])
+  @@index([jobFamilyId])
+  @@map("job_family_level_titles")
+}
 
 model DepartmentLevelTitle {
   id           String          @id @default(uuid()) @db.Uuid

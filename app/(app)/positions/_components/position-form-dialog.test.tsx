@@ -71,6 +71,7 @@ const DEPARTMENT: Department = {
   parentDepartmentId: null,
   hasIcLadder: true,
   hasManagerLadder: true,
+  showInLevelsMapping: true,
   status: "ACTIVE",
   displayOrder: null,
   createdAt: new Date(),
@@ -107,6 +108,7 @@ const SWE_FAMILY: JobFamily = {
   description: null,
   displayOrder: null,
   status: "ACTIVE",
+  showInLevelsMapping: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

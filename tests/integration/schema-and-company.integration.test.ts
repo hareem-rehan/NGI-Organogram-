@@ -24,6 +24,7 @@ describe("schema and migration constraints", () => {
       "import_jobs",
       "import_row_issues",
       "job_families",
+      "job_family_level_titles",
       "job_grades",
       "level_mapping_entries",
       "position_assignments",

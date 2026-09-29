@@ -65,4 +65,59 @@ describe("levelNameFor (Add Position level names)", () => {
   it("uses the default when no department is chosen", () => {
     expect(levelNameFor({ ...base, departmentId: "", kind: null })).toBe("Lead / Principal");
   });
+
+  describe("sub-division names (D34)", () => {
+    const QA = "fam-qa";
+    const subDivisionLevelTitles = [
+      { jobFamilyId: QA, jobGradeCode: "L7", kind: "IC" as const, title: "QA Architect" },
+      { jobFamilyId: QA, jobGradeCode: "L7", kind: "MANAGER" as const, title: "QA Manager" },
+      { jobFamilyId: "fam-other", jobGradeCode: "L7", kind: "IC" as const, title: "Other" },
+    ];
+
+    it("prefers the chosen sub-division's own names over the department's", () => {
+      expect(
+        levelNameFor({
+          ...base,
+          departmentId: ENG,
+          kind: "IC",
+          jobFamilyId: QA,
+          subDivisionLevelTitles,
+        })
+      ).toBe("QA Architect");
+      expect(
+        levelNameFor({
+          ...base,
+          departmentId: ENG,
+          kind: null,
+          jobFamilyId: QA,
+          subDivisionLevelTitles,
+        })
+      ).toBe("QA Architect / QA Manager");
+    });
+
+    it("falls back to the department's names when the sub-division has none for that level", () => {
+      expect(
+        levelNameFor({
+          ...base,
+          code: "L7",
+          departmentId: ENG,
+          kind: "IC",
+          jobFamilyId: "fam-empty",
+          subDivisionLevelTitles,
+        })
+      ).toBe("Architect / Principal Engineer");
+    });
+
+    it("falls back when the sub-division only has the other ladder's name", () => {
+      expect(
+        levelNameFor({
+          ...base,
+          departmentId: HR,
+          kind: "MANAGER",
+          jobFamilyId: "fam-other",
+          subDivisionLevelTitles,
+        })
+      ).toBe("HR Manager");
+    });
+  });
 });

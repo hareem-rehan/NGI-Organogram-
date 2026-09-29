@@ -165,6 +165,7 @@ export function OrganogramView({
     jobFamilies: JobFamily[];
     careerTracks: CareerTrack[];
     levelTitles: PositionCareerOptions["levelTitles"];
+    subDivisionLevelTitles: PositionCareerOptions["subDivisionLevelTitles"];
     allPositions: Position[];
   }
   const [formOptions, setFormOptions] = useState<PositionFormOptions | null>(null);
@@ -263,6 +264,7 @@ export function OrganogramView({
       jobFamilies: career.data.jobFamilies,
       careerTracks: career.data.careerTracks,
       levelTitles: career.data.levelTitles,
+      subDivisionLevelTitles: career.data.subDivisionLevelTitles,
       allPositions: allPositions.data,
     };
     setFormOptions(options);
@@ -999,6 +1001,7 @@ export function OrganogramView({
           jobFamilies={formOptions.jobFamilies}
           careerTracks={formOptions.careerTracks}
           levelTitles={formOptions.levelTitles}
+          subDivisionLevelTitles={formOptions.subDivisionLevelTitles}
           allPositions={formOptions.allPositions}
           initialDepartmentId={formInitialDepartmentId}
           initialReportsToPositionId={formInitialReportsToId}

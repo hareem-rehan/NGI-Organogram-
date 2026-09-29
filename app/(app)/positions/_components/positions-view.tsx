@@ -78,6 +78,9 @@ export function PositionsView({ canManage }: PositionsViewProps) {
   const [jobFamilies, setJobFamilies] = useState<JobFamily[]>([]);
   const [careerTracks, setCareerTracks] = useState<CareerTrack[]>([]);
   const [levelTitles, setLevelTitles] = useState<PositionCareerOptions["levelTitles"]>([]);
+  const [subDivisionLevelTitles, setSubDivisionLevelTitles] = useState<
+    PositionCareerOptions["subDivisionLevelTitles"]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -141,6 +144,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
         setJobFamilies(careerResult.data.jobFamilies);
         setCareerTracks(careerResult.data.careerTracks);
         setLevelTitles(careerResult.data.levelTitles);
+        setSubDivisionLevelTitles(careerResult.data.subDivisionLevelTitles);
       }
     });
   }, [search, departmentFilter, status, occupancy, page]);
@@ -610,6 +614,7 @@ export function PositionsView({ canManage }: PositionsViewProps) {
             jobFamilies={jobFamilies}
             careerTracks={careerTracks}
             levelTitles={levelTitles}
+            subDivisionLevelTitles={subDivisionLevelTitles}
             allPositions={allPositions}
             onSaved={refresh}
           />
