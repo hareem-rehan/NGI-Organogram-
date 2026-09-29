@@ -122,3 +122,19 @@ export async function readPositionByTitle(
     await prisma.$disconnect();
   }
 }
+
+/** Department names in their saved left-to-right order (displayOrder, then name). */
+export async function readDepartmentOrder(companyId: string): Promise<string[]> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  const prisma = new PrismaClient();
+  try {
+    const rows = await prisma.department.findMany({
+      where: { companyId },
+      orderBy: [{ displayOrder: { sort: "asc", nulls: "last" } }, { name: "asc" }],
+      select: { name: true },
+    });
+    return rows.map((r) => r.name);
+  } finally {
+    await prisma.$disconnect();
+  }
+}

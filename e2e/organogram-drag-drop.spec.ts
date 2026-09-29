@@ -2,6 +2,7 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 
 import { seedAuthenticatedSession } from "./support/seed-session";
 import {
+  readDepartmentOrder,
   readPositionByTitle,
   seedDepartmentLayoutChart,
 } from "./support/department-layout-fixtures";
@@ -124,5 +125,40 @@ test.describe("Organogram — drag and drop", () => {
     const lead = await readPositionByTitle(companyId, `Engineering Lead 1 ${suffix}`);
     const director = await readPositionByTitle(companyId, `Engineering Director 1 ${suffix}`);
     expect(lead.primaryReportsToPositionId).not.toBe(director.id);
+  });
+
+  test("dragging a department heading to the far right reorders the departments (D33)", async ({
+    page,
+  }) => {
+    await page.goto("/organogram");
+    await page.getByRole("button", { name: /arrange/i }).click();
+    const cds = card(page, `Client Delivery Services ${suffix}`);
+    const marketing = card(page, `Marketing ${suffix}`);
+    await expect(cds).toBeVisible();
+
+    // Drop CDS just to the right of Marketing, the right-most department.
+    await page.getByRole("button", { name: /fit to view/i }).click();
+    await page.locator(".react-flow").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    const from = (await cds.boundingBox())!;
+    const to = (await marketing.boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    // Well past Marketing's right edge, so the drop is unambiguously last.
+    await page.mouse.move(to.x + to.width * 3, to.y + to.height / 2, { steps: 20 });
+    await page.mouse.up();
+
+    await expect
+      .poll(async () =>
+        // The CEO's own department ("Founder") is not a box on the chart.
+        (await readDepartmentOrder(companyId)).filter(
+          (n) => n.includes(suffix) && !n.startsWith("Founder")
+        )
+      )
+      .toEqual([
+        `Engineering ${suffix}`,
+        `Marketing ${suffix}`,
+        `Client Delivery Services ${suffix}`,
+      ]);
   });
 });

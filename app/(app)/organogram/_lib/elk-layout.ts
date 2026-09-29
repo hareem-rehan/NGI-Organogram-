@@ -63,6 +63,9 @@ const BASE_LAYOUT_OPTIONS = {
   // Keep siblings (and so departments) in the caller's order, left to right,
   // so the chart doesn't reshuffle between renders.
   "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+  // Strict, not a hint: departments appear left to right in exactly their
+  // saved order (D33), so what a manager drags is what stays on screen.
+  "elk.layered.crossingMinimization.forceNodeModelOrder": "true",
 } as const;
 
 /**
