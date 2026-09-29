@@ -92,3 +92,52 @@ export function judgeDrop(
     label: target.title,
   };
 }
+
+/**
+ * Where the pointer is, in screen (client) coordinates, for a mouse or touch
+ * drag event — or null when the event carries no position.
+ */
+export function pointerClientPoint(event: unknown): { x: number; y: number } | null {
+  if (!event || typeof event !== "object") return null;
+  const e = event as {
+    clientX?: unknown;
+    clientY?: unknown;
+    changedTouches?: ArrayLike<{ clientX: number; clientY: number }>;
+    touches?: ArrayLike<{ clientX: number; clientY: number }>;
+  };
+  if (typeof e.clientX === "number" && typeof e.clientY === "number") {
+    return { x: e.clientX, y: e.clientY };
+  }
+  const touch = e.changedTouches?.[0] ?? e.touches?.[0];
+  return touch ? { x: touch.clientX, y: touch.clientY } : null;
+}
+
+export interface DropRect {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The drop target is the card or department heading UNDER THE POINTER
+ * (user request, 2026-09-29) — not whichever card the dragged one overlaps
+ * most, which on a zoomed-out chart made small targets hard to hit. The
+ * dragged card itself is always under the pointer, so it is skipped; if
+ * boxes overlap, the smallest (most specific) one wins. Null = empty canvas.
+ */
+export function pickDropTargetAtPoint(
+  point: { x: number; y: number },
+  rects: readonly DropRect[],
+  draggedId: string
+): string | null {
+  let best: DropRect | null = null;
+  for (const r of rects) {
+    if (r.id === draggedId) continue;
+    const inside =
+      point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height;
+    if (inside && (!best || r.width * r.height < best.width * best.height)) best = r;
+  }
+  return best?.id ?? null;
+}

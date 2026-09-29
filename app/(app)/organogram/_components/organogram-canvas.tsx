@@ -26,6 +26,8 @@ import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import {
   collectDisplayedDescendants,
   judgeDrop,
+  pickDropTargetAtPoint,
+  pointerClientPoint,
   type DropVerdict,
 } from "@/lib/domain/organogram-drag";
 import {
@@ -145,7 +147,7 @@ function CanvasInner({
   // chart layout is always auto-generated, CLAUDE.md §0). Cleared whenever the
   // visible set changes (a re-layout) or arrange mode turns off.
   const [manualPositions, setManualPositions] = useState<Map<string, LayoutPosition>>(new Map());
-  const { fitView, setCenter, setViewport, getIntersectingNodes } = useReactFlow();
+  const { fitView, setCenter, setViewport, getNodes, screenToFlowPosition } = useReactFlow();
   // Canvas pane size, for computing the first-open framing directly.
   const paneWidth = useStore((state) => state.width);
   const paneHeight = useStore((state) => state.height);
@@ -296,25 +298,29 @@ function CanvasInner({
   );
 
   const judgeDropFor = useCallback(
-    (dragged: Node): { targetId: string; verdict: DropVerdict } | null => {
-      // The card the dragged one overlaps MOST — not whichever happens to be
-      // listed first — so a drop lands where the user is actually pointing.
-      const dx = dragged.position.x;
-      const dy = dragged.position.y;
-      const overlap = (other: Node) =>
-        Math.max(0, Math.min(dx, other.position.x) + NODE_WIDTH - Math.max(dx, other.position.x)) *
-        Math.max(0, Math.min(dy, other.position.y) + NODE_HEIGHT - Math.max(dy, other.position.y));
-      const target = getIntersectingNodes(dragged)
-        .filter((other) => other.id !== dragged.id)
-        .sort((a, b) => overlap(b) - overlap(a))[0];
-      const targetNode = target ? nodeById.get(target.id) : undefined;
-      if (!target || !targetNode) return null;
+    (event: unknown, dragged: Node): { targetId: string; verdict: DropVerdict } | null => {
+      // The target is whatever card or department heading is under the
+      // mouse pointer (not the card the dragged one overlaps most), so a
+      // drop lands exactly where the user points, even when zoomed out.
+      const client = pointerClientPoint(event);
+      if (!client) return null;
+      const point = screenToFlowPosition(client);
+      const rects = getNodes().map((n) => ({
+        id: n.id,
+        x: n.position.x,
+        y: n.position.y,
+        width: n.measured?.width ?? n.width ?? NODE_WIDTH,
+        height: n.measured?.height ?? n.height ?? NODE_HEIGHT,
+      }));
+      const targetId = pickDropTargetAtPoint(point, rects, dragged.id);
+      const targetNode = targetId ? nodeById.get(targetId) : undefined;
+      if (!targetId || !targetNode) return null;
       return {
-        targetId: target.id,
+        targetId,
         verdict: judgeDrop(dragged.id, targetNode, dragDescendantsRef.current),
       };
     },
-    [getIntersectingNodes, nodeById]
+    [getNodes, screenToFlowPosition, nodeById]
   );
 
   const onNodeDragStart = useCallback(
@@ -325,10 +331,10 @@ function CanvasInner({
   );
 
   const onNodeDrag = useCallback(
-    (_event: unknown, node: Node) => {
+    (event: unknown, node: Node) => {
       // A department box only reorders — no drop target to highlight.
       if (nodeById.get(node.id)?.kind === "department") return;
-      const judged = judgeDropFor(node);
+      const judged = judgeDropFor(event, node);
       const next = judged ? { targetId: judged.targetId, valid: judged.verdict.valid } : null;
       setDropHint((current) =>
         current?.targetId === next?.targetId && current?.valid === next?.valid ? current : next
@@ -338,7 +344,7 @@ function CanvasInner({
   );
 
   const onNodeDragStop = useCallback(
-    (_event: unknown, node: Node) => {
+    (event: unknown, node: Node) => {
       setDropHint(null);
       if (!arrangeMode) return;
 
@@ -369,7 +375,7 @@ function CanvasInner({
       // A drop ONTO a card re-parents (a position) or moves into a department
       // (a department heading); a drop on empty canvas is left as a visual
       // nudge. Refused drops say why and snap back.
-      const judged = judgeDropFor(node);
+      const judged = judgeDropFor(event, node);
       if (!judged) return;
       if (judged.verdict.valid) onReparent(node.id, judged.verdict);
       else onInvalidDrop?.(judged.verdict.reason);

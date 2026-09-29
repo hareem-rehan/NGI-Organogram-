@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { collectDisplayedDescendants, judgeDrop, type DropTargetNode } from "./organogram-drag";
+import {
+  collectDisplayedDescendants,
+  judgeDrop,
+  pickDropTargetAtPoint,
+  pointerClientPoint,
+  type DropTargetNode,
+} from "./organogram-drag";
 
 const edges = [
   { sourcePositionId: "ceo", targetPositionId: "eng" },
@@ -71,5 +77,52 @@ describe("judgeDrop", () => {
     expect(
       judgeDrop("lead", target({ positionId: "sub:x", kind: "subdivision" }), new Set()).valid
     ).toBe(false);
+  });
+});
+
+describe("pointerClientPoint", () => {
+  it("reads a mouse event's client position", () => {
+    expect(pointerClientPoint({ clientX: 10, clientY: 20 })).toEqual({ x: 10, y: 20 });
+  });
+
+  it("reads the lifted finger of a touch-end event, then any current touch", () => {
+    expect(
+      pointerClientPoint({ changedTouches: [{ clientX: 3, clientY: 4 }], touches: [] })
+    ).toEqual({ x: 3, y: 4 });
+    expect(pointerClientPoint({ touches: [{ clientX: 5, clientY: 6 }] })).toEqual({ x: 5, y: 6 });
+  });
+
+  it("returns null when the event has no position", () => {
+    expect(pointerClientPoint(undefined)).toBeNull();
+    expect(pointerClientPoint({})).toBeNull();
+    expect(pointerClientPoint({ changedTouches: [] })).toBeNull();
+  });
+});
+
+describe("pickDropTargetAtPoint (drop follows the pointer)", () => {
+  const rects = [
+    { id: "dragged", x: 0, y: 0, width: 188, height: 88 },
+    { id: "a", x: 150, y: 0, width: 188, height: 88 },
+    { id: "b", x: 400, y: 0, width: 188, height: 88 },
+    { id: "dept", x: 380, y: -20, width: 400, height: 140 },
+  ];
+
+  it("picks the card under the pointer even when the dragged card overlaps another more", () => {
+    // The dragged card overlaps "a" heavily, but the pointer is over "b".
+    expect(pickDropTargetAtPoint({ x: 450, y: 40 }, rects, "dragged")).toBe("b");
+  });
+
+  it("never returns the dragged card itself", () => {
+    expect(pickDropTargetAtPoint({ x: 20, y: 20 }, rects, "dragged")).toBeNull();
+  });
+
+  it("prefers the smallest box when boxes overlap under the pointer", () => {
+    expect(pickDropTargetAtPoint({ x: 450, y: 40 }, rects, "dragged")).toBe("b");
+    expect(pickDropTargetAtPoint({ x: 700, y: 40 }, rects, "dragged")).toBe("dept");
+  });
+
+  it("counts the exact edge as inside, and anything past it as empty canvas", () => {
+    expect(pickDropTargetAtPoint({ x: 338, y: 88 }, rects, "dragged")).toBe("a");
+    expect(pickDropTargetAtPoint({ x: 339, y: 40 }, rects, "dragged")).toBeNull();
   });
 });
