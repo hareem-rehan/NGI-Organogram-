@@ -385,7 +385,13 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             three characters). All of it is still on the details panel,
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
-          <p className="text-foreground line-clamp-2 text-[13px] leading-[15px] font-extrabold tracking-tight">
+          <p
+            className={`text-foreground line-clamp-2 text-[13px] leading-[15px] font-extrabold tracking-tight ${
+              // Leave room for the Add / Delete buttons pinned top-right in
+              // Arrange mode, so they never sit on top of the title.
+              arrangeMode ? "pr-14" : ""
+            }`}
+          >
             {node.title}
           </p>
           <div className="flex shrink-0 items-center gap-1">

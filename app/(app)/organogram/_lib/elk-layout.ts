@@ -37,13 +37,20 @@ const elk = new ELK();
  * spacing — clearly wider than the gap between two cards of the same
  * department, which is what makes the segregation readable.
  */
-export const DEPARTMENT_SIDE_PADDING = 40;
+export const DEPARTMENT_SIDE_PADDING = 56;
 
 /**
- * Vertical gap between one row of cards and the next — tight, like the
- * reference org chart, where chains of roles stack closely (D31).
+ * Vertical gap between one row of cards and the next. Roomy enough that the
+ * connector's horizontal bar sits clearly between the rows instead of
+ * hugging the cards (user request, 2026-09-29; was 36 in D31).
  */
-export const LAYER_GAP = 36;
+export const LAYER_GAP = 64;
+
+/**
+ * Horizontal gap between two cards side by side in the same department, so
+ * neighbouring cards (and the lines dropping into them) never look cramped.
+ */
+export const NODE_GAP = 44;
 
 /**
  * Where a parent's shared horizontal connector bar sits: halfway down the
@@ -55,10 +62,10 @@ export const ORG_EDGE_BUS_OFFSET = LAYER_GAP / 2;
 const BASE_LAYOUT_OPTIONS = {
   "elk.algorithm": "layered",
   "elk.direction": "DOWN",
-  // Compact spacing (medium cards, 2026-09-28) so more of the chart fits on
-  // screen at a readable zoom.
+  // Spacing between rows and between side-by-side cards (see LAYER_GAP /
+  // NODE_GAP above).
   "elk.layered.spacing.nodeNodeBetweenLayers": String(LAYER_GAP),
-  "elk.spacing.nodeNode": "24",
+  "elk.spacing.nodeNode": String(NODE_GAP),
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
   // Keep siblings (and so departments) in the caller's order, left to right,
   // so the chart doesn't reshuffle between renders.
@@ -92,7 +99,19 @@ export async function computeElkLayout(
   if (nodeIds.length === 0) return new Map();
 
   const leaf = (id: string): ElkNode => ({ id, width: NODE_WIDTH, height: NODE_HEIGHT });
-  const elkEdges = edges.map((e, index) => ({
+  // ELK weighs EDGE order as well as node order ("NODES_AND_EDGES"), and the
+  // callers' edges are sorted by id, which is effectively random for
+  // department / sub-department boxes. Put the edges in the same order as the
+  // nodes they point to, so the node order (the saved left-to-right order,
+  // D33) is the only thing that decides placement.
+  const rank = new Map(nodeIds.map((id, index) => [id, index]));
+  const rankOf = (id: string) => rank.get(id) ?? Number.MAX_SAFE_INTEGER;
+  const orderedEdges = [...edges].sort(
+    (x, y) =>
+      rankOf(x.targetPositionId) - rankOf(y.targetPositionId) ||
+      rankOf(x.sourcePositionId) - rankOf(y.sourcePositionId)
+  );
+  const elkEdges = orderedEdges.map((e, index) => ({
     id: `edge-${index}-${e.sourcePositionId}-${e.targetPositionId}`,
     sources: [e.sourcePositionId],
     targets: [e.targetPositionId],
@@ -128,6 +147,10 @@ export async function computeElkLayout(
         id: `cluster:${cluster}`,
         layoutOptions: {
           "elk.padding": `[top=0,left=${DEPARTMENT_SIDE_PADDING},bottom=0,right=${DEPARTMENT_SIDE_PADDING}]`,
+          // Spacing is read per box: without these, the rows and cards INSIDE
+          // a department fall back to ELK's cramped 20px defaults.
+          "elk.layered.spacing.nodeNodeBetweenLayers": String(LAYER_GAP),
+          "elk.spacing.nodeNode": String(NODE_GAP),
         },
         children: membersByCluster.get(cluster)!.map(leaf),
       })),
