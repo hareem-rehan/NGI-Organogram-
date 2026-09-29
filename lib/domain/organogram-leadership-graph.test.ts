@@ -658,3 +658,28 @@ describe("projectLeadershipGraph — co-heads (docs/DECISIONS.md D27)", () => {
     expect(byId(result, "shared").coReportsToPositionId).toBeNull();
   });
 });
+
+describe("projectLeadershipGraph — saved department order (D33)", () => {
+  it("orders department boxes by their saved order, then by name", () => {
+    const nodes = [
+      ceo(),
+      node({ positionId: "cto", title: "CTO", departmentId: ENG, departmentName: "Engineering" }),
+      node({ positionId: "chro", title: "CHRO", departmentId: HR, departmentName: "HR" }),
+    ];
+    const departments = [
+      { id: ENG, name: "Engineering", code: "ENG", color: null, displayOrder: 2 },
+      { id: HR, name: "HR", code: "HR", color: null, displayOrder: 1 },
+    ];
+    const result = projectLeadershipGraph(nodes, opts(), departments);
+    const deptOrder = result.nodes
+      .filter((n) => n.kind === "department")
+      .map((n) => n.departmentId);
+    expect(deptOrder).toEqual([HR, ENG]); // saved order beats alphabetical
+
+    const unordered = departments.map((d) => ({ ...d, displayOrder: null }));
+    const alphabetical = projectLeadershipGraph(nodes, opts(), unordered)
+      .nodes.filter((n) => n.kind === "department")
+      .map((n) => n.departmentId);
+    expect(alphabetical).toEqual([ENG, HR]);
+  });
+});

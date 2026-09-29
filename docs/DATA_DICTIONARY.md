@@ -99,16 +99,17 @@ These three entities model **career progression** and are **independent of the r
 
 A career specialization / roadmap that lives under a Department (e.g. "Software Engineering", "QA"). NOT an organizational unit — it never appears in the reporting tree.
 
-| Field        | Type                                 | Required | Default   | Description                      | Validation                         | Unique             | Source |
-| ------------ | ------------------------------------ | -------- | --------- | -------------------------------- | ---------------------------------- | ------------------ | ------ |
-| id           | UUID                                 | yes      | generated | Primary key                      | system-generated                   | yes                | System |
-| companyId    | UUID (FK → Company)                  | yes      | —         | Owning company                   | must reference an existing company | n/a                | System |
-| departmentId | UUID (FK → Department, same company) | yes      | —         | Department the family belongs to | composite FK, same company         | n/a                | HR     |
-| name         | string                               | yes      | —         | Display name                     | 1–150 chars                        | no                 | HR     |
-| code         | string                               | yes      | —         | Short code                       | 2–30 chars, normalized uppercase   | yes within company | HR     |
-| status       | enum(`ACTIVE`,`INACTIVE`)            | yes      | `ACTIVE`  | Lifecycle                        | —                                  | n/a                | HR     |
+| Field               | Type                                 | Required | Default   | Description                                                          | Validation                         | Unique             | Source |
+| ------------------- | ------------------------------------ | -------- | --------- | -------------------------------------------------------------------- | ---------------------------------- | ------------------ | ------ |
+| id                  | UUID                                 | yes      | generated | Primary key                                                          | system-generated                   | yes                | System |
+| companyId           | UUID (FK → Company)                  | yes      | —         | Owning company                                                       | must reference an existing company | n/a                | System |
+| departmentId        | UUID (FK → Department, same company) | yes      | —         | Department the family belongs to                                     | composite FK, same company         | n/a                | HR     |
+| name                | string                               | yes      | —         | Display name                                                         | 1–150 chars                        | no                 | HR     |
+| code                | string                               | yes      | —         | Short code                                                           | 2–30 chars, normalized uppercase   | yes within company | HR     |
+| status              | enum(`ACTIVE`,`INACTIVE`)            | yes      | `ACTIVE`  | Lifecycle                                                            | —                                  | n/a                | HR     |
+| showInLevelsMapping | boolean                              | yes      | `false`   | Whether the sub-division has its own columns on Levels Mapping (D34) | —                                  | n/a                | HR     |
 
-**Deletion rule:** rejected while any Position references the family (`jobFamilyId`); its career tracks and level-mapping entries cascade-delete with it.
+**Deletion rule:** rejected while any Position references the family (`jobFamilyId`); its career tracks, level-mapping entries and sub-division level names cascade-delete with it.
 
 ### Career Track
 
@@ -123,6 +124,22 @@ The IC or Manager ladder within a Job Family. IC and MANAGER are **parallel** la
 | name        | string                              | yes      | default   | Display label           | defaults from kind if not provided | n/a                         | HR     |
 
 **Deletion rule:** rejected while any Position references the track (`careerTrackId`); level-mapping entries cascade with it.
+
+### Sub-division Level Title (Levels Mapping, D34)
+
+The name of the role at one rung for one sub-division: `(Job Family, ladder IC/Manager, level code) → title`. It is shown in the sub-division's own Levels Mapping columns. The Add Position Level dropdown prefers it when that sub-division is chosen. Career progression only; it never touches the reporting tree. Table `job_family_level_titles`.
+
+| Field        | Type                                | Required | Default   | Description            | Validation                 | Unique                                          | Source |
+| ------------ | ----------------------------------- | -------- | --------- | ---------------------- | -------------------------- | ----------------------------------------------- | ------ |
+| id           | UUID                                | yes      | generated | Primary key            | system-generated           | yes                                             | System |
+| companyId    | UUID (FK → Company)                 | yes      | —         | Owning company         | from the session only      | n/a                                             | System |
+| jobFamilyId  | UUID (FK → JobFamily, same company) | yes      | —         | Sub-division (cascade) | composite FK, same company | n/a                                             | HR     |
+| jobGradeCode | string                              | yes      | —         | Level code             | one of L2–L18              | n/a                                             | HR     |
+| kind         | enum(`IC`,`MANAGER`)                | yes      | —         | Ladder                 | —                          | n/a                                             | HR     |
+| title        | string                              | yes      | —         | Level name             | 1–150 chars, trimmed       | unique per (sub-division, ladder, level, title) | HR     |
+| displayOrder | int                                 | no       | null      | Optional sort order    | integer                    | no                                              | HR     |
+
+---
 
 ### Level Mapping Entry
 

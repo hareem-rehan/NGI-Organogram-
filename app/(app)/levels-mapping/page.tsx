@@ -5,7 +5,9 @@ import { hasPermission, requireActiveUser } from "@/lib/auth/current-user";
 import { requirePagePermission } from "@/lib/auth/require-page-permission";
 import { PageHeader } from "@/components/patterns/page-header";
 import { listDepartmentsForCompany } from "@/lib/repositories/department.repository";
+import { listJobFamiliesForCompany } from "@/lib/repositories/career-framework.repository";
 import { listDepartmentLevelTitlesForCompany } from "@/lib/repositories/department-level-title.repository";
+import { listJobFamilyLevelTitlesForCompany } from "@/lib/repositories/job-family-level-title.repository";
 import { LevelsMappingView } from "@/app/(app)/levels-mapping/_components/levels-mapping-view";
 
 const item = NAV_ITEMS.find((navItem) => navItem.href === "/levels-mapping")!;
@@ -19,9 +21,11 @@ export default async function LevelsMappingPage() {
 
   // Company config; counts stay small, so load it all server-side and hand it
   // to the client view rather than paginating.
-  const [departments, titles] = await Promise.all([
+  const [departments, subDivisions, departmentTitles, subDivisionTitles] = await Promise.all([
     listDepartmentsForCompany(user.companyId),
+    listJobFamiliesForCompany(user.companyId),
     listDepartmentLevelTitlesForCompany(user.companyId),
+    listJobFamilyLevelTitlesForCompany(user.companyId),
   ]);
 
   return (
@@ -30,7 +34,8 @@ export default async function LevelsMappingPage() {
       <LevelsMappingView
         canManage={canManage}
         departments={departments.filter((d) => d.status === "ACTIVE")}
-        initialTitles={titles}
+        subDivisions={subDivisions.filter((f) => f.status === "ACTIVE")}
+        initialTitles={{ departmentTitles, subDivisionTitles }}
       />
     </div>
   );

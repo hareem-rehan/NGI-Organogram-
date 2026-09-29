@@ -13,6 +13,11 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JOB_GRADE_SCALE } from "@/lib/domain/job-grade-mapping";
 import {
+  levelNameFor,
+  type LevelTitleInput,
+  type SubDivisionLevelTitleInput,
+} from "@/lib/domain/level-labels";
+import {
   createPositionAction,
   getPositionOccupantAction,
   listEmployeeOptionsAction,
@@ -38,6 +43,10 @@ interface PositionFormDialogProps {
    */
   initialDepartmentId?: string | null;
   initialReportsToPositionId?: string | null;
+  /** Each department's own level names from Levels Mapping (D32). Optional: absent → standard names. */
+  levelTitles?: readonly LevelTitleInput[];
+  /** Sub-division level names (D34); preferred when a sub-division is chosen. */
+  subDivisionLevelTitles?: readonly SubDivisionLevelTitleInput[];
   onSaved: () => void;
 }
 
@@ -137,6 +146,8 @@ export function PositionFormDialog({
   allPositions,
   initialDepartmentId,
   initialReportsToPositionId,
+  levelTitles = [],
+  subDivisionLevelTitles = [],
   onSaved,
 }: PositionFormDialogProps) {
   const isEdit = position !== null;
@@ -295,13 +306,37 @@ export function PositionFormDialog({
     }
     return byCode;
   }, [jobGrades]);
+  // Level names follow the chosen sub-division, then department (and ladder):
+  // their own Levels-Mapping names when they have them, else the standard
+  // names (D32, D34).
   const levelOptions = useMemo(
     () =>
       JOB_GRADE_SCALE.map((s) => ({
         code: s.code,
-        label: `${s.code} — ${gradeNameByCode.get(s.code) ?? s.name}`,
+        label: `${s.code} — ${levelNameFor({
+          code: s.code,
+          defaultName: gradeNameByCode.get(s.code) ?? s.name,
+          departmentId: departmentId ?? "",
+          kind: careerTrackKind === "IC" || careerTrackKind === "MANAGER" ? careerTrackKind : null,
+          levelTitles,
+          jobFamilyId,
+          subDivisionLevelTitles,
+          jobGrades: jobGrades.map((g) => ({
+            departmentId: g.departmentId,
+            code: g.code,
+            name: g.name,
+          })),
+        })}`,
       })),
-    [gradeNameByCode]
+    [
+      gradeNameByCode,
+      departmentId,
+      careerTrackKind,
+      levelTitles,
+      jobFamilyId,
+      subDivisionLevelTitles,
+      jobGrades,
+    ]
   );
 
   // Sub-divisions in the selected department. Optional — a position need

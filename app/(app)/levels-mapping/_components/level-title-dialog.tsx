@@ -9,7 +9,9 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   createDepartmentLevelTitleAction,
+  createJobFamilyLevelTitleAction,
   updateDepartmentLevelTitleAction,
+  updateJobFamilyLevelTitleAction,
 } from "@/app/(app)/levels-mapping/actions";
 
 const LADDER_LABEL: Record<CareerTrackKind, string> = {
@@ -18,14 +20,16 @@ const LADDER_LABEL: Record<CareerTrackKind, string> = {
 };
 
 /**
- * The cell a dialog is targeting. In "create" mode the department, level and
- * ladder are fixed by the clicked cell and shown as read-only context — only
- * the title is entered. In "edit" mode the title is pre-filled from `id`.
+ * The cell a dialog is targeting. In "create" mode the column (a department
+ * or a sub-division, D34), level and ladder are fixed by the clicked cell and
+ * shown as read-only context — only the title is entered. In "edit" mode the
+ * title is pre-filled from `id`.
  */
 export interface LevelTitleTarget {
   mode: "create" | "edit";
-  departmentId: string;
-  departmentName: string;
+  ownerType: "DEPARTMENT" | "SUB_DIVISION";
+  ownerId: string;
+  ownerName: string;
   kind: CareerTrackKind;
   jobGradeCode: string;
   scaleName: string;
@@ -59,15 +63,16 @@ export function LevelTitleDialog({ target, onOpenChange, onSaved }: LevelTitleDi
     }
     setFormError(null);
     startTransition(async () => {
+      const cell = { jobGradeCode: target.jobGradeCode, kind: target.kind, title: trimmed };
+      const isSubDivision = target.ownerType === "SUB_DIVISION";
       const result =
         target.mode === "edit" && target.id
-          ? await updateDepartmentLevelTitleAction({ id: target.id, title: trimmed })
-          : await createDepartmentLevelTitleAction({
-              departmentId: target.departmentId,
-              jobGradeCode: target.jobGradeCode,
-              kind: target.kind,
-              title: trimmed,
-            });
+          ? isSubDivision
+            ? await updateJobFamilyLevelTitleAction({ id: target.id, title: trimmed })
+            : await updateDepartmentLevelTitleAction({ id: target.id, title: trimmed })
+          : isSubDivision
+            ? await createJobFamilyLevelTitleAction({ jobFamilyId: target.ownerId, ...cell })
+            : await createDepartmentLevelTitleAction({ departmentId: target.ownerId, ...cell });
       if (!result.ok) {
         setFormError(result.error);
         return;
@@ -83,7 +88,7 @@ export function LevelTitleDialog({ target, onOpenChange, onSaved }: LevelTitleDi
         title={target?.mode === "edit" ? "Edit level name" : "Add level name"}
         description={
           target
-            ? `${target.departmentName} · ${LADDER_LABEL[target.kind]} · ${target.jobGradeCode} — ${target.scaleName}`
+            ? `${target.ownerName} · ${LADDER_LABEL[target.kind]} · ${target.jobGradeCode} — ${target.scaleName}`
             : ""
         }
       >

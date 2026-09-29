@@ -24,6 +24,7 @@ export const EXPECTED_MIGRATIONS: readonly string[] = [
   "20260927152408_add_department_level_titles",
   "20260927220208_department_ladders_and_position_ladderkind",
   "20260928120000_position_co_heads",
+  "20260929120000_levels_mapping_columns",
 ];
 
 /**

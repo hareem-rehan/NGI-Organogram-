@@ -111,6 +111,14 @@ Click **Create position** to save. **Edit** opens the same fields pre-filled wit
 - **Organizational Level** is calculated automatically by the system: your root position is Level 1, and every position is exactly one level below whoever it reports to (for a position with two heads, one level below the lower of the two). You cannot set this yourself, anywhere in the app — it's always derived from the reporting chain.
 - **Job Grade** is a separate, HR-maintained value (seniority/pay band) you choose from a list. It has nothing to do with a position's depth in the chart — a Director-grade position can sit at Level 2 in one department and Level 4 in another. Never assume one implies the other.
 
+### 5.3a Level names (Levels Mapping)
+
+**Levels Mapping** holds the name of the role at each level, e.g. L3 = "Software Engineer". Names are kept per department, per ladder (IC / Manager), and optionally per sub-division.
+
+- **Choose the columns.** Use **Add column** (top right) to show a department or a sub-division. The **×** on a column header hides it. Hiding never deletes the names; add the column back and they return. It also never changes the department's ladders or any position.
+- A sub-division's columns hold **its own** names. When you pick that sub-division in Add Position, the Level list shows them first. It falls back to the department's names, then the standard names.
+- Names describe career progression only. They never change who reports to whom.
+
 ### 5.4 Changing who a position reports to
 
 Click **Change Reports-To** on a position. Search for and select the new manager position, then confirm. Behind the scenes, the system:

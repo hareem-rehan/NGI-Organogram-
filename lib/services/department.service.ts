@@ -251,6 +251,59 @@ export async function updateDepartment(
 }
 
 /** Sets status = INACTIVE. Safe by construction — the row persists, so no reference is ever orphaned. Never blocked by children/positions (see docs/DOMAIN_MODEL.md §7 for why archive and hard-delete have different safety rules). */
+export interface ReorderDepartmentsInput {
+  companyId: string;
+  actor?: AuditActor;
+  /** Departments in their new left-to-right order on the organogram. */
+  orderedDepartmentIds: readonly string[];
+}
+
+/**
+ * Saves the organogram's left-to-right department order (docs/DECISIONS.md
+ * D33): each listed department's `displayOrder` becomes its position in the
+ * list (1, 2, 3…). Departments not listed keep theirs. Every id must belong
+ * to the company; one transaction, one audit event per department whose
+ * order actually changed.
+ */
+export async function reorderDepartments(
+  input: ReorderDepartmentsInput,
+  db: DbClient = prisma
+): Promise<void> {
+  await withTransaction(db, async (tx) => {
+    const existing = await tx.department.findMany({
+      where: { companyId: input.companyId, id: { in: [...input.orderedDepartmentIds] } },
+    });
+    if (existing.length !== input.orderedDepartmentIds.length) {
+      throw new NotFoundError("Department", "one or more of the reordered departments");
+    }
+    const byId = new Map(existing.map((d) => [d.id, d]));
+    for (const [index, departmentId] of input.orderedDepartmentIds.entries()) {
+      const before = byId.get(departmentId)!;
+      const displayOrder = index + 1;
+      if (before.displayOrder === displayOrder) continue;
+      const after = await tx.department.update({
+        where: { id: departmentId },
+        data: { displayOrder },
+      });
+      await recordAuditEvent(
+        {
+          companyId: input.companyId,
+          actor: input.actor ?? "SYSTEM",
+          action: "UPDATED",
+          category: "DEPARTMENT",
+          entityType: "Department",
+          entityId: departmentId,
+          entityDisplayReference: after.code,
+          before,
+          after,
+          metadata: { reordered: true },
+        },
+        tx
+      );
+    }
+  });
+}
+
 export async function archiveDepartment(
   id: string,
   companyId: string,

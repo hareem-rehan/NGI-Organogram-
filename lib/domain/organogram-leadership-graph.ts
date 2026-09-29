@@ -296,6 +296,8 @@ export function projectLeadershipGraph(
     code: string;
     color: string | null;
     parentDepartmentId?: string | null;
+    /** Saved left-to-right order (D33). */
+    displayOrder?: number | null;
   }[] = []
 ): LeadershipGraph {
   const view = buildLeadershipView(nodes, options, allDepartments);
@@ -365,6 +367,7 @@ export function projectLeadershipGraph(
   );
 
   const baseNodes = [...positionNodes, ...departmentNodes];
+  const departmentRank = new Map(view.departmentGroups.map((group, index) => [group.id, index]));
 
   // Insert the sub-division tier: under any position whose reports fall into
   // 2+ distinct sub-divisions, group each sub-division's reports beneath a
@@ -437,6 +440,9 @@ export function projectLeadershipGraph(
     .sort(
       (a, b) =>
         (a.displayDepth ?? 0) - (b.displayDepth ?? 0) ||
+        // Department boxes keep the saved left-to-right order (D33).
+        (departmentRank.get(a.positionId) ?? Number.MAX_SAFE_INTEGER) -
+          (departmentRank.get(b.positionId) ?? Number.MAX_SAFE_INTEGER) ||
         a.title.localeCompare(b.title) ||
         a.positionCode.localeCompare(b.positionCode)
     );

@@ -71,6 +71,7 @@ const DEPARTMENT: Department = {
   parentDepartmentId: null,
   hasIcLadder: true,
   hasManagerLadder: true,
+  showInLevelsMapping: true,
   status: "ACTIVE",
   displayOrder: null,
   createdAt: new Date(),
@@ -107,6 +108,7 @@ const SWE_FAMILY: JobFamily = {
   description: null,
   displayOrder: null,
   status: "ACTIVE",
+  showInLevelsMapping: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -462,6 +464,41 @@ describe("PositionFormDialog", () => {
     it("is not offered when editing (reporting lines change through Change Reports-To)", () => {
       renderForm({ position: headA, allPositions: [root, headA, headB] });
       expect(secondPicker()).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Level names follow the department (D32)", () => {
+    it("shows the department's own Levels-Mapping names, and defaults elsewhere", async () => {
+      const user = userEvent.setup();
+      const OTHER = {
+        ...DEPARTMENT,
+        id: "99999999-0000-4000-8000-000000000001",
+        name: "Finance",
+        code: "FIN",
+      };
+      renderForm({
+        departments: [DEPARTMENT, OTHER],
+        levelTitles: [
+          {
+            departmentId: DEPARTMENT_ID,
+            jobGradeCode: "L7",
+            kind: "IC",
+            title: "Principal Engineer",
+          },
+        ],
+      });
+
+      const level = screen.getByLabelText(/^level$/i);
+      expect(
+        within(level).getByRole("option", { name: /L7\s*—\s*Principal Engineer/ })
+      ).toBeInTheDocument();
+
+      await user.selectOptions(screen.getByRole("combobox", { name: "Department" }), OTHER.id);
+      expect(
+        within(screen.getByLabelText(/^level$/i)).getByRole("option", {
+          name: /L7\s*—\s*Lead \/ Principal/,
+        })
+      ).toBeInTheDocument();
     });
   });
 

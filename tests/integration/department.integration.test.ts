@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  reorderDepartments,
   archiveDepartment,
   createDepartment,
   deleteDepartment,
@@ -386,5 +387,46 @@ describe("Department", () => {
       const page3 = await searchDepartments({ companyId: company.id, page: 3, pageSize: 2 });
       expect(page3.items).toHaveLength(1);
     });
+  });
+});
+
+describe("reorderDepartments (organogram drag-to-reorder, D33)", () => {
+  it("saves the new left-to-right order, leaves unlisted departments alone, and audits only real changes", async () => {
+    const company = await makeCompany();
+    const a = await makeDepartment(company.id, { name: "A" });
+    const b = await makeDepartment(company.id, { name: "B" });
+    const c = await makeDepartment(company.id, { name: "C" });
+    const untouched = await testPrisma.department.update({
+      where: { id: (await makeDepartment(company.id, { name: "D" })).id },
+      data: { displayOrder: 99 },
+    });
+
+    await reorderDepartments({ companyId: company.id, orderedDepartmentIds: [c.id, a.id, b.id] });
+
+    const order = async (id: string) =>
+      (await testPrisma.department.findUniqueOrThrow({ where: { id } })).displayOrder;
+    expect(await order(c.id)).toBe(1);
+    expect(await order(a.id)).toBe(2);
+    expect(await order(b.id)).toBe(3);
+    expect(await order(untouched.id)).toBe(99);
+
+    // Same order again → nothing changes, nothing audited.
+    const before = await testPrisma.auditEvent.count({ where: { companyId: company.id } });
+    await reorderDepartments({ companyId: company.id, orderedDepartmentIds: [c.id, a.id, b.id] });
+    expect(await testPrisma.auditEvent.count({ where: { companyId: company.id } })).toBe(before);
+  });
+
+  it("refuses (changing nothing) when a department belongs to another company", async () => {
+    const company = await makeCompany();
+    const other = await makeCompany();
+    const a = await makeDepartment(company.id, { name: "A" });
+    const foreign = await makeDepartment(other.id, { name: "X" });
+
+    await expect(
+      reorderDepartments({ companyId: company.id, orderedDepartmentIds: [foreign.id, a.id] })
+    ).rejects.toThrow();
+    expect(
+      (await testPrisma.department.findUniqueOrThrow({ where: { id: a.id } })).displayOrder
+    ).toBeNull();
   });
 });

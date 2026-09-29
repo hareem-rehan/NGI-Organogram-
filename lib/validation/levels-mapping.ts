@@ -43,3 +43,30 @@ export type UpdateDepartmentLevelTitleValues = z.infer<typeof updateDepartmentLe
 
 export const deleteDepartmentLevelTitleSchema = z.object({ id: z.string().uuid() }).strict();
 export type DeleteDepartmentLevelTitleValues = z.infer<typeof deleteDepartmentLevelTitleSchema>;
+
+// ── Sub-division columns + column visibility (docs/DECISIONS.md D34) ────
+
+export const createJobFamilyLevelTitleSchema = z
+  .object({
+    jobFamilyId: z.string().uuid(),
+    jobGradeCode: jobGradeCodeSchema,
+    kind: careerTrackKindSchema,
+    title: titleSchema,
+    displayOrder: z.number().int().nullable().optional(),
+  })
+  .strict();
+export type CreateJobFamilyLevelTitleValues = z.infer<typeof createJobFamilyLevelTitleSchema>;
+
+/** Rename / delete a sub-division level name: same shapes as the department ones. */
+export const updateJobFamilyLevelTitleSchema = updateDepartmentLevelTitleSchema;
+export const deleteJobFamilyLevelTitleSchema = deleteDepartmentLevelTitleSchema;
+
+/** Show or hide one department's / sub-division's columns on the grid. */
+export const setLevelsMappingColumnSchema = z
+  .object({
+    target: z.enum(["DEPARTMENT", "SUB_DIVISION"]),
+    id: z.string().uuid(),
+    visible: z.boolean(),
+  })
+  .strict();
+export type SetLevelsMappingColumnValues = z.infer<typeof setLevelsMappingColumnSchema>;

@@ -55,6 +55,9 @@ vi.mock("@/lib/services/job-grade.service", () => jobGradeServiceMock);
 vi.mock("@/lib/services/career-framework.service", () => careerServiceMock);
 vi.mock("@/lib/repositories/career-framework.repository", () => careerRepoMock);
 vi.mock("@/lib/repositories/department-level-title.repository", () => deptLevelTitleRepoMock);
+vi.mock("@/lib/repositories/job-family-level-title.repository", () => ({
+  listJobFamilyLevelTitlesForCompany: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("@/lib/services/assignment.service", () => assignmentServiceMock);
 vi.mock("@/lib/repositories/assignment.repository", () => assignmentRepoMock);
 vi.mock("@/lib/repositories/employee.repository", () => employeeRepoMock);

@@ -30,6 +30,9 @@ vi.mock("@/app/(app)/positions/actions", () => ({
   })),
 }));
 
+vi.mock("@/app/(app)/departments/actions", () => ({
+  reorderDepartmentsAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+}));
 vi.mock("@/app/(app)/organogram/export-actions", () => ({
   requestExportAction: vi.fn(),
   getExportJobAction: vi.fn(),
@@ -358,7 +361,7 @@ describe("OrganogramView", () => {
     const arrange = await screen.findByRole("button", { name: /^arrange$/i });
     await user.click(arrange);
 
-    expect(screen.getByText(/drag a card onto another/i)).toBeInTheDocument();
+    expect(screen.getByText(/let go with the pointer over another card/i)).toBeInTheDocument();
     // The form options are loaded lazily on first entry, re-authorized server-side.
     await waitFor(() => expect(listDepartmentOptionsAction).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: /arranging/i })).toBeInTheDocument();

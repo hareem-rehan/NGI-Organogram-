@@ -85,6 +85,20 @@ export const deleteDepartmentSchema = z
   })
   .strict();
 
+/**
+ * The organogram's drag-to-reorder (docs/DECISIONS.md D33): the departments
+ * in their new left-to-right order. Unique ids, capped.
+ */
+export const reorderDepartmentsSchema = z
+  .object({
+    orderedDepartmentIds: z
+      .array(z.string().uuid())
+      .min(1)
+      .max(500)
+      .refine((ids) => new Set(ids).size === ids.length, "Each department may appear only once."),
+  })
+  .strict();
+
 export const listDepartmentsQuerySchema = z
   .object({
     search: searchQuerySchema,

@@ -24,6 +24,7 @@ import {
   movePositionAction,
   movePositionToDepartmentAction,
 } from "@/app/(app)/positions/actions";
+import type { PositionCareerOptions } from "@/app/(app)/positions/actions";
 import { OrganogramCanvas } from "@/app/(app)/organogram/_components/organogram-canvas";
 import { OrganogramDetailsPanel } from "@/app/(app)/organogram/_components/organogram-details-panel";
 import { OrganogramExportDialog } from "@/app/(app)/organogram/_components/organogram-export-dialog";
@@ -51,6 +52,7 @@ import {
   type OrganogramNode,
 } from "@/lib/domain/organogram";
 import type { DropVerdict } from "@/lib/domain/organogram-drag";
+import { reorderDepartmentsAction } from "@/app/(app)/departments/actions";
 import { isBelowThreshold } from "@/lib/domain/organogram-leadership";
 import { computeFilterMatchIds, isAnyFilterActive } from "@/lib/domain/organogram-filters";
 import {
@@ -162,6 +164,8 @@ export function OrganogramView({
     jobGrades: JobGrade[];
     jobFamilies: JobFamily[];
     careerTracks: CareerTrack[];
+    levelTitles: PositionCareerOptions["levelTitles"];
+    subDivisionLevelTitles: PositionCareerOptions["subDivisionLevelTitles"];
     allPositions: Position[];
   }
   const [formOptions, setFormOptions] = useState<PositionFormOptions | null>(null);
@@ -259,6 +263,8 @@ export function OrganogramView({
       jobGrades: jobGrades.data,
       jobFamilies: career.data.jobFamilies,
       careerTracks: career.data.careerTracks,
+      levelTitles: career.data.levelTitles,
+      subDivisionLevelTitles: career.data.subDivisionLevelTitles,
       allPositions: allPositions.data,
     };
     setFormOptions(options);
@@ -341,6 +347,23 @@ export function OrganogramView({
       })();
     },
     [data, moveDialog]
+  );
+
+  // Arrange mode: a department box dragged to a new place among its
+  // neighbours saves the new left-to-right order (D33), then redraws.
+  const handleReorderDepartments = useCallback(
+    (orderedDepartmentIds: string[]) => {
+      setDropNotice(null);
+      void (async () => {
+        const result = await reorderDepartmentsAction({ orderedDepartmentIds });
+        if (!result.ok) {
+          setDropNotice(result.error);
+          return;
+        }
+        refreshAfterMutation();
+      })();
+    },
+    [refreshAfterMutation]
   );
 
   const confirmMove = useCallback(() => {
@@ -801,8 +824,10 @@ export function OrganogramView({
 
       {arrangeMode ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Arrange mode — drag a card onto another card to change who it reports to, or onto a
-          department heading to move it into that department (its whole branch moves with it). Use{" "}
+          Arrange mode — drag a card and let go with the pointer over another card to change who it
+          reports to, or over a department heading to move it into that department (its whole branch
+          moves with it). The card under the pointer is outlined before you let go. Drag a
+          department heading left or right to reorder the departments. Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
           the trash icon to delete, and click a card to edit it. A drag onto empty space just nudges
           the card; the layout is regenerated on reload.
@@ -913,6 +938,7 @@ export function OrganogramView({
                 arrangeMode={arrangeMode}
                 onReparent={handleReparent}
                 onInvalidDrop={setDropNotice}
+                onReorderDepartments={handleReorderDepartments}
                 onEditCard={handleEditCard}
                 onAddChild={handleAddChild}
                 onRequestDelete={handleRequestDelete}
@@ -975,6 +1001,8 @@ export function OrganogramView({
           jobGrades={formOptions.jobGrades}
           jobFamilies={formOptions.jobFamilies}
           careerTracks={formOptions.careerTracks}
+          levelTitles={formOptions.levelTitles}
+          subDivisionLevelTitles={formOptions.subDivisionLevelTitles}
           allPositions={formOptions.allPositions}
           initialDepartmentId={formInitialDepartmentId}
           initialReportsToPositionId={formInitialReportsToId}
