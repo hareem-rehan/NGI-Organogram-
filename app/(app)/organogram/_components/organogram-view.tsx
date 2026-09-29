@@ -24,6 +24,7 @@ import {
   movePositionAction,
   movePositionToDepartmentAction,
 } from "@/app/(app)/positions/actions";
+import type { PositionCareerOptions } from "@/app/(app)/positions/actions";
 import { OrganogramCanvas } from "@/app/(app)/organogram/_components/organogram-canvas";
 import { OrganogramDetailsPanel } from "@/app/(app)/organogram/_components/organogram-details-panel";
 import { OrganogramExportDialog } from "@/app/(app)/organogram/_components/organogram-export-dialog";
@@ -162,6 +163,7 @@ export function OrganogramView({
     jobGrades: JobGrade[];
     jobFamilies: JobFamily[];
     careerTracks: CareerTrack[];
+    levelTitles: PositionCareerOptions["levelTitles"];
     allPositions: Position[];
   }
   const [formOptions, setFormOptions] = useState<PositionFormOptions | null>(null);
@@ -259,6 +261,7 @@ export function OrganogramView({
       jobGrades: jobGrades.data,
       jobFamilies: career.data.jobFamilies,
       careerTracks: career.data.careerTracks,
+      levelTitles: career.data.levelTitles,
       allPositions: allPositions.data,
     };
     setFormOptions(options);
@@ -975,6 +978,7 @@ export function OrganogramView({
           jobGrades={formOptions.jobGrades}
           jobFamilies={formOptions.jobFamilies}
           careerTracks={formOptions.careerTracks}
+          levelTitles={formOptions.levelTitles}
           allPositions={formOptions.allPositions}
           initialDepartmentId={formInitialDepartmentId}
           initialReportsToPositionId={formInitialReportsToId}
