@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { computeElkLayout, DEPARTMENT_SIDE_PADDING, NODE_HEIGHT, NODE_WIDTH } from "./elk-layout";
+import {
+  computeElkLayout,
+  DEPARTMENT_SIDE_PADDING,
+  LAYER_GAP,
+  NODE_GAP,
+  NODE_HEIGHT,
+  NODE_WIDTH,
+} from "./elk-layout";
 
 describe("computeElkLayout", () => {
   it("returns an empty map for zero nodes", async () => {
@@ -148,5 +155,50 @@ describe("computeElkLayout — department segregation", () => {
         expect(overlap).toBe(false);
       }
     }
+  });
+});
+
+describe("computeElkLayout — sub-department order (inside a department box)", () => {
+  // CEO → Client Delivery Services (a department box) → Product, Project
+  // (its sub-departments), each with one card. The sub-departments share the
+  // parent's box, so their saved order must hold inside it too.
+  async function layoutWithOrder(first: string, second: string) {
+    const nodeIds = ["ceo", "cds", first, second, `${first}-lead`, `${second}-lead`];
+    const edges = [
+      { sourcePositionId: "ceo", targetPositionId: "cds" },
+      { sourcePositionId: "cds", targetPositionId: first },
+      { sourcePositionId: "cds", targetPositionId: second },
+      { sourcePositionId: first, targetPositionId: `${first}-lead` },
+      { sourcePositionId: second, targetPositionId: `${second}-lead` },
+    ];
+    const clusterOf = new Map(nodeIds.filter((id) => id !== "ceo").map((id) => [id, "cds"]));
+    // Edges deliberately in the OPPOSITE order to the nodes (the app sorts
+    // edges by id, which is effectively random): node order must still win.
+    return computeElkLayout(nodeIds, [...edges].reverse(), clusterOf);
+  }
+
+  it("places sub-departments left to right in the order given, both ways round", async () => {
+    const a = await layoutWithOrder("product", "project");
+    expect(a.get("product")!.x).toBeLessThan(a.get("project")!.x);
+    const b = await layoutWithOrder("project", "product");
+    expect(b.get("project")!.x).toBeLessThan(b.get("product")!.x);
+  });
+});
+
+describe("computeElkLayout — spacing inside a department box", () => {
+  it("uses the full row gap and card gap inside a department, not ELK's defaults", async () => {
+    // CEO → Dept box → Lead → two reports, all but the CEO in one cluster.
+    const ids = ["ceo", "dept", "lead", "r1", "r2"];
+    const e = (s: string, t: string) => ({ sourcePositionId: s, targetPositionId: t });
+    const edges = [e("ceo", "dept"), e("dept", "lead"), e("lead", "r1"), e("lead", "r2")];
+    const clusterOf = new Map(ids.filter((i) => i !== "ceo").map((i) => [i, "dept"]));
+    const p = await computeElkLayout(ids, edges, clusterOf);
+
+    // Vertical: department box → its first card, and card → card.
+    expect(p.get("lead")!.y - (p.get("dept")!.y + NODE_HEIGHT)).toBeGreaterThanOrEqual(LAYER_GAP);
+    expect(p.get("r1")!.y - (p.get("lead")!.y + NODE_HEIGHT)).toBeGreaterThanOrEqual(LAYER_GAP);
+    // Horizontal: two cards side by side.
+    const [left, right] = [p.get("r1")!.x, p.get("r2")!.x].sort((a, b) => a - b);
+    expect(right - (left + NODE_WIDTH)).toBeGreaterThanOrEqual(NODE_GAP);
   });
 });

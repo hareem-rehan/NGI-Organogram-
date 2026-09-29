@@ -138,3 +138,53 @@ export async function readDepartmentOrder(companyId: string): Promise<string[]> 
     await prisma.$disconnect();
   }
 }
+
+/**
+ * CEO → Client Delivery Services → two SUB-departments (Product, Project),
+ * each with a manager and one report — the shape where a department box is
+ * nested inside its parent department's box.
+ */
+export async function seedSubDepartmentChart(companyId: string, suffix: string): Promise<void> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  await seedJobGradeScale(companyId);
+  const prisma = new PrismaClient();
+  try {
+    const grade = await prisma.jobGrade.findFirstOrThrow({
+      where: { companyId, code: "L15", departmentId: null },
+    });
+    const dept = (name: string, parentDepartmentId: string | null = null) =>
+      prisma.department.create({
+        data: {
+          companyId,
+          name: `${name} ${suffix}`,
+          code: `E2E-SD-${randomBytes(3).toString("hex")}`,
+          color: "#3aa4e8",
+          parentDepartmentId,
+        },
+      });
+    const make = (departmentId: string, title: string, parentId: string | null, level: number) =>
+      prisma.position.create({
+        data: {
+          companyId,
+          departmentId,
+          jobGradeId: grade.id,
+          title: `${title} ${suffix}`,
+          positionCode: `E2E-SD-${randomBytes(3).toString("hex")}`,
+          primaryReportsToPositionId: parentId,
+          organizationalLevel: level,
+        },
+      });
+
+    const founder = await dept("Founder");
+    const cds = await dept("Client Delivery Services");
+    const ceo = await make(founder.id, "CEO", null, 1);
+    const cdsHead = await make(cds.id, "CDS Head", ceo.id, 2);
+    for (const name of ["Product", "Project"]) {
+      const sub = await dept(name, cds.id);
+      const manager = await make(sub.id, `${name} Manager`, cdsHead.id, 3);
+      await make(sub.id, `${name} Analyst`, manager.id, 4);
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
+}
