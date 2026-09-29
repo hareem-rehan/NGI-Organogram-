@@ -28,139 +28,73 @@
 #   backup/restore half of that on every run.
 # - A meaningful (non-empty-database) domain-integrity-check run — see
 #   this file's own comment on that step for why.
+#
+# Speed (2026-09-29): the old single "Quality gate" job ran every step in
+# a row, and the E2E job waited for it. Now `static`, `unit`,
+# `integration`, `build` and `e2e` all start at once; "Quality gate" is a
+# final job that passes only when the first four pass (the same checks as
+# before, nothing dropped). node_modules, the Next.js build cache and the
+# Playwright browser are cached; a newer push to the same PR cancels the
+# older run; and pull requests that only touch docs skip CI.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore: ["docs/**", "**/*.md", ".claude/**"]
   pull_request:
+    paths-ignore: ["docs/**", "**/*.md", ".claude/**"]
   # Lets deploy.yml gate every deployment on this exact quality suite by
   # calling it, rather than maintaining a second, drifting copy of it.
   workflow_call:
 
+# A newer push to the same pull request makes the older run pointless.
+# Runs on main (and deploys calling this workflow) are never cancelled.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   NEXT_PUBLIC_APP_NAME: "DotZero Organogram"
+  # Ephemeral, CI-only PostgreSQL (a service container per job) — never a
+  # shared/production database. Throwaway container-local credentials.
+  DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
+  # No pooler in CI, so the direct URL is the same one. It must still be
+  # set: prisma/schema.prisma declares `directUrl`, and every `prisma
+  # migrate` command fails without it.
+  DIRECT_DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
+  NODE_ENV: "test"
+  # Throwaway, non-functional OIDC configuration — exists only so
+  # lib/env.server.ts validation and the production build succeed in CI.
+  # No live provider is ever contacted. Never a real secret.
+  AUTH_SECRET: "ci-only-placeholder-secret-value-not-a-real-secret-32chars"
+  AUTH_OIDC_ISSUER: "https://ci-placeholder.invalid/tenant/v2.0"
+  AUTH_OIDC_CLIENT_ID: "ci-placeholder-client-id"
+  AUTH_OIDC_CLIENT_SECRET: "ci-placeholder-client-secret"
+  AUTH_ALLOWED_EMAIL_DOMAINS: "ci-placeholder.invalid,northwind-example.test"
+  AUTH_PROVIDER_NAME: "CI Placeholder Account"
+  AUTH_AUTO_PROVISION_VIEWERS: "false"
 
 jobs:
-  quality:
-    name: Quality gate
+  static:
+    name: Format, lint, types, secrets
     runs-on: ubuntu-latest
-    # Ephemeral, CI-only PostgreSQL — never a shared/production database.
-    # Credentials here are throwaway container-local values, not secrets.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: organogram
-          POSTGRES_PASSWORD: organogram_ci_password
-          POSTGRES_DB: organogram_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U organogram -d organogram_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
-      # CI runs a plain Postgres service container with no pooler in front
-      # of it, so the direct URL is the same one. It must still be set:
-      # prisma/schema.prisma declares `directUrl`, and every `prisma
-      # migrate` command fails without it (by design — see the datasource
-      # block's comment).
-      DIRECT_DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
-      NODE_ENV: "test"
-      # Throwaway, non-functional OIDC configuration — exists only so
-      # lib/env.server.ts validation and the production build succeed in
-      # CI. No live provider is ever contacted (see docs/DECISIONS.md P8 —
-      # the SSO provider is still pending; nothing here is provider-
-      # specific). Never a real secret.
-      AUTH_SECRET: "ci-only-placeholder-secret-value-not-a-real-secret-32chars"
-      AUTH_OIDC_ISSUER: "https://ci-placeholder.invalid/tenant/v2.0"
-      AUTH_OIDC_CLIENT_ID: "ci-placeholder-client-id"
-      AUTH_OIDC_CLIENT_SECRET: "ci-placeholder-client-secret"
-      # `northwind-example.test` is required, not decorative: the
-      # integration fixtures provision users at that domain (matching
-      # .env.test, which is why these tests pass locally), and
-      # provisionUser -> assertEmailDomainAllowed rejects anything outside
-      # this allowlist. With only the placeholder domain here, every
-      # user-admin provisioning test fails with `domain-not-allowed`.
-      # Comma-separated; both entries remain fictional.
-      AUTH_ALLOWED_EMAIL_DOMAINS: "ci-placeholder.invalid,northwind-example.test"
-      AUTH_PROVIDER_NAME: "CI Placeholder Account"
-      AUTH_AUTO_PROVISION_VIEWERS: "false"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Prisma — generate client
-        run: npx prisma generate
-
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
       - name: Prisma — validate schema
         run: npx prisma validate
-
       - name: Format check
         run: npm run format:check
-
       - name: Lint
         run: npm run lint
-
       - name: Type check
         run: npm run typecheck
-
-      - name: Unit and component tests (with coverage)
-        run: npm run test:coverage
-
-      - name: Prisma — apply migrations to the clean CI database
-        run: npx prisma migrate deploy
-
-      # Phase 13 (release hardening): confirms the domain-integrity tool
-      # itself runs and connects correctly. Run here (immediately after
-      # migrations, before any test writes any fixture data) rather than
-      # after the integration suite or the E2E job, because both of
-      # those leave behind intentionally-partial fixture companies (e.g.
-      # e2e/support/seed-session.ts provisions a company with exactly
-      # one VIEWER-only user for a single test's purposes) that would
-      # trip the checker's COMPANY_WITHOUT_ACTIVE_ADMIN category as a
-      # false positive — not a real defect, just this project's E2E
-      # fixture-seeding pattern. This CI invocation is a smoke test of
-      # the tool, not a substitute for running it against a real
-      # populated database (staging/production, once one exists —
-      # docs/DATABASE_RELEASE_RUNBOOK.md).
-      - name: Domain-integrity check (smoke — clean, empty database)
-        run: npm run check:integrity
-
       - name: Dependency vulnerability audit (informational — see docs/SECURITY_REVIEW.md)
-        # Non-blocking: the two current advisory chains (deepmerge-ts via
-        # @prisma/config/prisma; esbuild via vite) are both dev-tooling-
-        # only — neither prisma's CLI nor vite's dev server ships in this
-        # app's production runtime — and fixing either requires an
-        # unreviewed breaking major-version bump, out of scope for a
-        # stabilization phase. Tracked in docs/DEFECT_REGISTER.md DEF-004
-        # rather than silently ignored; this step still surfaces the
-        # report on every run so a NEW advisory is never missed.
         run: npm audit || true
-
       - name: Outdated dependency report (informational)
         run: npm outdated || true
-
       - name: Secret scan (git-tracked files only)
-        # Lightweight, self-contained pattern scan — no third-party
-        # Action/network dependency. Excludes this repo's own documented,
-        # non-functional placeholder credentials (organogram_dev_password /
-        # organogram_ci_password, used only by disposable local/CI-only
-        # Postgres containers — see .env.example and this file's own env
-        # blocks) so the scan stays meaningful rather than permanently
-        # red on a known-safe pattern.
         run: |
           set -e
           MATCHES=$(git grep -IlnE \
@@ -173,57 +107,104 @@ jobs:
           fi
           echo "No secret patterns found."
 
+  unit:
+    name: Unit and component tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Unit and component tests (with coverage)
+        run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: coverage/
+          retention-days: 14
+
+  integration:
+    name: Migrations and integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: organogram
+          POSTGRES_PASSWORD: organogram_ci_password
+          POSTGRES_DB: organogram_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U organogram -d organogram_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # A from-scratch migration deploy on every run is itself a migration
+      # rehearsal (docs/DATABASE_RELEASE_RUNBOOK.md).
+      - name: Prisma — apply migrations to the clean CI database
+        run: npx prisma migrate deploy
+      # Smoke test of the checker on a clean, empty database — run before
+      # any test writes fixture data, because the integration/E2E fixtures
+      # leave intentionally-partial companies that would trip it as false
+      # positives. Not a substitute for running it on a populated database.
+      - name: Domain-integrity check (smoke — clean, empty database)
+        run: npm run check:integrity
       - name: Database integration tests (excluding the PDF export benchmark)
-        # Deliberately narrow: ONLY export-performance is excluded. The
-        # dashboard, import, organogram and performance-matrix benchmarks
-        # all pass on this runner and keep gating CI.
-        #
-        # export-performance asserts PDF wall-clock durations against
-        # thresholds calibrated on a developer machine
-        # (docs/PERFORMANCE_REPORT.md). Its 500-node case is a REAL
-        # pre-existing failure — ~6,429 ms against a 6,000 ms threshold on
-        # a dev machine, measured before any change on this branch — and a
-        # shared GitHub runner makes it ~15,367 ms, with the 100-node case
-        # also tipping over at 1,244 ms against 1,200 ms. Gating on it
-        # would keep CI permanently red for a known issue unrelated to
-        # whatever change is under review.
-        #
-        # NO threshold is relaxed and no assertion is weakened. The file
-        # keeps its exact values and still runs in full via
-        # `npm run test:integration` on known hardware, which is the only
-        # place a wall-clock number means anything. The 500-node case is
-        # tracked as an open issue (see the PR description), not silently
-        # passed.
-        #
-        # node_modules/.next are restated because a CLI --exclude replaces
-        # the config's own exclude list rather than adding to it.
         run: >-
           npx vitest run --config vitest.integration.config.mts --coverage
           --exclude 'node_modules/**'
           --exclude '.next/**'
           --exclude '**/export-performance.integration.test.ts'
-
-      - name: Production build
-        run: npm run build
-
-      - name: Upload coverage reports
+      - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-reports
-          path: |
-            coverage/
-            coverage-integration/
+          name: coverage-integration
+          path: coverage-integration/
           retention-days: 14
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Next.js reuses compiled output from .next/cache, so an unchanged
+      # page is not rebuilt. Keyed on the lockfile + source; falls back to
+      # the newest cache for the same lockfile.
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'config/**', 'prisma/schema.prisma') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - name: Production build
+        run: npm run build
+
+  # Single, stable check name for "everything above passed" — what the
+  # PR page and deploy.yml's gate look at.
+  quality:
+    name: Quality gate
+    if: always()
+    needs: [static, unit, integration, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All quality jobs passed
+        run: |
+          echo "static=${{ needs.static.result }} unit=${{ needs.unit.result }} integration=${{ needs.integration.result }} build=${{ needs.build.result }}"
+          test "${{ needs.static.result }}" = success
+          test "${{ needs.unit.result }}" = success
+          test "${{ needs.integration.result }}" = success
+          test "${{ needs.build.result }}" = success
 
   e2e:
     name: Playwright smoke tests
     runs-on: ubuntu-latest
-    needs: quality
-    # Ephemeral, CI-only PostgreSQL — same throwaway-credentials posture
-    # as the quality job above. e2e/support/seed-session.ts (mocked-auth
-    # E2E strategy, see docs/adr/0012-session-and-route-protection.md)
-    # writes a real session row here; no live IdP is ever contacted.
     services:
       postgres:
         image: postgres:16-alpine
@@ -239,71 +220,36 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
-      # CI runs a plain Postgres service container with no pooler in front
-      # of it, so the direct URL is the same one. It must still be set:
-      # prisma/schema.prisma declares `directUrl`, and every `prisma
-      # migrate` command fails without it (by design — see the datasource
-      # block's comment).
-      DIRECT_DATABASE_URL: "postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
-      NODE_ENV: "test"
-      # Non-standard host:port (127.0.0.1:PORT) under NODE_ENV=test needs
-      # this explicitly — see .env.test's comment on the same variable.
       AUTH_TRUST_HOST: "true"
       AUTH_SECRET: "ci-e2e-placeholder-secret-value-not-a-real-secret-32ch"
       AUTH_OIDC_ISSUER: "https://ci-e2e-placeholder.invalid/tenant/v2.0"
       AUTH_OIDC_CLIENT_ID: "ci-e2e-placeholder-client-id"
       AUTH_OIDC_CLIENT_SECRET: "ci-e2e-placeholder-client-secret"
-      # Same reason as the quality job above: e2e/users.spec.ts provisions
-      # users at `@northwind-example.test`, and provisioning rejects any
-      # address outside this allowlist. Both entries stay fictional.
       AUTH_ALLOWED_EMAIL_DOMAINS: "ci-e2e-placeholder.invalid,northwind-example.test"
-      AUTH_AUTO_PROVISION_VIEWERS: "false"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Prisma — generate client
-        run: npx prisma generate
-
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
       - name: Prisma — apply migrations to the clean CI database
         run: npx prisma migrate deploy
-
-      - name: Install Playwright browsers
+      # The Chromium download is cached per Playwright version; the OS
+      # packages it needs are still installed every run (they live outside
+      # the cache).
+      - name: Restore Playwright browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright browser (cache miss)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
-
+      - name: Install Playwright OS dependencies (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - name: Run Playwright smoke tests (excluding visual regression)
-        # Playwright snapshots are per-platform: the committed baselines
-        # are all `-chromium-darwin`, generated and eyeballed on macOS,
-        # and this runner is `chromium-linux`. With no Linux baseline,
-        # `toHaveScreenshot` writes the actual image and FAILS that run,
-        # so these can never pass here until Linux baselines exist.
-        #
-        # Not silently neutered: `--ignore-snapshots` would leave the
-        # tests green while asserting nothing, which is worse than not
-        # running them. They are skipped outright, keep every assertion,
-        # and still run at full strictness locally via `npm run test:e2e`.
-        #
-        # ONE-TIME FIX to restore this coverage in CI — run once, then
-        # delete this flag: re-run this job with
-        # `npm run test:e2e -- --update-snapshots`, download the
-        # `playwright-report` artifact, and commit the generated
-        # `*-chromium-linux.png` files next to the darwin ones. They must
-        # be generated on a Linux runner; images produced on macOS will
-        # not match because font rasterisation differs.
         run: npm run test:e2e -- --grep-invert "Organogram visual regression"
         env:
           CI: "true"
-
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
