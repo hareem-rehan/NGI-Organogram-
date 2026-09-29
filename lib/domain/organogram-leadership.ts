@@ -219,7 +219,13 @@ export function buildLeadershipView(
    * before. Empty department headings only make sense with a root to hang
    * them off and a department tier to hang them in.
    */
-  allDepartments: readonly { id: string; name: string; color: string | null }[] = []
+  allDepartments: readonly {
+    id: string;
+    name: string;
+    color: string | null;
+    /** Saved left-to-right order (D33); null/absent sorts after ordered ones, by name. */
+    displayOrder?: number | null;
+  }[] = []
 ): LeadershipView {
   const byId = new Map(nodes.map((n) => [n.positionId, n]));
 
@@ -302,6 +308,11 @@ export function buildLeadershipView(
     }
   }
 
+  const orderOf = new Map(
+    allDepartments
+      .filter((d) => d.displayOrder !== null && d.displayOrder !== undefined)
+      .map((d) => [d.id, d.displayOrder as number])
+  );
   const departmentGroups: DepartmentGroupNode[] = [...departmentsInUse.entries()]
     .map(([departmentId, meta]) => ({
       id: departmentGroupId(departmentId),
@@ -310,10 +321,16 @@ export function buildLeadershipView(
       color: meta.color,
       memberCount: memberCounts.get(departmentId) ?? 0,
     }))
-    // Deterministic ordering, matching the rest of this domain layer: name
-    // first so the chart reads alphabetically, id as tiebreak so two
-    // departments sharing a name still order stably.
-    .sort((a, b) => a.name.localeCompare(b.name) || a.departmentId.localeCompare(b.departmentId));
+    // Deterministic ordering: the saved left-to-right order first (D33 —
+    // set by dragging departments in Arrange mode), then name, then id, so
+    // departments nobody has ordered still read alphabetically and stably.
+    .sort(
+      (a, b) =>
+        (orderOf.get(a.departmentId) ?? Number.MAX_SAFE_INTEGER) -
+          (orderOf.get(b.departmentId) ?? Number.MAX_SAFE_INTEGER) ||
+        a.name.localeCompare(b.name) ||
+        a.departmentId.localeCompare(b.departmentId)
+    );
 
   const belowThresholdIds = new Set(
     visible

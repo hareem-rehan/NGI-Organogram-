@@ -11,6 +11,7 @@ import {
   moveDepartment,
   archiveDepartment,
   reactivateDepartment,
+  reorderDepartments,
   updateDepartment,
 } from "@/lib/services/department.service";
 import {
@@ -24,6 +25,7 @@ import {
   departmentStatusChangeSchema,
   listDepartmentsQuerySchema,
   moveDepartmentSchema,
+  reorderDepartmentsSchema,
   updateDepartmentSchema,
   type ListDepartmentsQuery,
 } from "@/lib/validation/department";
@@ -100,6 +102,24 @@ export async function deleteDepartmentAction(input: unknown): Promise<ActionResu
     const user = await requirePermission("departments:manage");
     const { departmentId } = deleteDepartmentSchema.parse(input);
     await deleteDepartment(departmentId, user.companyId, toAuditActor(user));
+    return null;
+  });
+}
+
+/**
+ * Saves the organogram's left-to-right department order after a drag in
+ * Arrange mode (docs/DECISIONS.md D33). Re-authorized and re-validated here
+ * regardless of the client (CLAUDE.md §1.8).
+ */
+export async function reorderDepartmentsAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("departments:manage");
+    const { orderedDepartmentIds } = reorderDepartmentsSchema.parse(input);
+    await reorderDepartments({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      orderedDepartmentIds,
+    });
     return null;
   });
 }

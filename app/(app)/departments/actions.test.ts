@@ -9,6 +9,7 @@ const { requirePermissionMock, serviceMocks, repositoryMocks } = vi.hoisted(() =
     archiveDepartment: vi.fn(),
     reactivateDepartment: vi.fn(),
     deleteDepartment: vi.fn(),
+    reorderDepartments: vi.fn(),
   },
   repositoryMocks: {
     listDepartmentsForCompany: vi.fn(),
@@ -29,6 +30,7 @@ import {
   listDepartmentsAction,
   moveDepartmentAction,
   reactivateDepartmentAction,
+  reorderDepartmentsAction,
   updateDepartmentAction,
 } from "./actions";
 
@@ -172,5 +174,43 @@ describe("department actions — server-side authorization", () => {
 
     expect(result.ok).toBe(false);
     expect(serviceMocks.deleteDepartment).not.toHaveBeenCalled();
+  });
+});
+
+describe("reorderDepartmentsAction (organogram drag-to-reorder, D33)", () => {
+  afterEach(() => vi.clearAllMocks());
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+
+  it("requires departments:manage and forwards the order with the trusted company", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.reorderDepartments.mockResolvedValue(undefined);
+
+    const result = await reorderDepartmentsAction({ orderedDepartmentIds: [B, A] });
+
+    expect(result.ok).toBe(true);
+    expect(requirePermissionMock).toHaveBeenCalledWith("departments:manage");
+    expect(serviceMocks.reorderDepartments).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: "company-trusted", orderedDepartmentIds: [B, A] })
+    );
+  });
+
+  it("a VIEWER cannot reorder — the service is never reached", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+    const result = await reorderDepartmentsAction({ orderedDepartmentIds: [A, B] });
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.reorderDepartments).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an empty list", { orderedDepartmentIds: [] }],
+    ["a duplicate id", { orderedDepartmentIds: [A, A] }],
+    ["a malformed id", { orderedDepartmentIds: ["nope"] }],
+    ["an extra key", { orderedDepartmentIds: [A], companyId: "other" }],
+  ])("rejects %s before the service", async (_label, input) => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    const result = await reorderDepartmentsAction(input);
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.reorderDepartments).not.toHaveBeenCalled();
   });
 });

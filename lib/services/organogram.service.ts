@@ -159,6 +159,7 @@ export async function getOrganogramChartData(
       code: d.code,
       color: d.color,
       parentDepartmentId: d.parentDepartmentId,
+      displayOrder: d.displayOrder,
     }));
 
   const { nodes, edges, summary } = projectLeadershipGraph(

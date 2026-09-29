@@ -105,6 +105,11 @@ interface OrganogramCanvasProps {
   onReparent?: (childPositionId: string, verdict: Extract<DropVerdict, { valid: true }>) => void;
   /** A refused drop (onto itself, a subordinate, or a sub-division box), with the reason. */
   onInvalidDrop?: (reason: string) => void;
+  /**
+   * A department box was dragged to a new place among its neighbours (D33):
+   * the department ids of that row, in their new left-to-right order.
+   */
+  onReorderDepartments?: (orderedDepartmentIds: string[]) => void;
   onEditCard?: (positionId: string) => void;
   onAddChild?: (positionId: string) => void;
   onRequestDelete?: (positionId: string) => void;
@@ -130,6 +135,7 @@ function CanvasInner({
   arrangeMode = false,
   onReparent,
   onInvalidDrop,
+  onReorderDepartments,
   onEditCard,
   onAddChild,
   onRequestDelete,
@@ -320,19 +326,46 @@ function CanvasInner({
 
   const onNodeDrag = useCallback(
     (_event: unknown, node: Node) => {
+      // A department box only reorders — no drop target to highlight.
+      if (nodeById.get(node.id)?.kind === "department") return;
       const judged = judgeDropFor(node);
       const next = judged ? { targetId: judged.targetId, valid: judged.verdict.valid } : null;
       setDropHint((current) =>
         current?.targetId === next?.targetId && current?.valid === next?.valid ? current : next
       );
     },
-    [judgeDropFor]
+    [judgeDropFor, nodeById]
   );
 
   const onNodeDragStop = useCallback(
     (_event: unknown, node: Node) => {
       setDropHint(null);
-      if (!arrangeMode || !onReparent) return;
+      if (!arrangeMode) return;
+
+      // A department box reorders among its neighbours (same display
+      // parent): its new place is wherever it was dropped, left to right.
+      const dragged = nodeById.get(node.id);
+      if (dragged?.kind === "department") {
+        const siblings = visibleNodes.filter(
+          (n) =>
+            n.kind === "department" &&
+            n.primaryReportsToPositionId === dragged.primaryReportsToPositionId
+        );
+        const xOf = (n: OrganogramNode) =>
+          n.positionId === node.id ? node.position.x : (positions.get(n.positionId)?.x ?? 0);
+        const before = siblings.map((n) => n.departmentId);
+        const after = [...siblings].sort((a, b) => xOf(a) - xOf(b)).map((n) => n.departmentId);
+        if (after.join() !== before.join()) onReorderDepartments?.(after);
+        setManualPositions((current) => {
+          if (!current.has(node.id)) return current;
+          const next = new Map(current);
+          next.delete(node.id);
+          return next;
+        });
+        return;
+      }
+
+      if (!onReparent) return;
       // A drop ONTO a card re-parents (a position) or moves into a department
       // (a department heading); a drop on empty canvas is left as a visual
       // nudge. Refused drops say why and snap back.
@@ -350,7 +383,16 @@ function CanvasInner({
         return next;
       });
     },
-    [arrangeMode, onReparent, onInvalidDrop, judgeDropFor]
+    [
+      arrangeMode,
+      onReparent,
+      onInvalidDrop,
+      onReorderDepartments,
+      judgeDropFor,
+      nodeById,
+      visibleNodes,
+      positions,
+    ]
   );
 
   // The card colour for a node in the active mode: a department heading, or
@@ -386,7 +428,7 @@ function CanvasInner({
         .map((node) => {
           // Only real positions drag, and never the root (it has no manager —
           // re-parenting it would leave the company with no root at all).
-          // Synthetic grouping cards (department, sub-division) never drag.
+          // Department boxes drag only to reorder (D33); sub-division boxes never drag.
           const isRealPosition = (node.kind ?? "position") === "position";
           const isRoot = node.primaryReportsToPositionId === null;
           return {
@@ -395,7 +437,9 @@ function CanvasInner({
             position: manualPositions.get(node.positionId) ?? positions.get(node.positionId)!,
             width: NODE_WIDTH,
             height: NODE_HEIGHT,
-            draggable: arrangeMode && isRealPosition && !isRoot,
+            // Real positions drag to re-parent; department boxes drag to
+            // reorder (D33). The root and sub-division boxes never drag.
+            draggable: arrangeMode && ((isRealPosition && !isRoot) || node.kind === "department"),
             data: {
               node,
               isCollapsed: collapsedIds.has(node.positionId),
