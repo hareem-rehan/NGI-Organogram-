@@ -198,7 +198,8 @@ describe("computeElkLayout — spacing inside a department box", () => {
     expect(p.get("lead")!.y - (p.get("dept")!.y + NODE_HEIGHT)).toBeGreaterThanOrEqual(LAYER_GAP);
     expect(p.get("r1")!.y - (p.get("lead")!.y + NODE_HEIGHT)).toBeGreaterThanOrEqual(LAYER_GAP);
     // Horizontal: two cards side by side.
-    const [left, right] = [p.get("r1")!.x, p.get("r2")!.x].sort((a, b) => a - b);
+    const left = Math.min(p.get("r1")!.x, p.get("r2")!.x);
+    const right = Math.max(p.get("r1")!.x, p.get("r2")!.x);
     expect(right - (left + NODE_WIDTH)).toBeGreaterThanOrEqual(NODE_GAP);
   });
 });
