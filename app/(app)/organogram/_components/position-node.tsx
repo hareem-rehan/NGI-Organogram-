@@ -112,7 +112,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        "pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
         dropHintClass(data.dropHint),
         !fill && "bg-muted"
       )}
@@ -128,6 +128,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         position={Position.Top}
         className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
       />
+      <GroupAddButton data={data} />
       <button
         type="button"
         onClick={() => onToggleCollapse(node.positionId)}
@@ -149,7 +150,12 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
               />
             )
           ) : null}
-          <p className="text-foreground line-clamp-2 text-[13px] leading-tight font-extrabold tracking-wide uppercase">
+          <p
+            className={cn(
+              "text-foreground line-clamp-2 text-[13px] leading-tight font-extrabold tracking-wide uppercase",
+              data.arrangeMode && "pr-7"
+            )}
+          >
             {node.departmentName}
           </p>
         </div>
@@ -162,6 +168,33 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         position={Position.Bottom}
         className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
       />
+    </div>
+  );
+}
+
+/**
+ * The + on a department or sub-division box (Arrange mode, managers only):
+ * opens Add Position pre-filled for that box — its department, its
+ * sub-division, and the position just above it as the manager.
+ */
+function GroupAddButton({ data }: { data: PositionNodeData }) {
+  const { node, arrangeMode, onAddChild } = data;
+  if (!arrangeMode || !onAddChild) return null;
+  const label = node.kind === "department" ? node.departmentName : node.title;
+  return (
+    <div className="nodrag absolute top-1 right-1 z-10">
+      <button
+        type="button"
+        aria-label={`Add a position in ${label}`}
+        title="Add a position here"
+        onClick={(event) => {
+          event.stopPropagation();
+          onAddChild(node.positionId);
+        }}
+        className="border-border bg-background/90 text-muted-foreground hover:text-foreground focus-visible:ring-ring flex size-6 items-center justify-center rounded border shadow-sm outline-none focus-visible:ring-2"
+      >
+        <Plus aria-hidden="true" className="size-3.5" />
+      </button>
     </div>
   );
 }
@@ -183,7 +216,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        "pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
         dropHintClass(data.dropHint),
         !fill && "bg-muted"
       )}
@@ -194,6 +227,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
         position={Position.Top}
         className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
       />
+      <GroupAddButton data={data} />
       <button
         type="button"
         onClick={() => onToggleCollapse(node.positionId)}
@@ -215,7 +249,12 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
               />
             )
           ) : null}
-          <p className="text-foreground line-clamp-2 text-[13px] leading-tight font-extrabold">
+          <p
+            className={cn(
+              "text-foreground line-clamp-2 text-[13px] leading-tight font-extrabold",
+              data.arrangeMode && "pr-7"
+            )}
+          >
             {node.title}
           </p>
         </div>

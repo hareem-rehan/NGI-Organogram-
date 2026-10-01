@@ -187,6 +187,7 @@ Open **Organogram** from the menu — this is the automatically-generated chart.
   - Either way, everyone under it moves along and keeps their own reporting lines. You confirm each move, and levels and role counts update automatically.
   - Drag any card (a position, a department box or a sub-division box) and let go on **empty space** to place it there. Only that card moves, and everyone sees it there, including in exports. To change the structure instead, let go **on** another card or heading; the card's whole branch then moves with it.
   - Drop a department box onto another department box to swap their order.
+  - **+ on any card**, whether a position, department box or sub-division box, opens **Add Position** already filled in for that spot: its department, its sub-division, and the position just above it as the manager. Pick the level and title, change anything else you like, and save.
   - **Reset positions** (shown once anything has been placed) puts every card back in the automatic layout. Reporting lines aren't changed.
   - While you drag, the box under the pointer shows a **green ring** if you can drop there, or a **red ring** if you can't. You can't drop a position onto itself or anyone who reports to it.
 

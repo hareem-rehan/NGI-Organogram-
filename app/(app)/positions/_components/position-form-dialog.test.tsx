@@ -467,6 +467,46 @@ describe("PositionFormDialog", () => {
     });
   });
 
+  describe("Pre-filled from an organogram + (2026-10-02)", () => {
+    it("pre-selects the sub-division and the manager it was opened for", () => {
+      const manager = makePosition({ id: "aaaaaaaa-0000-4000-8000-000000000001", title: "Lead" });
+      renderForm({
+        jobFamilies: [SWE_FAMILY],
+        allPositions: [manager],
+        initialDepartmentId: DEPARTMENT_ID,
+        initialReportsToPositionId: manager.id,
+        initialJobFamilyId: FAMILY_ID,
+      });
+      expect(screen.getByLabelText(/sub-division/i)).toHaveValue(FAMILY_ID);
+      expect(screen.getByLabelText(/^reports to$/i)).toHaveValue(manager.id);
+    });
+
+    it("lists a pre-filled manager from another department (a sub-department's head)", () => {
+      const other = "bbbbbbbb-0000-4000-8000-000000000002";
+      const parentDeptManager = makePosition({
+        id: "aaaaaaaa-0000-4000-8000-000000000003",
+        title: "Associate Director",
+        departmentId: other,
+        primaryReportsToPositionId: "aaaaaaaa-0000-4000-8000-000000000009",
+      });
+      renderForm({
+        allPositions: [parentDeptManager],
+        initialDepartmentId: DEPARTMENT_ID,
+        initialReportsToPositionId: parentDeptManager.id,
+      });
+      const reportsTo = screen.getByLabelText(/^reports to$/i);
+      expect(
+        within(reportsTo).getByRole("option", { name: "Associate Director" })
+      ).toBeInTheDocument();
+      expect(reportsTo).toHaveValue(parentDeptManager.id);
+    });
+
+    it("leaves the sub-division empty when none is pre-filled", () => {
+      renderForm({ jobFamilies: [SWE_FAMILY], initialDepartmentId: DEPARTMENT_ID });
+      expect(screen.getByLabelText(/sub-division/i)).toHaveValue("");
+    });
+  });
+
   describe("Level names follow the department (D32)", () => {
     it("shows the department's own Levels-Mapping names, and defaults elsewhere", async () => {
       const user = userEvent.setup();

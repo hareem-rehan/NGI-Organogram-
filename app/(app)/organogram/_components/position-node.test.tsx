@@ -498,3 +498,50 @@ describe("PositionNode — sub-division tier", () => {
     expect(screen.queryByText(/vacant/i)).not.toBeInTheDocument();
   });
 });
+
+describe("PositionNode — + on department and sub-division boxes (2026-10-02)", () => {
+  const groups = [
+    {
+      label: "department",
+      node: {
+        kind: "department" as const,
+        positionId: "dept:dept-1",
+        departmentName: "Engineering",
+      },
+      name: /add a position in engineering/i,
+    },
+    {
+      label: "sub-division",
+      node: { kind: "subdivision" as const, positionId: "subdiv:head:fam-1", title: "UI/UX" },
+      name: /add a position in ui\/ux/i,
+    },
+  ];
+
+  it.each(groups)(
+    "a $label box offers + in Arrange mode and reports which box",
+    async ({ node, name }) => {
+      const onAddChild = vi.fn();
+      const onToggleCollapse = vi.fn();
+      const user = userEvent.setup();
+      renderNode({
+        node: makeNode({ ...node, hasChildren: true, departmentMemberCount: 2 }),
+        arrangeMode: true,
+        onAddChild,
+        onToggleCollapse,
+      });
+      await user.click(screen.getByRole("button", { name }));
+      expect(onAddChild).toHaveBeenCalledWith(node.positionId);
+      // The + doesn't also collapse the box behind it.
+      expect(onToggleCollapse).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(groups)("a $label box shows no + outside Arrange mode", ({ node, name }) => {
+    renderNode({
+      node: makeNode({ ...node, hasChildren: true, departmentMemberCount: 2 }),
+      arrangeMode: false,
+      onAddChild: vi.fn(),
+    });
+    expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  });
+});

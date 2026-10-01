@@ -57,6 +57,7 @@ import {
   type OrganogramNode,
 } from "@/lib/domain/organogram";
 import type { DropVerdict } from "@/lib/domain/organogram-drag";
+import { addPositionPrefill } from "@/lib/domain/add-position-prefill";
 import { reorderDepartmentsAction } from "@/app/(app)/departments/actions";
 import { isBelowThreshold } from "@/lib/domain/organogram-leadership";
 import { computeFilterMatchIds, isAnyFilterActive } from "@/lib/domain/organogram-filters";
@@ -180,6 +181,7 @@ export function OrganogramView({
   const [formEditPosition, setFormEditPosition] = useState<Position | null>(null);
   const [formInitialDepartmentId, setFormInitialDepartmentId] = useState<string | null>(null);
   const [formInitialReportsToId, setFormInitialReportsToId] = useState<string | null>(null);
+  const [formInitialJobFamilyId, setFormInitialJobFamilyId] = useState<string | null>(null);
 
   // Re-parent (drag-drop) confirmation.
   interface MoveIntent {
@@ -307,21 +309,29 @@ export function OrganogramView({
         setFormEditPosition(target);
         setFormInitialDepartmentId(null);
         setFormInitialReportsToId(null);
+        setFormInitialJobFamilyId(null);
         setFormOpen(true);
       })();
     },
     [formOptions, loadFormOptions]
   );
 
+  // + on any card (position, department or sub-division box) opens Add
+  // Position pre-filled for where it was clicked: the department, the
+  // sub-division, and the position one level above as the manager.
   const handleAddChild = useCallback(
-    (parentId: string) => {
-      const parent = data?.nodes.find((n) => n.positionId === parentId);
-      if (!parent) return;
-      if (!formOptions) void loadFormOptions();
-      setFormEditPosition(null);
-      setFormInitialDepartmentId(parent.departmentId);
-      setFormInitialReportsToId(parentId);
-      setFormOpen(true);
+    (cardId: string) => {
+      const card = data?.nodes.find((n) => n.positionId === cardId);
+      if (!data || !card) return;
+      void (async () => {
+        const options = formOptions ?? (await loadFormOptions());
+        const prefill = addPositionPrefill(card, data.nodes, options?.allPositions ?? []);
+        setFormEditPosition(null);
+        setFormInitialDepartmentId(prefill.departmentId);
+        setFormInitialReportsToId(prefill.reportsToPositionId);
+        setFormInitialJobFamilyId(prefill.jobFamilyId);
+        setFormOpen(true);
+      })();
     },
     [data, formOptions, loadFormOptions]
   );
@@ -1090,6 +1100,7 @@ export function OrganogramView({
           allPositions={formOptions.allPositions}
           initialDepartmentId={formInitialDepartmentId}
           initialReportsToPositionId={formInitialReportsToId}
+          initialJobFamilyId={formInitialJobFamilyId}
           onSaved={refreshAfterMutation}
         />
       ) : null}
