@@ -43,6 +43,8 @@ interface PositionFormDialogProps {
    */
   initialDepartmentId?: string | null;
   initialReportsToPositionId?: string | null;
+  /** Create-mode prefill for the sub-division (+ on an organogram card or sub-division box). */
+  initialJobFamilyId?: string | null;
   /** Each department's own level names from Levels Mapping (D32). Optional: absent → standard names. */
   levelTitles?: readonly LevelTitleInput[];
   /** Sub-division level names (D34); preferred when a sub-division is chosen. */
@@ -146,6 +148,7 @@ export function PositionFormDialog({
   allPositions,
   initialDepartmentId,
   initialReportsToPositionId,
+  initialJobFamilyId,
   levelTitles = [],
   subDivisionLevelTitles = [],
   onSaved,
@@ -209,6 +212,8 @@ export function PositionFormDialog({
   initialDepartmentIdRef.current = initialDepartmentId;
   const initialReportsToPositionIdRef = useRef(initialReportsToPositionId);
   initialReportsToPositionIdRef.current = initialReportsToPositionId;
+  const initialJobFamilyIdRef = useRef(initialJobFamilyId);
+  initialJobFamilyIdRef.current = initialJobFamilyId;
 
   useEffect(() => {
     if (open && !wasOpen.current) {
@@ -230,7 +235,9 @@ export function PositionFormDialog({
           initialDepartmentIdRef.current ??
           currentDepartments[0]?.id ??
           "",
-        jobFamilyId: currentPosition?.jobFamilyId ?? null,
+        jobFamilyId: currentPosition
+          ? (currentPosition.jobFamilyId ?? null)
+          : (initialJobFamilyIdRef.current ?? null),
         // Prefer the ladder stored directly on the position; fall back to the
         // kind of its resolved family track for older rows.
         careerTrackKind: currentPosition?.ladderKind ?? currentTrack?.kind ?? null,
@@ -350,10 +357,37 @@ export function PositionFormDialog({
     () => new Map(jobFamilies.map((f) => [f.id, f.name])),
     [jobFamilies]
   );
-  const reportsToOptions: ComboboxOption[] = useMemo(
-    () => scopeReportsToOptions(allPositions, departmentId, reportsToQuery, jobFamilyNameById),
-    [allPositions, reportsToQuery, departmentId, jobFamilyNameById]
-  );
+  const reportsToOptions: ComboboxOption[] = useMemo(() => {
+    const scoped = scopeReportsToOptions(
+      allPositions,
+      departmentId,
+      reportsToQuery,
+      jobFamilyNameById
+    );
+    // The chosen manager is always listed, even when they sit in another
+    // department (e.g. a sub-department's head reporting into its parent
+    // department, pre-filled from the organogram's +).
+    const chosen = primaryReportsToPositionId
+      ? allPositions.find((p) => p.id === primaryReportsToPositionId)
+      : undefined;
+    if (!chosen || scoped.some((o) => o.value === chosen.id)) return scoped;
+    const q = reportsToQuery.trim().toLowerCase();
+    if (
+      q &&
+      !chosen.title.toLowerCase().includes(q) &&
+      !chosen.positionCode.toLowerCase().includes(q)
+    ) {
+      return scoped;
+    }
+    return [
+      {
+        value: chosen.id,
+        label: chosen.title,
+        description: reportsToDescription(chosen, jobFamilyNameById),
+      },
+      ...scoped,
+    ];
+  }, [allPositions, reportsToQuery, departmentId, jobFamilyNameById, primaryReportsToPositionId]);
 
   // Second-head options: "None", then the same scoped positions as "Reports
   // to" minus whichever is already chosen as the first head.

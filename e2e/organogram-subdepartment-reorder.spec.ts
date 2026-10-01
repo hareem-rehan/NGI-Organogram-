@@ -129,4 +129,24 @@ test.describe("Organogram — sub-department reorder", () => {
       )
       .toBeLessThan(2);
   });
+
+  test("+ on a sub-department box opens Add Position for that department, reporting to its manager", async ({
+    page,
+  }) => {
+    await page.goto("/organogram");
+    await page.getByRole("button", { name: /arrange/i }).click();
+    await page.getByRole("button", { name: `Add a position in Product ${suffix}` }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("heading", { name: "Add Position" })).toBeVisible();
+    // Department is the sub-department; the manager is the CDS head that
+    // Product's own manager reports to (one level above the box).
+    await expect(
+      dialog.getByRole("combobox", { name: "Department" }).locator("option:checked")
+    ).toHaveText(`Product ${suffix}`);
+    await expect(dialog.getByRole("combobox", { name: /^reports to$/i })).toHaveValue(
+      `CDS Head ${suffix}`
+    );
+    await dialog.getByRole("button", { name: /cancel/i }).click();
+  });
 });
