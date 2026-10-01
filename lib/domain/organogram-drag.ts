@@ -141,3 +141,18 @@ export function pickDropTargetAtPoint(
   }
   return best?.id ?? null;
 }
+
+/**
+ * Where every card of a dragged branch should be drawn mid-drag: each one's
+ * position when the drag started, shifted by how far the dragged card has
+ * moved — so the whole branch travels with the card under the pointer
+ * (user request, 2026-10-01) instead of the card leaving its reports behind.
+ */
+export function moveBranch(
+  startPositions: ReadonlyMap<string, { x: number; y: number }>,
+  delta: { x: number; y: number }
+): Map<string, { x: number; y: number }> {
+  const moved = new Map<string, { x: number; y: number }>();
+  for (const [id, p] of startPositions) moved.set(id, { x: p.x + delta.x, y: p.y + delta.y });
+  return moved;
+}

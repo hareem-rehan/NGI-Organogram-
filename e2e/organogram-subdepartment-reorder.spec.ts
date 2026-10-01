@@ -76,4 +76,38 @@ test.describe("Organogram — sub-department reorder", () => {
     await page.waitForTimeout(600);
     expect((await project.boundingBox())!.x).toBeLessThan((await product.boundingBox())!.x);
   });
+
+  test("a box's whole branch moves with it while dragging, and snaps back on an empty drop", async ({
+    page,
+  }) => {
+    await page.goto("/organogram");
+    await page.getByRole("button", { name: /arrange/i }).click();
+    const product = box(page, `Product ${suffix}`);
+    const manager = box(page, `Product Manager ${suffix}`);
+    await expect(manager).toBeVisible();
+    await page.getByRole("button", { name: /fit to view/i }).click();
+    await page.locator(".react-flow").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600);
+
+    const boxStart = (await product.boundingBox())!;
+    const managerStart = (await manager.boundingBox())!;
+    await page.mouse.move(boxStart.x + boxStart.width / 2, boxStart.y + boxStart.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(boxStart.x + boxStart.width / 2, boxStart.y + boxStart.height / 2 + 60, {
+      steps: 10,
+    });
+
+    // Mid-drag: the report moved down by the same amount as the box.
+    const boxMid = (await product.boundingBox())!;
+    const managerMid = (await manager.boundingBox())!;
+    expect(boxMid.y - boxStart.y).toBeGreaterThan(20);
+    expect(Math.abs(managerMid.y - managerStart.y - (boxMid.y - boxStart.y))).toBeLessThan(2);
+    expect(Math.abs(managerMid.x - managerStart.x - (boxMid.x - boxStart.x))).toBeLessThan(2);
+
+    // Let go over empty canvas: box and branch return to the layout.
+    await page.mouse.up();
+    await expect
+      .poll(async () => Math.round((await manager.boundingBox())!.y))
+      .toBe(Math.round(managerStart.y));
+  });
 });
