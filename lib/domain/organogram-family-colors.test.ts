@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   FAMILY_COLOR_PALETTE,
   buildFamilyColorMap,
+  cardTextColor,
   departmentColorFromHex,
   contrastRatio,
   vividFill,
   CARD_TEXT_COLOR,
-  VISILY_DEPARTMENT_SWATCHES,
   lightTint,
 } from "./organogram-family-colors";
 
@@ -64,61 +64,40 @@ describe("buildFamilyColorMap", () => {
   });
 });
 
-describe("departmentColorFromHex", () => {
-  it("uses a non-reference hex as the accent and a pastel of it as the fill", () => {
-    // #16a34a is not a Visily reference colour, so the generic rule applies.
-    const c = departmentColorFromHex("#16a34a");
-    expect(c.accent).toBe("#16a34a");
-    expect(c.fill).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(c.fill).not.toBe(c.accent);
-    // A vivid (half-strength) fill, lightened only as far as readability needs.
-    expect(c.fill).toBe(vividFill("#16a34a"));
-    expect(contrastRatio(c.fill, CARD_TEXT_COLOR)).toBeGreaterThanOrEqual(4.5);
+describe("departmentColorFromHex (exact colour, 2026-10-02)", () => {
+  it("fills the card with exactly the chosen colour", () => {
+    expect(departmentColorFromHex("#111ED4")).toEqual({
+      fill: "#111ed4",
+      accent: "#111ed4",
+      text: "#ffffff",
+    });
+    expect(departmentColorFromHex(" #f8d850 ")).toMatchObject({
+      fill: "#f8d850",
+      accent: "#f8d850",
+    });
   });
 
-  it("renders a Visily reference colour with the reference's exact fill and border", () => {
-    expect(departmentColorFromHex("#4fae2f")).toEqual({ fill: "#d3f1b7", accent: "#95d25f" });
-    expect(departmentColorFromHex("#E8811A")).toEqual({ fill: "#f2a84b", accent: "#bc7529" });
-    expect(departmentColorFromHex(" #d9a400 ")).toEqual({ fill: "#f8d850", accent: "#d1b544" });
+  it.each(["#000000", "#111ed4", "#1e3a8a", "#7f1d1d", "#16a34a", "#e8811a", "#f8d850", "#ffffff"])(
+    "picks the more readable text colour on %s (at least 4.5:1 where either can)",
+    (hex) => {
+      const c = departmentColorFromHex(hex);
+      const best = Math.max(contrastRatio(hex, "#ffffff"), contrastRatio(hex, CARD_TEXT_COLOR));
+      expect(contrastRatio(c.fill, c.text!)).toBe(best);
+    }
+  );
+
+  it("uses white text on a dark colour and dark text on a light one", () => {
+    expect(cardTextColor("#111ed4")).toBe("#ffffff");
+    expect(cardTextColor("#f8d850")).toBe(CARD_TEXT_COLOR);
   });
 
-  it("falls back to a neutral grey when the colour is null or invalid", () => {
+  it("falls back to a neutral grey card when the colour is null or invalid", () => {
     const nullish = departmentColorFromHex(null);
     const invalid = departmentColorFromHex("not-a-hex");
     expect(nullish.accent).toBe("#94a3b8");
     expect(invalid.accent).toBe("#94a3b8");
     expect(nullish).toEqual(invalid);
   });
-});
-
-describe("VISILY_DEPARTMENT_SWATCHES — readability (WCAG AA)", () => {
-  // Relative luminance / contrast ratio per WCAG 2.x.
-  function luminance(hex: string): number {
-    const int = parseInt(hex.slice(1), 16);
-    const channel = (c: number) => {
-      const s = c / 255;
-      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-    };
-    return (
-      0.2126 * channel((int >> 16) & 0xff) +
-      0.7152 * channel((int >> 8) & 0xff) +
-      0.0722 * channel(int & 0xff)
-    );
-  }
-  function contrast(a: string, b: string): number {
-    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-    return (hi! + 0.05) / (lo! + 0.05);
-  }
-  // The card's text colour (app/globals.css --color-foreground). Filled cards
-  // render ALL their text in it (no muted grey), so this is the pair to check.
-  const CARD_TEXT = "#2d2d2d";
-
-  it.each([...VISILY_DEPARTMENT_SWATCHES])(
-    "%s fill keeps card text at >= 4.5:1",
-    (_hex, swatch) => {
-      expect(contrast(swatch.fill, CARD_TEXT)).toBeGreaterThanOrEqual(4.5);
-    }
-  );
 });
 
 describe("vividFill / palette readability (WCAG AA)", () => {

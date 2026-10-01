@@ -209,12 +209,11 @@ function renderDepartmentCard(
   colorMode: ExportColorMode = "department",
   familyColorById?: ReadonlyMap<string, FamilyColor>
 ): string {
-  const { fill: bodyFill, accent: accentColor } = cardColorsFor(
-    node,
-    colorMode,
-    familyColorById,
-    departmentColorByName
-  );
+  const {
+    fill: bodyFill,
+    accent: accentColor,
+    text: textColor,
+  } = cardColorsFor(node, colorMode, familyColorById, departmentColorByName);
   const nameLines = wrapText(node.departmentName.toUpperCase(), 22, 2);
 
   const parts: string[] = [];
@@ -224,11 +223,11 @@ function renderDepartmentCard(
   );
   nameLines.forEach((line, index) => {
     parts.push(
-      `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" letter-spacing="0.6" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
+      `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" letter-spacing="0.6" fill="${textColor}">${escapeXmlText(line)}</text>`
     );
   });
   parts.push(
-    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${EXPORT_COLORS.foreground}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
+    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${textColor}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
   );
   parts.push("</g>");
   return parts.join("");
@@ -247,12 +246,11 @@ function renderSubdivisionCard(
   colorMode: ExportColorMode = "department",
   familyColorById?: ReadonlyMap<string, FamilyColor>
 ): string {
-  const { fill: bodyFill, accent: accentColor } = cardColorsFor(
-    node,
-    colorMode,
-    familyColorById,
-    departmentColorByName
-  );
+  const {
+    fill: bodyFill,
+    accent: accentColor,
+    text: textColor,
+  } = cardColorsFor(node, colorMode, familyColorById, departmentColorByName);
   const nameLines = wrapText(node.title, 22, 2);
 
   const parts: string[] = [];
@@ -262,11 +260,11 @@ function renderSubdivisionCard(
   );
   nameLines.forEach((line, index) => {
     parts.push(
-      `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
+      `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" fill="${textColor}">${escapeXmlText(line)}</text>`
     );
   });
   parts.push(
-    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${EXPORT_COLORS.foreground}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
+    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${textColor}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
   );
   parts.push("</g>");
   return parts.join("");
@@ -284,7 +282,7 @@ function cardColorsFor(
   colorMode: ExportColorMode,
   familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
   departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
-): { fill: string; accent: string } {
+): { fill: string; accent: string; text: string } {
   // Sub-division mode colours ONLY sub-divisions (docs/DECISIONS.md D29):
   // department headings and cards outside any sub-division are neutral.
   if (colorMode === "family") {
@@ -293,13 +291,17 @@ function cardColorsFor(
         ? familyColorById?.get(node.jobFamilyId)
         : undefined;
     return fc
-      ? { fill: fc.fill, accent: fc.accent }
-      : { fill: EXPORT_COLORS.background, accent: EXPORT_COLORS.border };
+      ? { fill: fc.fill, accent: fc.accent, text: fc.text ?? EXPORT_COLORS.foreground }
+      : {
+          fill: EXPORT_COLORS.background,
+          accent: EXPORT_COLORS.border,
+          text: EXPORT_COLORS.foreground,
+        };
   }
   const dc = departmentColorByName?.get(node.departmentName);
-  if (dc) return { fill: dc.fill, accent: dc.accent };
+  if (dc) return { fill: dc.fill, accent: dc.accent, text: dc.text ?? EXPORT_COLORS.foreground };
   const accent = resolveDepartmentColor(node.departmentColor);
-  return { fill: lightTint(accent), accent };
+  return { fill: lightTint(accent), accent, text: EXPORT_COLORS.foreground };
 }
 
 function renderNodeCard(
@@ -309,12 +311,11 @@ function renderNodeCard(
   familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
   departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
 ): string {
-  const { fill: bodyFill, accent: accentColor } = cardColorsFor(
-    node,
-    colorMode,
-    familyColorById,
-    departmentColorByName
-  );
+  const {
+    fill: bodyFill,
+    accent: accentColor,
+    text: textColor,
+  } = cardColorsFor(node, colorMode, familyColorById, departmentColorByName);
   const isMatch = node.matchState === "match";
   const isContext = node.matchState === "context";
   // A search match keeps the strong primary ring; otherwise the border is the
@@ -359,7 +360,7 @@ function renderNodeCard(
   }
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="${titleX}" y="${19 + index * 15}" font-size="13" font-weight="800" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(line)}</text>`
+      `<text x="${titleX}" y="${19 + index * 15}" font-size="13" font-weight="800" fill="${textColor}">${escapeXmlText(line)}</text>`
     );
   });
 
@@ -370,7 +371,7 @@ function renderNodeCard(
   // fills.
   if (occupantName) {
     parts.push(
-      `<text x="10" y="${20 + titleLines.length * 15}" font-size="12" font-weight="700" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(occupantName)}</text>`
+      `<text x="10" y="${20 + titleLines.length * 15}" font-size="12" font-weight="700" fill="${textColor}">${escapeXmlText(occupantName)}</text>`
     );
   }
 
@@ -380,8 +381,8 @@ function renderNodeCard(
   const rolesUnder = node.totalReportCount ?? node.displayChildCount ?? node.directReportCount ?? 0;
   const footerY = NODE_HEIGHT - 7;
   parts.push(
-    `<line x1="8" y1="${NODE_HEIGHT - 20}" x2="${NODE_WIDTH - 8}" y2="${NODE_HEIGHT - 20}" stroke="${EXPORT_COLORS.foreground}" stroke-opacity="0.15" stroke-width="1" />`,
-    `<text x="10" y="${footerY}" font-size="10.5" font-weight="600" fill="${EXPORT_COLORS.foreground}">${
+    `<line x1="8" y1="${NODE_HEIGHT - 20}" x2="${NODE_WIDTH - 8}" y2="${NODE_HEIGHT - 20}" stroke="${textColor}" stroke-opacity="0.25" stroke-width="1" />`,
+    `<text x="10" y="${footerY}" font-size="10.5" font-weight="600" fill="${textColor}">${
       rolesUnder > 0
         ? `<tspan font-weight="800">${rolesUnder}</tspan> ${rolesUnder === 1 ? "role" : "roles"} under`
         : "No roles under"
@@ -390,7 +391,7 @@ function renderNodeCard(
   const gradeFamilyLine = [node.jobGradeCode, node.jobFamilyName].filter(Boolean).join(" · ");
   if (gradeFamilyLine) {
     parts.push(
-      `<text x="${NODE_WIDTH - 10}" y="${footerY}" font-size="10.5" font-weight="700" text-anchor="end" fill="${EXPORT_COLORS.foreground}">${escapeXmlText(wrapText(gradeFamilyLine, 16, 1)[0] ?? "")}</text>`
+      `<text x="${NODE_WIDTH - 10}" y="${footerY}" font-size="10.5" font-weight="700" text-anchor="end" fill="${textColor}">${escapeXmlText(wrapText(gradeFamilyLine, 16, 1)[0] ?? "")}</text>`
     );
   }
 

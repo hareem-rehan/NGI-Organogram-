@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
 import type { OrganogramNode } from "@/lib/domain/organogram";
-import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
+import { CARD_TEXT_COLOR, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 /** Which dimension drives a card's colour. Department is the default. */
 export type OrganogramColorMode = "department" | "family";
@@ -24,7 +24,22 @@ export type PositionNodeMatchState = "none" | "match" | "context";
  * (organogram-family-colors.test.ts). Uncoloured cards keep the muted grey.
  */
 function secondaryTextClass(fill: string | undefined): string {
-  return fill ? "text-foreground" : "text-muted-foreground";
+  // On a coloured card all text inherits the card's own readable colour.
+  return fill ? "" : "text-muted-foreground";
+}
+
+/**
+ * The text colour for a coloured card: white or the dark card text,
+ * whichever reads better on its (exact) colour. Undefined on a neutral card,
+ * which keeps the theme's foreground.
+ */
+function cardTextColorOf(color: FamilyColor | null | undefined): string | undefined {
+  return color?.fill ? (color.text ?? CARD_TEXT_COLOR) : undefined;
+}
+
+/** A lighter divider for white text on a dark card; the theme's otherwise. */
+function dividerColorOf(color: FamilyColor | null | undefined): string | undefined {
+  return cardTextColorOf(color) === "#ffffff" ? "rgba(255,255,255,0.35)" : undefined;
 }
 
 export interface PositionNodeData extends Record<string, unknown> {
@@ -112,7 +127,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
         dropHintClass(data.dropHint),
         !fill && "bg-muted"
       )}
@@ -121,6 +136,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         height: NODE_HEIGHT,
         borderColor: border,
         backgroundColor: fill,
+        color: cardTextColorOf(data.cardColor),
       }}
     >
       <Handle
@@ -152,7 +168,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
           ) : null}
           <p
             className={cn(
-              "text-foreground line-clamp-2 text-[13px] leading-tight font-extrabold tracking-wide uppercase",
+              "line-clamp-2 text-[13px] leading-tight font-extrabold tracking-wide uppercase",
               data.arrangeMode && "pr-7"
             )}
           >
@@ -216,11 +232,17 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
         dropHintClass(data.dropHint),
         !fill && "bg-muted"
       )}
-      style={{ width: NODE_WIDTH, height: NODE_HEIGHT, borderColor: border, backgroundColor: fill }}
+      style={{
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        borderColor: border,
+        backgroundColor: fill,
+        color: cardTextColorOf(data.cardColor),
+      }}
     >
       <Handle
         type="target"
@@ -251,7 +273,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
           ) : null}
           <p
             className={cn(
-              "text-foreground line-clamp-2 text-[13px] leading-tight font-extrabold",
+              "line-clamp-2 text-[13px] leading-tight font-extrabold",
               data.arrangeMode && "pr-7"
             )}
           >
@@ -329,7 +351,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // inherited value at this element so the buttons below actually
         // receive events — see e2e/organogram.spec.ts, which caught this
         // as a real click-through-to-the-pane failure before this fix.
-        "pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm transition-colors",
+        "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm transition-colors",
         dropHintClass(data.dropHint),
         // Neutral card background only when no colour fill applies.
         !cardBackground && "bg-background",
@@ -355,6 +377,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // Own same-hue border, unless selection/match override it via class.
         borderColor: isSelected || matchState === "match" ? undefined : borderColor,
         backgroundColor: cardBackground,
+        color: cardTextColorOf(cardColor),
       }}
     >
       <Handle
@@ -425,7 +448,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
           <p
-            className={`text-foreground line-clamp-2 text-[13px] leading-[15px] font-extrabold tracking-tight ${
+            className={`line-clamp-2 text-[13px] leading-[15px] font-extrabold tracking-tight ${
               // Leave room for the Add / Delete buttons pinned top-right in
               // Arrange mode, so they never sit on top of the title.
               arrangeMode ? "pr-14" : ""
@@ -444,15 +467,16 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           </div>
         </div>
         {occupantName ? (
-          <p className={cn("text-foreground mt-0.5 truncate text-xs leading-4 font-bold")}>
-            {occupantName}
-          </p>
+          <p className={cn("mt-0.5 truncate text-xs leading-4 font-bold")}>{occupantName}</p>
         ) : null}
       </button>
       {/* Footer: how many roles sit under it (the expand control) on the
           left, the level (and sub-division) on the right — one row, so the
           card stays compact (docs/DECISIONS.md D30). */}
-      <div className="border-foreground/15 mx-2 mb-1 flex min-w-0 items-center justify-between gap-2 border-t pt-1">
+      <div
+        className="border-foreground/15 mx-2 mb-1 flex min-w-0 items-center justify-between gap-2 border-t pt-1"
+        style={{ borderTopColor: dividerColorOf(cardColor) }}
+      >
         {node.hasChildren ? (
           <button
             type="button"
@@ -473,7 +497,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             ) : (
               <ChevronDown aria-hidden="true" className="size-3.5" />
             )}
-            <span className="text-foreground font-extrabold">{rolesUnder}</span>
+            <span className="font-extrabold">{rolesUnder}</span>
             {rolesUnder === 1 ? " role under" : " roles under"}
           </button>
         ) : (
@@ -485,7 +509,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           >
             {rolesUnder > 0 ? (
               <>
-                <span className="text-foreground font-extrabold">{rolesUnder}</span>
+                <span className="font-extrabold">{rolesUnder}</span>
                 {rolesUnder === 1 ? " role under" : " roles under"}
               </>
             ) : (
@@ -500,9 +524,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
               "min-w-0 truncate text-right text-[11px] font-semibold"
             )}
           >
-            {node.jobGradeCode ? (
-              <span className="text-foreground font-extrabold">{node.jobGradeCode}</span>
-            ) : null}
+            {node.jobGradeCode ? <span className="font-extrabold">{node.jobGradeCode}</span> : null}
             {node.jobGradeCode && node.jobFamilyName ? " · " : null}
             {node.jobFamilyName ?? null}
           </p>
