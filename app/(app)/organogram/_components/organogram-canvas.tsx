@@ -24,9 +24,13 @@ import {
 } from "@/app/(app)/organogram/_lib/elk-layout";
 import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import {
+  applyCardOffsets,
+  departmentOrderAfterDrop,
+  type CardOffset,
+} from "@/lib/domain/organogram-card-offsets";
+import {
   collectDisplayedDescendants,
   judgeDrop,
-  moveBranch,
   pickDropTargetAtPoint,
   pointerClientPoint,
   type DropVerdict,
@@ -93,11 +97,10 @@ interface OrganogramCanvasProps {
   centerOnNodeId?: string | null;
   /**
    * Arrange mode (managers only, off by default — docs/DECISIONS.md D21).
-   * When on, real position cards become draggable: dropping one onto another
-   * card re-parents it (`onReparent`), while a drop on empty canvas just
-   * nudges it visually for this session (never persisted — the layout is
-   * always auto-generated per CLAUDE.md §0). Cards also expose Add-report /
-   * Delete / Edit via the callbacks below. All four are no-ops when off.
+   * When on, every card drags. Dropping a position onto another card
+   * re-parents it (`onReparent`); dropping any card on empty canvas places it
+   * there for everyone (`onPlaceCard`, D38). Cards also expose Add-report /
+   * Delete / Edit via the callbacks below. All are no-ops when off.
    */
   arrangeMode?: boolean;
   /**
@@ -109,14 +112,23 @@ interface OrganogramCanvasProps {
   /** A refused drop (onto itself, a subordinate, or a sub-division box), with the reason. */
   onInvalidDrop?: (reason: string) => void;
   /**
-   * A department box was dragged to a new place among its neighbours (D33):
-   * the department ids of that row, in their new left-to-right order.
+   * A department box was dropped onto a sibling department box (D33, D38):
+   * the department ids of that row in their new order, and the dragged box.
    */
-  onReorderDepartments?: (orderedDepartmentIds: string[]) => void;
+  onReorderDepartments?: (orderedDepartmentIds: string[], draggedNodeKey: string) => void;
+  /**
+   * Saved card offsets from the automatic layout, keyed by node id (D38).
+   * Cards without one sit where the layout puts them.
+   */
+  cardOffsets?: Readonly<Record<string, CardOffset>>;
+  /** A card was dropped on empty canvas: its new offset from the automatic spot. */
+  onPlaceCard?: (nodeKey: string, dx: number, dy: number) => void;
   onEditCard?: (positionId: string) => void;
   onAddChild?: (positionId: string) => void;
   onRequestDelete?: (positionId: string) => void;
 }
+
+const NO_OFFSETS: Readonly<Record<string, CardOffset>> = {};
 
 function CanvasInner({
   visibleNodes,
@@ -139,14 +151,21 @@ function CanvasInner({
   onReparent,
   onInvalidDrop,
   onReorderDepartments,
+  cardOffsets = NO_OFFSETS,
+  onPlaceCard,
   onEditCard,
   onAddChild,
   onRequestDelete,
 }: OrganogramCanvasProps) {
   const [positions, setPositions] = useState<Map<string, LayoutPosition>>(new Map());
-  // Ephemeral per-session drag offsets in arrange mode — NEVER persisted (the
-  // chart layout is always auto-generated, CLAUDE.md §0). Cleared whenever the
-  // visible set changes (a re-layout) or arrange mode turns off.
+  // Where each card is drawn: its automatic spot plus any HR-saved offset (D38).
+  const placedPositions = useMemo(
+    () => applyCardOffsets(positions, cardOffsets),
+    [positions, cardOffsets]
+  );
+  // Where a card is while it is being dragged (transient). Saved placements
+  // live in `cardOffsets` (D38). Cleared whenever the visible set changes (a
+  // re-layout) or arrange mode turns off.
   const [manualPositions, setManualPositions] = useState<Map<string, LayoutPosition>>(new Map());
   const { fitView, setCenter, setViewport, getNodes, screenToFlowPosition } = useReactFlow();
   // Canvas pane size, for computing the first-open framing directly.
@@ -266,18 +285,10 @@ function CanvasInner({
     setManualPositions((current) => (current.size === 0 ? current : new Map()));
   }, [nodeIdsKey, edgesKey, arrangeMode]);
 
-  // The card being dragged and everything drawn below it, with where each
-  // was when the drag began, so the whole branch can travel with the card.
-  const dragBranchRef = useRef<{
-    id: string;
-    start: { x: number; y: number };
-    branchStart: Map<string, { x: number; y: number }>;
-  } | null>(null);
-
   // Drag bookkeeping (arrange mode only). Position changes stream in during a
-  // drag; we mirror them into `manualPositions` so the card follows the cursor,
-  // and shift its whole branch by the same amount so its reports (and the
-  // lines to them) move with it. Re-parenting / reordering is decided on drop.
+  // drag; we mirror them into `manualPositions` so the card follows the
+  // cursor. Only the dragged card moves (D38) — what the drop means is
+  // decided on release.
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       if (!arrangeMode) return;
@@ -287,14 +298,6 @@ function CanvasInner({
           if (change.type === "position" && change.position) {
             if (next === current) next = new Map(current);
             next.set(change.id, change.position);
-            const branch = dragBranchRef.current;
-            if (branch && branch.id === change.id) {
-              const delta = {
-                x: change.position.x - branch.start.x,
-                y: change.position.y - branch.start.y,
-              };
-              for (const [id, p] of moveBranch(branch.branchStart, delta)) next.set(id, p);
-            }
           }
         }
         return next;
@@ -303,15 +306,12 @@ function CanvasInner({
     [arrangeMode]
   );
 
-  /** Puts a dragged card and its branch back under the computed layout. */
-  const releaseBranch = useCallback((draggedId: string) => {
-    const branchIds = dragBranchRef.current?.branchStart.keys() ?? [];
-    const ids = new Set([draggedId, ...branchIds]);
-    dragBranchRef.current = null;
+  /** Drops the transient drag position, so the card is drawn from layout + saved offset. */
+  const releaseDrag = useCallback((draggedId: string) => {
     setManualPositions((current) => {
-      if (![...ids].some((id) => current.has(id))) return current;
+      if (!current.has(draggedId)) return current;
       const next = new Map(current);
-      for (const id of ids) next.delete(id);
+      next.delete(draggedId);
       return next;
     });
   }, []);
@@ -328,11 +328,11 @@ function CanvasInner({
     [visibleNodes]
   );
 
-  const judgeDropFor = useCallback(
-    (event: unknown, dragged: Node): { targetId: string; verdict: DropVerdict } | null => {
-      // The target is whatever card or department heading is under the
-      // mouse pointer (not the card the dragged one overlaps most), so a
-      // drop lands exactly where the user points, even when zoomed out.
+  /** The card or department heading under the mouse pointer, if any. */
+  const targetUnderPointer = useCallback(
+    (event: unknown, dragged: Node): OrganogramNode | null => {
+      // Judged by the pointer, not by overlap, so a drop lands exactly where
+      // the user points, even when zoomed out (D35).
       const client = pointerClientPoint(event);
       if (!client) return null;
       const point = screenToFlowPosition(client);
@@ -344,90 +344,112 @@ function CanvasInner({
         height: n.measured?.height ?? n.height ?? NODE_HEIGHT,
       }));
       const targetId = pickDropTargetAtPoint(point, rects, dragged.id);
-      const targetNode = targetId ? nodeById.get(targetId) : undefined;
-      if (!targetId || !targetNode) return null;
-      return {
-        targetId,
-        verdict: judgeDrop(dragged.id, targetNode, dragDescendantsRef.current),
-      };
+      return targetId ? (nodeById.get(targetId) ?? null) : null;
     },
     [getNodes, screenToFlowPosition, nodeById]
   );
 
+  /**
+   * What a dragged card's drop means. Only a real, non-root position can be
+   * re-attached; a department box can swap places with a sibling department
+   * box; everything else (the root, sub-division boxes) is only ever placed.
+   */
+  const judgeDropFor = useCallback(
+    (event: unknown, dragged: Node): { targetId: string; verdict: DropVerdict } | null => {
+      const draggedNode = nodeById.get(dragged.id);
+      const isPlainPosition =
+        (draggedNode?.kind ?? "position") === "position" &&
+        draggedNode?.primaryReportsToPositionId !== null;
+      if (!isPlainPosition) return null;
+      const target = targetUnderPointer(event, dragged);
+      if (!target) return null;
+      return {
+        targetId: target.positionId,
+        verdict: judgeDrop(dragged.id, target, dragDescendantsRef.current),
+      };
+    },
+    [nodeById, targetUnderPointer]
+  );
+
   const onNodeDragStart = useCallback(
     (_event: unknown, node: Node) => {
-      const descendants = collectDisplayedDescendants(node.id, visibleEdges);
-      dragDescendantsRef.current = descendants;
-      const branchStart = new Map<string, { x: number; y: number }>();
-      for (const id of descendants) {
-        const p = manualPositions.get(id) ?? positions.get(id);
-        if (p) branchStart.set(id, p);
-      }
-      dragBranchRef.current = { id: node.id, start: { ...node.position }, branchStart };
+      dragDescendantsRef.current = collectDisplayedDescendants(node.id, visibleEdges);
     },
-    [visibleEdges, manualPositions, positions]
+    [visibleEdges]
   );
 
   const onNodeDrag = useCallback(
     (event: unknown, node: Node) => {
-      // A department box only reorders — no drop target to highlight.
-      if (nodeById.get(node.id)?.kind === "department") return;
       const judged = judgeDropFor(event, node);
       const next = judged ? { targetId: judged.targetId, valid: judged.verdict.valid } : null;
       setDropHint((current) =>
         current?.targetId === next?.targetId && current?.valid === next?.valid ? current : next
       );
     },
-    [judgeDropFor, nodeById]
+    [judgeDropFor]
   );
 
   const onNodeDragStop = useCallback(
     (event: unknown, node: Node) => {
       setDropHint(null);
       if (!arrangeMode) return;
-
-      // A department box reorders among its neighbours (same display
-      // parent): its new place is wherever it was dropped, left to right.
       const dragged = nodeById.get(node.id);
+
+      // Placing a card: it stays exactly where it was let go, saved as an
+      // offset from its automatic spot (D38) — only that card moves.
+      const place = () => {
+        const auto = positions.get(node.id);
+        if (auto) onPlaceCard?.(node.id, node.position.x - auto.x, node.position.y - auto.y);
+        releaseDrag(node.id);
+      };
+
+      // A department box dropped ONTO a sibling department box takes its
+      // place in the order (D33), the whole department moving with it.
       if (dragged?.kind === "department") {
-        const siblings = visibleNodes.filter(
-          (n) =>
-            n.kind === "department" &&
-            n.primaryReportsToPositionId === dragged.primaryReportsToPositionId
-        );
-        const xOf = (n: OrganogramNode) =>
-          n.positionId === node.id ? node.position.x : (positions.get(n.positionId)?.x ?? 0);
-        const before = siblings.map((n) => n.departmentId);
-        const after = [...siblings].sort((a, b) => xOf(a) - xOf(b)).map((n) => n.departmentId);
-        if (after.join() !== before.join()) onReorderDepartments?.(after);
-        releaseBranch(node.id);
+        const target = targetUnderPointer(event, node);
+        if (
+          target?.kind === "department" &&
+          target.primaryReportsToPositionId === dragged.primaryReportsToPositionId
+        ) {
+          const row = visibleNodes
+            .filter(
+              (n) =>
+                n.kind === "department" &&
+                n.primaryReportsToPositionId === dragged.primaryReportsToPositionId
+            )
+            .map((n) => n.departmentId);
+          onReorderDepartments?.(
+            departmentOrderAfterDrop(row, dragged.departmentId, target.departmentId),
+            node.id
+          );
+          releaseDrag(node.id);
+          return;
+        }
+        place();
         return;
       }
 
-      if (!onReparent) {
-        releaseBranch(node.id);
+      // A position dropped ONTO a card or department heading is re-attached
+      // there (its branch moves with it); a refused drop says why and snaps
+      // back. A drop on empty canvas places the card.
+      const judged = judgeDropFor(event, node);
+      if (!judged) {
+        place();
         return;
       }
-      // A drop ONTO a card re-parents (a position) or moves into a department
-      // (a department heading); a drop on empty canvas snaps the card and its
-      // branch back. Refused drops say why and snap back too.
-      const judged = judgeDropFor(event, node);
-      if (judged) {
-        if (judged.verdict.valid) onReparent(node.id, judged.verdict);
-        else onInvalidDrop?.(judged.verdict.reason);
-      }
-      // Snap the dragged card and its branch back to the computed layout —
-      // the move either succeeds (a re-layout follows) or is declined/blocked
-      // (it belongs where the layout put it), so nothing half-dropped lingers.
-      releaseBranch(node.id);
+      if (judged.verdict.valid) onReparent?.(node.id, judged.verdict);
+      else onInvalidDrop?.(judged.verdict.reason);
+      releaseDrag(node.id);
     },
     [
       arrangeMode,
       onReparent,
       onInvalidDrop,
       onReorderDepartments,
-      releaseBranch,
+      onPlaceCard,
+      releaseDrag,
       judgeDropFor,
+      targetUnderPointer,
       nodeById,
       visibleNodes,
       positions,
@@ -465,20 +487,16 @@ function CanvasInner({
       visibleNodes
         .filter((node) => positions.has(node.positionId))
         .map((node) => {
-          // Only real positions drag, and never the root (it has no manager —
-          // re-parenting it would leave the company with no root at all).
-          // Department boxes drag only to reorder (D33); sub-division boxes never drag.
-          const isRealPosition = (node.kind ?? "position") === "position";
+          // Every card drags in arrange mode (D38); only a non-root position
+          // can be re-attached — the rest are placed (see onNodeDragStop).
           const isRoot = node.primaryReportsToPositionId === null;
           return {
             id: node.positionId,
             type: "positionNode",
-            position: manualPositions.get(node.positionId) ?? positions.get(node.positionId)!,
+            position: manualPositions.get(node.positionId) ?? placedPositions.get(node.positionId)!,
             width: NODE_WIDTH,
             height: NODE_HEIGHT,
-            // Real positions drag to re-parent; department boxes drag to
-            // reorder (D33). The root and sub-division boxes never drag.
-            draggable: arrangeMode && ((isRealPosition && !isRoot) || node.kind === "department"),
+            draggable: arrangeMode,
             data: {
               node,
               isCollapsed: collapsedIds.has(node.positionId),
@@ -506,6 +524,7 @@ function CanvasInner({
     [
       visibleNodes,
       positions,
+      placedPositions,
       manualPositions,
       collapsedIds,
       hiddenDescendantCounts,

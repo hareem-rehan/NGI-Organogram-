@@ -185,6 +185,9 @@ Open **Organogram** from the menu — this is the automatically-generated chart.
   - Drag a box onto another box to make that position its new head.
   - Drag a box onto a **department heading** to move it into that department: it reports to the department's top position, and its level carries over.
   - Either way, everyone under it moves along and keeps their own reporting lines. You confirm each move, and levels and role counts update automatically.
+  - Drag any card (a position, a department box or a sub-division box) and let go on **empty space** to place it there. Only that card moves, and everyone sees it there, including in exports. To change the structure instead, let go **on** another card or heading; the card's whole branch then moves with it.
+  - Drop a department box onto another department box to swap their order.
+  - **Reset positions** (shown once anything has been placed) puts every card back in the automatic layout. Reporting lines aren't changed.
   - While you drag, the box under the pointer shows a **green ring** if you can drop there, or a **red ring** if you can't. You can't drop a position onto itself or anyone who reports to it.
 
 - **Visual View / Outline View**: toggle at the top. Visual View is the interactive chart (pan, zoom, expand/collapse). Outline View is a plain, fully keyboard-and-screen-reader-accessible indented list of the same data — use it if the visual canvas doesn't work well for you.

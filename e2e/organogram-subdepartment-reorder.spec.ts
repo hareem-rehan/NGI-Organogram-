@@ -1,7 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { seedAuthenticatedSession } from "./support/seed-session";
-import { readDepartmentOrder, seedSubDepartmentChart } from "./support/department-layout-fixtures";
+import {
+  readCardOffsetKeys,
+  readDepartmentId,
+  readDepartmentOrder,
+  seedSubDepartmentChart,
+} from "./support/department-layout-fixtures";
 
 /**
  * Reordering SUB-departments (Product / Project under Client Delivery
@@ -41,26 +46,26 @@ test.describe("Organogram — sub-department reorder", () => {
       .locator('[data-testid^="rf__node-"]')
       .filter({ has: page.getByText(text, { exact: true }) });
 
-  test("dragging Project to the left of Product saves and shows the new order", async ({
-    page,
-  }) => {
+  async function settle(page: Page) {
+    await page.getByRole("button", { name: /fit to view/i }).click();
+    await page.locator(".react-flow").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
+  }
+
+  test("dropping Project onto Product swaps their order, saved and shown", async ({ page }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: /arrange/i }).click();
     const product = box(page, `Product ${suffix}`);
     const project = box(page, `Project ${suffix}`);
-    await expect(product).toBeVisible();
     await expect(project).toBeVisible();
-
-    await page.getByRole("button", { name: /fit to view/i }).click();
-    await page.locator(".react-flow").scrollIntoViewIfNeeded();
-    await page.waitForTimeout(600);
+    await settle(page);
     const from = (await project.boundingBox())!;
     const to = (await product.boundingBox())!;
     expect(from.x).toBeGreaterThan(to.x); // Product starts on the left (name order)
 
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
-    await page.mouse.move(to.x - to.width, to.y + to.height / 2, { steps: 20 });
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 20 });
     await page.mouse.up();
 
     await expect
@@ -70,44 +75,58 @@ test.describe("Organogram — sub-department reorder", () => {
         )
       )
       .toEqual([`Project ${suffix}`, `Product ${suffix}`]);
-
     await page.reload();
     await expect(project).toBeVisible();
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(700);
     expect((await project.boundingBox())!.x).toBeLessThan((await product.boundingBox())!.x);
   });
 
-  test("a box's whole branch moves with it while dragging, and snaps back on an empty drop", async ({
+  test("a box dropped on empty space stays there for everyone, alone; Reset positions puts it back", async ({
     page,
   }) => {
+    const productKey = `dept:${await readDepartmentId(companyId, `Product ${suffix}`)}`;
     await page.goto("/organogram");
     await page.getByRole("button", { name: /arrange/i }).click();
     const product = box(page, `Product ${suffix}`);
+    const project = box(page, `Project ${suffix}`);
     const manager = box(page, `Product Manager ${suffix}`);
     await expect(manager).toBeVisible();
-    await page.getByRole("button", { name: /fit to view/i }).click();
-    await page.locator(".react-flow").scrollIntoViewIfNeeded();
-    await page.waitForTimeout(600);
+    await settle(page);
 
-    const boxStart = (await product.boundingBox())!;
-    const managerStart = (await manager.boundingBox())!;
-    await page.mouse.move(boxStart.x + boxStart.width / 2, boxStart.y + boxStart.height / 2);
+    const start = (await product.boundingBox())!;
+    // Measured against Project (which is not dragged), so the "Reset positions"
+    // button appearing above the chart and shifting the canvas doesn't count.
+    const managerFromProject = async () =>
+      (await manager.boundingBox())!.y - (await project.boundingBox())!.y;
+    const managerStart = await managerFromProject();
+    const productFromProject = async () =>
+      (await product.boundingBox())!.y - (await project.boundingBox())!.y;
+    // Straight down, well clear of every other card: an empty-space drop.
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
     await page.mouse.down();
-    await page.mouse.move(boxStart.x + boxStart.width / 2, boxStart.y + boxStart.height / 2 + 60, {
-      steps: 10,
-    });
-
-    // Mid-drag: the report moved down by the same amount as the box.
-    const boxMid = (await product.boundingBox())!;
-    const managerMid = (await manager.boundingBox())!;
-    expect(boxMid.y - boxStart.y).toBeGreaterThan(20);
-    expect(Math.abs(managerMid.y - managerStart.y - (boxMid.y - boxStart.y))).toBeLessThan(2);
-    expect(Math.abs(managerMid.x - managerStart.x - (boxMid.x - boxStart.x))).toBeLessThan(2);
-
-    // Let go over empty canvas: box and branch return to the layout.
+    await page.mouse.move(start.x + start.width / 2, start.y - start.height * 1.5, { steps: 15 });
     await page.mouse.up();
+
+    // Only that box moved; its manager card stayed put.
+    await expect.poll(productFromProject).toBeLessThan(-20);
+    expect(Math.abs((await managerFromProject()) - managerStart)).toBeLessThan(2);
+    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([productKey]);
+
+    // Saved for everyone: still above its row after a reload.
+    await page.reload();
+    await expect(product).toBeVisible();
+    await page.waitForTimeout(700);
+    expect((await product.boundingBox())!.y).toBeLessThan((await project.boundingBox())!.y - 10);
+
+    // Reset positions puts it back in line with Project.
+    await page.getByRole("button", { name: /arrange/i }).click();
+    await page.getByRole("button", { name: "Reset positions" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Reset positions" }).click();
+    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([]);
     await expect
-      .poll(async () => Math.round((await manager.boundingBox())!.y))
-      .toBe(Math.round(managerStart.y));
+      .poll(async () =>
+        Math.abs((await product.boundingBox())!.y - (await project.boundingBox())!.y)
+      )
+      .toBeLessThan(2);
   });
 });

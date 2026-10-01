@@ -206,6 +206,7 @@ model Company {
   levelMappingEntries   LevelMappingEntry[]
   departmentLevelTitles DepartmentLevelTitle[]
   jobFamilyLevelTitles  JobFamilyLevelTitle[]
+  organogramCardOffsets OrganogramCardOffset[]
   positions             Position[]
   employees             Employee[]
   positionAssignments   PositionAssignment[]
@@ -999,4 +1000,31 @@ model CompanySettings {
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@map("company_settings")
+}
+
+// ---------------------------------------------------------------------
+// Organogram card offsets (docs/DECISIONS.md D38)
+//
+// Where HR has dragged a card on the chart: an offset (dx, dy) from the
+// card's AUTOMATIC layout position, keyed by the chart node id — a position
+// id, `dept:<departmentId>` for a department box, or
+// `subdiv:<leadPositionId>:<jobFamilyId>` for a sub-division box. Offsets
+// (not absolute coordinates) keep a moved card next to where the layout
+// would put it when the chart around it changes. Purely visual: it never
+// sets or reads a reporting relationship or an organizational level.
+// ---------------------------------------------------------------------
+model OrganogramCardOffset {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  nodeKey   String
+  dx        Float
+  dy        Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, nodeKey])
+  @@index([companyId])
+  @@map("organogram_card_offsets")
 }

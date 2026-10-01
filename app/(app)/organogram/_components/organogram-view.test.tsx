@@ -99,6 +99,7 @@ function rootedOrg(): OrganogramChartData {
 function makeData(overrides: Partial<OrganogramChartData> = {}): OrganogramChartData {
   return {
     company: { name: "Acme", code: "ACME", effectiveDate: "2026-09-01" },
+    cardOffsets: {},
     nodes: [],
     edges: [],
     safety: {

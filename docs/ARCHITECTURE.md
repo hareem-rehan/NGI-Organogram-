@@ -136,7 +136,7 @@ server/services/
 4. React Flow renders the ELK-computed layout: custom `OrgNode` components for cards, built-in controls for zoom/pan/fit-to-screen, a wrapped full-screen toggle, and a minimap.
 5. Expand/collapse is a client-side graph-visibility toggle (which nodes/edges are currently rendered), re-triggering ELK layout for the visible subgraph — it never mutates the underlying hierarchy data.
 
-This keeps "generate the chart" and "change the org structure" strictly separate: layout is a pure function of position/reporting data, never the other way around (business rule: HR never manually positions nodes).
+This keeps "generate the chart" and "change the org structure" strictly separate: layout is a pure function of position/reporting data, never the other way around. Since D38, HR-placed cards add a saved visual offset (`organogram_card_offsets`) on top of the generated layout; an offset never feeds back into reporting lines or levels.
 
 ## 10. Import/Export Architecture
 
