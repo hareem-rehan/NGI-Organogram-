@@ -16,10 +16,15 @@
  * anything about the reporting tree (docs/DECISIONS.md).
  */
 export interface FamilyColor {
-  /** Light card-body fill (dark text stays readable on every entry). */
+  /** Card-body fill. */
   fill: string;
-  /** Stronger same-hue edge/legend swatch colour. */
+  /** Same-hue edge/legend swatch colour. */
   accent: string;
+  /**
+   * Text colour for this fill when it isn't the default dark text: white on
+   * a dark fill (an exact department colour can be any shade).
+   */
+  text?: string;
 }
 
 /** The reference palette, most-distinct first. */
@@ -75,40 +80,27 @@ export function lightTint(hex: string, weight = 0.22): string {
 const NEUTRAL_ACCENT = "#94a3b8";
 
 /**
- * The exact card colours of the stakeholder's reference chart
- * (visily-multicomponents), keyed by the department colour the Visily config
- * stores (lib/domain/visily-level-mappings.ts). Fills and borders were sampled
- * from the reference PDF, so a department using one of these colours renders
- * exactly like the reference — a computed tint of the stored hex came out
- * visibly paler (HR and Marketing especially).
- *
- * One deliberate deviation: the reference's CEO purple (#9f5bdd) is too dark
- * for the card's dark text (3.3:1, below WCAG AA's 4.5:1), so the Founder
- * swatch keeps the hue but is lightened just enough to pass. Every fill here
- * is asserted ≥ 4.5:1 against the card text in organogram-family-colors.test.ts.
- */
-export const VISILY_DEPARTMENT_SWATCHES: ReadonlyMap<string, FamilyColor> = new Map([
-  ["#6d28d9", { fill: "#b184e8", accent: "#8a3fd0" }], // Founder / CEO
-  ["#4fae2f", { fill: "#d3f1b7", accent: "#95d25f" }], // Engineering
-  ["#d9a400", { fill: "#f8d850", accent: "#d1b544" }], // Human Resources
-  ["#9b7fe0", { fill: "#e3d3fa", accent: "#be9feb" }], // Finance
-  ["#e8811a", { fill: "#f2a84b", accent: "#bc7529" }], // Marketing
-  ["#3aa4e8", { fill: "#bfe4fc", accent: "#7bc0f1" }], // Client Delivery Services
-  ["#ec6fa8", { fill: "#f8d7e8", accent: "#eaa9c9" }], // Delivery Org / Administration
-]);
-
-/**
- * A department's card colour from its OWN stored hex. A Visily reference
- * colour maps to that reference's exact fill/border
- * (`VISILY_DEPARTMENT_SWATCHES`); any other hex is the strong `accent`
- * (border/legend swatch) with a pastel of it as the body `fill`. Falls back
- * to a neutral grey when unset/invalid.
+ * A department's card colour from its OWN stored hex: the card is filled
+ * with EXACTLY that colour (user request, 2026-10-02 — it used to be a
+ * lighter version, so a deep blue showed as pale periwinkle), with text in
+ * whichever of white or the dark card text reads better on it. Falls back to
+ * a neutral grey card when unset/invalid.
  */
 export function departmentColorFromHex(color: string | null | undefined): FamilyColor {
-  const accent = color && /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : NEUTRAL_ACCENT;
-  const swatch = VISILY_DEPARTMENT_SWATCHES.get(accent.toLowerCase());
-  if (swatch) return swatch;
-  return { fill: vividFill(accent), accent };
+  const valid = color && /^#[0-9a-f]{6}$/i.test(color.trim());
+  if (!valid) return { fill: vividFill(NEUTRAL_ACCENT), accent: NEUTRAL_ACCENT };
+  const exact = color.trim().toLowerCase();
+  return { fill: exact, accent: exact, text: cardTextColor(exact) };
+}
+
+/**
+ * White or the dark card text — whichever contrasts more with `fill`, so a
+ * card stays readable on any department colour.
+ */
+export function cardTextColor(fill: string): string {
+  return contrastRatio(fill, "#ffffff") > contrastRatio(fill, CARD_TEXT_COLOR)
+    ? "#ffffff"
+    : CARD_TEXT_COLOR;
 }
 
 /** The card text colour (app/globals.css --color-foreground). */
