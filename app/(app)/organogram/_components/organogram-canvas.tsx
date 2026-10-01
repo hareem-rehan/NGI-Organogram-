@@ -23,6 +23,7 @@ import {
   type LayoutPosition,
 } from "@/app/(app)/organogram/_lib/elk-layout";
 import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
+import { effectiveTextStyle, type TextStyle } from "@/lib/domain/organogram-text-style";
 import {
   applyCardOffsets,
   departmentOrderAfterDrop,
@@ -123,6 +124,10 @@ interface OrganogramCanvasProps {
   cardOffsets?: Readonly<Record<string, CardOffset>>;
   /** A card was dropped on empty canvas: its new offset from the automatic spot. */
   onPlaceCard?: (nodeKey: string, dx: number, dy: number) => void;
+  /** Card text styles: chart-wide plus per-card overrides (D41). */
+  textStyles?: { chart: TextStyle; cards: Readonly<Record<string, TextStyle>> };
+  /** "Aa" on a card (Arrange mode): edit that one card's text style. */
+  onEditStyle?: (nodeKey: string) => void;
   onEditCard?: (positionId: string) => void;
   onAddChild?: (positionId: string) => void;
   onRequestDelete?: (positionId: string) => void;
@@ -153,6 +158,8 @@ function CanvasInner({
   onReorderDepartments,
   cardOffsets = NO_OFFSETS,
   onPlaceCard,
+  textStyles,
+  onEditStyle,
   onEditCard,
   onAddChild,
   onRequestDelete,
@@ -509,6 +516,8 @@ function CanvasInner({
               arrangeMode,
               onEdit: onEditCard,
               onAddChild,
+              onEditStyle,
+              textStyle: effectiveTextStyle(textStyles?.chart, textStyles?.cards[node.positionId]),
               // The root is never deletable from here — deleting it would take
               // the whole company with it. `undefined` hides the control.
               onRequestDelete: isRoot ? undefined : onRequestDelete,
@@ -536,6 +545,8 @@ function CanvasInner({
       arrangeMode,
       onEditCard,
       onAddChild,
+      onEditStyle,
+      textStyles,
       onRequestDelete,
       dropHint,
     ]

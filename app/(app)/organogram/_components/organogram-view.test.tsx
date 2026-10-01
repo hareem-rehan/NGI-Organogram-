@@ -100,6 +100,7 @@ function makeData(overrides: Partial<OrganogramChartData> = {}): OrganogramChart
   return {
     company: { name: "Acme", code: "ACME", effectiveDate: "2026-09-01" },
     cardOffsets: {},
+    textStyles: { chart: {}, cards: {} },
     nodes: [],
     edges: [],
     safety: {

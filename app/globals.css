@@ -116,3 +116,16 @@
     font-family: var(--font-sans);
   }
 }
+
+/*
+ * Organogram card text styles (docs/DECISIONS.md D41): a card with a bold
+ * setting, or underline/strikethrough, applies it to every line of its text
+ * (the inline CSS variables come from position-node.tsx). The card's action
+ * buttons hold no p/span text, so "Aa", + and delete never restyle.
+ */
+[data-org-weight] :is(p, span) {
+  font-weight: var(--org-card-weight) !important;
+}
+[data-org-deco] :is(p, span) {
+  text-decoration-line: var(--org-card-deco);
+}

@@ -11,8 +11,14 @@ import {
   clearCardOffsets,
   resetCardOffsets,
   saveCardOffset,
+  saveTextStyle,
 } from "@/lib/services/organogram-layout.service";
-import { clearCardOffsetsSchema, saveCardOffsetSchema } from "@/lib/validation/organogram-layout";
+import {
+  clearCardOffsetsSchema,
+  clearTextStyleSchema,
+  saveCardOffsetSchema,
+  saveTextStyleSchema,
+} from "@/lib/validation/organogram-layout";
 
 /**
  * The organogram's only read operation. No parameters accepted — display
@@ -60,5 +66,30 @@ export async function resetCardPositionsAction(): Promise<ActionResult<{ cleared
       actor: toAuditActor(user),
     });
     return { cleared };
+  });
+}
+
+/** Text style for every card ("chart") or one card (D41). */
+export async function saveTextStyleAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { nodeKey, style } = saveTextStyleSchema.parse(input);
+    await saveTextStyle({ companyId: user.companyId, actor: toAuditActor(user), nodeKey, style });
+    return null;
+  });
+}
+
+/** Back to inheriting: a card follows the chart again; the chart goes back to the built-in look. */
+export async function clearTextStyleAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { nodeKey } = clearTextStyleSchema.parse(input);
+    await saveTextStyle({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      nodeKey,
+      style: {},
+    });
+    return null;
   });
 }

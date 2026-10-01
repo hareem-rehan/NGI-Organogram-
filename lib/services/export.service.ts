@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { computeElkLayout } from "@/app/(app)/organogram/_lib/elk-layout";
 import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import { applyCardOffsets } from "@/lib/domain/organogram-card-offsets";
+import { effectiveTextStyle } from "@/lib/domain/organogram-text-style";
 import { DomainValidationError, NotFoundError, UnsafeMutationError } from "@/lib/domain/errors";
 import {
   ExportOptionsError,
@@ -273,6 +274,15 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
       includeConfidentialityLabel: resolved.includeConfidentialityLabel,
       departments: [...departmentsById.values()],
       colorMode: resolved.colorMode,
+      textStyleByNodeId: new Map(
+        subgraph.nodes.map((n) => [
+          n.positionId,
+          effectiveTextStyle(
+            organogram.textStyles.chart,
+            organogram.textStyles.cards[n.positionId]
+          ),
+        ])
+      ),
       departmentColorByName,
       familyColorById,
       families: familyLegendEntries,

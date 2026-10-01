@@ -1,4 +1,12 @@
 import {
+  fontFamilyById,
+  fontScaleOf,
+  fontWeightOf,
+  isEmptyTextStyle,
+  textDecorationOf,
+  type TextStyle,
+} from "@/lib/domain/organogram-text-style";
+import {
   NODE_HEIGHT,
   NODE_WIDTH,
   ORG_EDGE_BUS_OFFSET,
@@ -97,6 +105,8 @@ export interface SvgRenderOptions {
   familyColorById?: ReadonlyMap<string, FamilyColor>;
   /** Sub-divisions for the legend in "family" mode. */
   families?: readonly SvgLegendFamily[];
+  /** Each card's effective text style (D41), keyed by node id. */
+  textStyleByNodeId?: ReadonlyMap<string, TextStyle>;
 }
 
 export interface SvgRenderResult {
@@ -399,6 +409,35 @@ function renderNodeCard(
   return parts.join("");
 }
 
+/**
+ * Applies a card's text style (D41) to its exported SVG: the closest PDF
+ * base font, sizes scaled from the built-in title size, weight, colour,
+ * italic and underline/strikethrough. Text positions are not re-flowed, so
+ * very large sizes sit tighter than on screen.
+ */
+export function applyTextStyleToCardSvg(cardSvg: string, style: TextStyle | undefined): string {
+  if (!style || isEmptyTextStyle(style)) return cardSvg;
+  const scale = fontScaleOf(style);
+  let out = cardSvg
+    .replace(/font-size="([\d.]+)"/g, (_m, size: string) => {
+      return `font-size="${Math.round(Number(size) * scale * 10) / 10}"`;
+    })
+    .replace(/font-weight="(\d+)"/g, (_m, weight: string) => {
+      return `font-weight="${fontWeightOf(style, Number(weight))}"`;
+    });
+  if (style.color) {
+    out = out.replace(/(<text\b[^>]*?) fill="[^"]*"/g, `$1 fill="${style.color}"`);
+  }
+  const groupAttrs = [
+    `font-family="${fontFamilyById(style.fontFamily)?.exportFamily ?? EXPORT_FONT_FAMILY}"`,
+    style.italic ? `font-style="italic"` : "",
+    textDecorationOf(style) ? `text-decoration="${textDecorationOf(style)}"` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return out.replace(/^<g /, `<g ${groupAttrs} `);
+}
+
 function renderEdgePath(source: SvgLayoutPosition, target: SvgLayoutPosition): string {
   const sx = source.x + NODE_WIDTH / 2;
   const sy = source.y + NODE_HEIGHT;
@@ -581,35 +620,42 @@ export function renderOrganogramSvg(
       const pos = positions.get(node.positionId);
       if (!pos) return "";
       const at = { x: pos.x - minX, y: pos.y - minY };
-      if (node.kind === "department") {
-        return renderDepartmentCard(
-          node,
-          at,
-          childCountByParent.get(node.positionId) ?? 0,
-          options.departmentColorByName,
-          options.colorMode ?? "department",
-          options.familyColorById
-        );
-      }
-      if (node.kind === "subdivision") {
-        return renderSubdivisionCard(
-          node,
-          at,
-          childCountByParent.get(node.positionId) ?? 0,
-          options.departmentColorByName,
-          options.colorMode ?? "department",
-          options.familyColorById
-        );
-      }
-      return renderNodeCard(
-        node,
-        at,
-        options.colorMode ?? "department",
-        options.familyColorById,
-        options.departmentColorByName
+      return applyTextStyleToCardSvg(
+        renderCard(node, at),
+        options.textStyleByNodeId?.get(node.positionId)
       );
     })
     .join("");
+
+  function renderCard(node: SvgRenderNode, at: SvgLayoutPosition): string {
+    if (node.kind === "department") {
+      return renderDepartmentCard(
+        node,
+        at,
+        childCountByParent.get(node.positionId) ?? 0,
+        options.departmentColorByName,
+        options.colorMode ?? "department",
+        options.familyColorById
+      );
+    }
+    if (node.kind === "subdivision") {
+      return renderSubdivisionCard(
+        node,
+        at,
+        childCountByParent.get(node.positionId) ?? 0,
+        options.departmentColorByName,
+        options.colorMode ?? "department",
+        options.familyColorById
+      );
+    }
+    return renderNodeCard(
+      node,
+      at,
+      options.colorMode ?? "department",
+      options.familyColorById,
+      options.departmentColorByName
+    );
+  }
 
   const edgesSvg = edges
     .map((edge) => {

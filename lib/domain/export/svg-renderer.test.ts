@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import { NODE_HEIGHT } from "@/app/(app)/organogram/_lib/elk-layout";
 
 import { EXPORT_COLORS } from "./colors";
-import { renderOrganogramSvg, type SvgRenderMetadata, type SvgRenderNode } from "./svg-renderer";
+import {
+  applyTextStyleToCardSvg,
+  renderOrganogramSvg,
+  type SvgRenderMetadata,
+  type SvgRenderNode,
+} from "./svg-renderer";
 
 function node(overrides: Partial<SvgRenderNode> & { positionId: string }): SvgRenderNode {
   return {
@@ -704,5 +709,35 @@ describe("renderOrganogramSvg — sub-division grouping card", () => {
     // Labelled with the sub-division name, not treated as a person card.
     expect(result.svg).toContain("UI/UX");
     expect(result.svg).not.toContain("Vacant");
+  });
+});
+
+describe("applyTextStyleToCardSvg (D41)", () => {
+  const card =
+    '<g transform="translate(0, 0)" opacity="1"><rect fill="#111ed4" /><text x="10" y="19" font-size="13" font-weight="800" fill="#ffffff">CEO</text><text x="10" y="80" font-size="10.5" font-weight="600" fill="#ffffff">No roles under</text></g>';
+
+  it("leaves a card untouched when nothing is customised", () => {
+    expect(applyTextStyleToCardSvg(card, {})).toBe(card);
+    expect(applyTextStyleToCardSvg(card, undefined)).toBe(card);
+  });
+
+  it("applies family (as the PDF base font), size, weight, colour, italic and decoration", () => {
+    const out = applyTextStyleToCardSvg(card, {
+      fontFamily: "georgia",
+      fontSize: 26, // clamped to 20 → ×(20/13)
+      bold: false,
+      color: "#ff0000",
+      italic: true,
+      underline: true,
+    });
+    expect(out).toContain('font-family="Times"');
+    expect(out).toContain('font-style="italic"');
+    expect(out).toContain('text-decoration="underline"');
+    expect(out).toContain('font-size="20"');
+    expect(out).toContain('font-size="16.2"');
+    expect(out).not.toContain('font-weight="800"');
+    expect(out).toContain('font-weight="400"');
+    expect(out).not.toContain('fill="#ffffff"');
+    expect(out).toContain('<rect fill="#111ed4" />'); // the card colour itself is kept
   });
 });

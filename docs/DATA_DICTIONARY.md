@@ -171,6 +171,20 @@ A zero offset is not stored (dragging a card back onto its spot removes the row)
 
 ---
 
+## Organogram Text Style (D41)
+
+How organogram card text looks: one row for every card (`nodeKey` = `chart`), plus a row per card styled on its own (same node keys as Organogram Card Offset). Unset fields inherit (card → chart → built-in look). Visual only. Table `organogram_text_styles`, unique per (company, nodeKey).
+
+| Field                                     | Type    | Required | Description                                 | Validation                                                                             |
+| ----------------------------------------- | ------- | -------- | ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| nodeKey                                   | string  | yes      | `chart`, or a card's node key               | a card key must name a card in this company                                            |
+| fontFamily                                | string  | no       | Font id                                     | one of arial, helvetica, verdana, tahoma, trebuchet, georgia, times, garamond, courier |
+| fontSize                                  | int     | no       | Title size in px; other lines scale with it | 9–20                                                                                   |
+| color                                     | string  | no       | Text colour                                 | `#rrggbb`, stored lower-case                                                           |
+| bold / italic / underline / strikethrough | boolean | no       | `null` = inherit; `false` = explicitly off  | —                                                                                      |
+
+---
+
 ## Employee
 
 Separate from `Position` (business rule 2) — an employee record has no `positionId` column; the link lives in `PositionAssignment`.
