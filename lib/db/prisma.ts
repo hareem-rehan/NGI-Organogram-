@@ -2,6 +2,7 @@ import "server-only";
 import { PrismaClient } from "@prisma/client";
 
 import { runtimeDatabaseUrl } from "@/lib/db/runtime-database-url";
+import { logger } from "@/lib/logger";
 
 /**
  * Shared Prisma client instance. Never `new PrismaClient()` anywhere else
@@ -23,7 +24,7 @@ function createClient(): PrismaClient {
   // On Supabase, always the transaction pooler (lib/db/runtime-database-url.ts).
   const { url, rewritten } = runtimeDatabaseUrl(process.env.DATABASE_URL);
   if (rewritten) {
-    console.warn(
+    logger.warn(
       "DATABASE_URL points at Supabase's session pooler; using the transaction pooler (port 6543) instead."
     );
   }
