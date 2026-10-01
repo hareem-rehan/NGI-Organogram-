@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   collectDisplayedDescendants,
   judgeDrop,
-  moveBranch,
   pickDropTargetAtPoint,
   pointerClientPoint,
   type DropTargetNode,
@@ -125,30 +124,5 @@ describe("pickDropTargetAtPoint (drop follows the pointer)", () => {
   it("counts the exact edge as inside, and anything past it as empty canvas", () => {
     expect(pickDropTargetAtPoint({ x: 338, y: 88 }, rects, "dragged")).toBe("a");
     expect(pickDropTargetAtPoint({ x: 339, y: 40 }, rects, "dragged")).toBeNull();
-  });
-});
-
-describe("moveBranch (a dragged card's reports travel with it)", () => {
-  it("shifts every card of the branch by the dragged card's movement", () => {
-    const start = new Map([
-      ["cco", { x: 100, y: 200 }],
-      ["vp", { x: 100, y: 350 }],
-    ]);
-    expect(moveBranch(start, { x: 250, y: -10 })).toEqual(
-      new Map([
-        ["cco", { x: 350, y: 190 }],
-        ["vp", { x: 350, y: 340 }],
-      ])
-    );
-  });
-
-  it("does not change the starting positions it was given", () => {
-    const start = new Map([["a", { x: 1, y: 2 }]]);
-    moveBranch(start, { x: 5, y: 5 });
-    expect(start.get("a")).toEqual({ x: 1, y: 2 });
-  });
-
-  it("returns nothing for a card with no reports", () => {
-    expect(moveBranch(new Map(), { x: 10, y: 10 }).size).toBe(0);
   });
 });

@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermissionMock, getOrganogramChartDataMock } = vi.hoisted(() => ({
+const { requirePermissionMock, getOrganogramChartDataMock, layoutMock } = vi.hoisted(() => ({
   requirePermissionMock: vi.fn(),
   getOrganogramChartDataMock: vi.fn(),
+  layoutMock: {
+    saveCardOffset: vi.fn(),
+    clearCardOffsets: vi.fn(),
+    resetCardOffsets: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({
@@ -11,9 +16,16 @@ vi.mock("@/lib/auth/current-user", () => ({
 vi.mock("@/lib/services/organogram.service", () => ({
   getOrganogramChartData: getOrganogramChartDataMock,
 }));
+vi.mock("@/lib/services/organogram-layout.service", () => layoutMock);
+vi.mock("@/lib/server/audit-actor", () => ({ toAuditActor: () => ({ userId: "u_1" }) }));
 
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
-import { getOrganogramAction } from "./actions";
+import {
+  clearCardPositionsAction,
+  getOrganogramAction,
+  resetCardPositionsAction,
+  saveCardPositionAction,
+} from "./actions";
 
 const ADMIN_USER = { id: "u_1", role: "ADMIN", companyId: "company-trusted", status: "ACTIVE" };
 
@@ -77,5 +89,57 @@ describe("getOrganogramAction — server-side authorization", () => {
       expect(result.error).not.toContain("connection to server");
       expect(result.error).toMatch(/something went wrong/i);
     }
+  });
+});
+
+describe("card placement actions (D38)", () => {
+  afterEach(() => vi.clearAllMocks());
+  const POS = "11111111-1111-4111-8111-111111111111";
+
+  it("saving a position needs positions:manage and takes companyId from the session", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    const result = await saveCardPositionAction({ nodeKey: `dept:${POS}`, dx: 120, dy: -40 });
+    expect(result).toEqual({ ok: true, data: null });
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    expect(layoutMock.saveCardOffset).toHaveBeenCalledWith({
+      companyId: "company-trusted",
+      nodeKey: `dept:${POS}`,
+      dx: 120,
+      dy: -40,
+    });
+  });
+
+  it.each([
+    ["a viewer", () => saveCardPositionAction({ nodeKey: POS, dx: 1, dy: 1 }), "saveCardOffset"],
+    ["a viewer", () => clearCardPositionsAction({ nodeKeys: [POS] }), "clearCardOffsets"],
+    ["a viewer", () => resetCardPositionsAction(), "resetCardOffsets"],
+  ] as const)("%s cannot change card positions (%s)", async (_who, invoke, serviceKey) => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+    const result = (await invoke()) as { ok: boolean };
+    expect(result.ok).toBe(false);
+    expect(layoutMock[serviceKey]).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an unknown card key", { nodeKey: "ceo", dx: 1, dy: 1 }],
+    ["a non-finite offset", { nodeKey: POS, dx: Number.POSITIVE_INFINITY, dy: 1 }],
+    ["an absurd offset", { nodeKey: POS, dx: 9_999_999, dy: 1 }],
+    ["a client-supplied companyId", { nodeKey: POS, dx: 1, dy: 1, companyId: "x" }],
+  ])("rejects %s before the service runs", async (_label, input) => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    const result = await saveCardPositionAction(input);
+    expect(result.ok).toBe(false);
+    expect(layoutMock.saveCardOffset).not.toHaveBeenCalled();
+  });
+
+  it("reset is passed the acting user for the audit trail", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    layoutMock.resetCardOffsets.mockResolvedValue(3);
+    const result = await resetCardPositionsAction();
+    expect(result).toEqual({ ok: true, data: { cleared: 3 } });
+    expect(layoutMock.resetCardOffsets).toHaveBeenCalledWith({
+      companyId: "company-trusted",
+      actor: { userId: "u_1" },
+    });
   });
 });

@@ -15,6 +15,8 @@ import {
 } from "@/lib/domain/organogram-leadership-graph";
 import { DEFAULT_LEADERSHIP_VIEW_OPTIONS } from "@/lib/domain/organogram-leadership";
 import { NotFoundError } from "@/lib/domain/errors";
+import type { CardOffset } from "@/lib/domain/organogram-card-offsets";
+import { listCardOffsets } from "@/lib/services/organogram-layout.service";
 
 export interface OrganogramCompanySummary {
   name: string;
@@ -72,6 +74,12 @@ export interface OrganogramChartData extends OrganogramData {
    * than one that shows a third and says so.
    */
   leadership: LeadershipSummary;
+  /**
+   * Where HR has dragged cards (docs/DECISIONS.md D38): an offset from each
+   * card's automatic position, keyed by chart node id. Applied by the
+   * interactive chart and the export alike.
+   */
+  cardOffsets: Record<string, CardOffset>;
 }
 
 export interface GetOrganogramDataInput {
@@ -167,5 +175,6 @@ export async function getOrganogramChartData(
     DEFAULT_LEADERSHIP_VIEW_OPTIONS,
     activeDepartments
   );
-  return { ...full, nodes, edges, leadership: summary };
+  const cardOffsets = await listCardOffsets(input.companyId);
+  return { ...full, nodes, edges, leadership: summary, cardOffsets };
 }

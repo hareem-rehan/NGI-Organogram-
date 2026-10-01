@@ -188,3 +188,29 @@ export async function seedSubDepartmentChart(companyId: string, suffix: string):
     await prisma.$disconnect();
   }
 }
+
+/** Saved card offsets (D38) for the company, keyed by chart node id. */
+export async function readCardOffsetKeys(companyId: string): Promise<string[]> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  const prisma = new PrismaClient();
+  try {
+    const rows = await prisma.organogramCardOffset.findMany({
+      where: { companyId },
+      select: { nodeKey: true },
+    });
+    return rows.map((r) => r.nodeKey).sort();
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/** A department's id by exact name (for building `dept:<id>` chart keys). */
+export async function readDepartmentId(companyId: string, name: string): Promise<string> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  const prisma = new PrismaClient();
+  try {
+    return (await prisma.department.findFirstOrThrow({ where: { companyId, name } })).id;
+  } finally {
+    await prisma.$disconnect();
+  }
+}

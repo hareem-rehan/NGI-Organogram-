@@ -4,7 +4,7 @@ Permanent operating instructions for every Claude Code session working in this r
 
 ## 0. What this project is
 
-An internal web application that lets non-technical HR users independently manage Departments, Positions, Employees, Vacancies and primary reporting relationships, and that **automatically generates** the company organogram from that structured data — HR never manually positions chart nodes.
+An internal web application that lets non-technical HR users independently manage Departments, Positions, Employees, Vacancies and primary reporting relationships, and that **automatically generates** the company organogram from that structured data. The layout is always generated automatically; since D38 (stakeholder decision, 2026-10-01) HR may then drag individual cards to adjust where they sit — a saved visual offset that never changes the structure (docs/DECISIONS.md D38).
 
 Source documents (read before any phase):
 

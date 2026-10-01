@@ -156,6 +156,21 @@ A single cell of the career matrix: for one `(Job Family, Career Track, Job Grad
 
 ---
 
+## Organogram Card Offset (D38)
+
+Where HR has dragged a card on the organogram: an offset from the card's automatic layout position. Visual only; it never sets a reporting line or a level. Table `organogram_card_offsets`.
+
+| Field     | Type                | Required | Default   | Description                                                                                  | Validation                                   | Unique             | Source |
+| --------- | ------------------- | -------- | --------- | -------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------ | ------ |
+| id        | UUID                | yes      | generated | Primary key                                                                                  | system-generated                             | yes                | System |
+| companyId | UUID (FK → Company) | yes      | —         | Owning company (cascade)                                                                     | from the session only                        | n/a                | System |
+| nodeKey   | string              | yes      | —         | Chart node: a position id, `dept:<departmentId>`, or `subdiv:<leadPositionId>:<jobFamilyId>` | must name a card that exists in this company | unique per company | HR     |
+| dx, dy    | float               | yes      | —         | Offset in chart pixels                                                                       | finite, within ±50,000; stored rounded       | n/a                | HR     |
+
+A zero offset is not stored (dragging a card back onto its spot removes the row). "Reset positions" deletes every row for the company.
+
+---
+
 ## Employee
 
 Separate from `Position` (business rule 2) — an employee record has no `positionId` column; the link lives in `PositionAssignment`.

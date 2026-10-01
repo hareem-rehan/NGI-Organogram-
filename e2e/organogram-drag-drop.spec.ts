@@ -107,14 +107,7 @@ test.describe("Organogram — drag and drop", () => {
     expect(branch.departmentId).toBe(engTop.departmentId);
   });
 
-  // Since 2026-10-01 a card's branch travels with it while dragging, so its
-  // own subordinates stay the same distance below the pointer and can never
-  // be dropped onto. The refusal itself is still enforced (judgeDrop unit
-  // tests, and the server's cycle check); this checks the user-visible
-  // outcome: aiming at your own report changes nothing.
-  test("dragging a card at its own subordinate changes nothing (the branch moves with it)", async ({
-    page,
-  }) => {
+  test("refuses a drop onto the card's own subordinate, saying why", async ({ page }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: /arrange/i }).click();
     await expect(card(page, `Engineering Director 1 ${suffix}`)).toBeVisible();
@@ -125,13 +118,16 @@ test.describe("Organogram — drag and drop", () => {
       card(page, `Engineering Director 1 ${suffix}`)
     );
 
+    await expect(
+      page.getByRole("alert").filter({ hasText: /reports \(directly or indirectly\)/ })
+    ).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const lead = await readPositionByTitle(companyId, `Engineering Lead 1 ${suffix}`);
     const director = await readPositionByTitle(companyId, `Engineering Director 1 ${suffix}`);
     expect(lead.primaryReportsToPositionId).not.toBe(director.id);
   });
 
-  test("dragging a department heading to the far right reorders the departments (D33)", async ({
+  test("dropping a department box onto another department box swaps it into that place (D33/D38)", async ({
     page,
   }) => {
     await page.goto("/organogram");
@@ -140,7 +136,7 @@ test.describe("Organogram — drag and drop", () => {
     const marketing = card(page, `Marketing ${suffix}`);
     await expect(cds).toBeVisible();
 
-    // Drop CDS just to the right of Marketing, the right-most department.
+    // Drop CDS onto Marketing, the right-most department: CDS takes its place.
     await page.getByRole("button", { name: /fit to view/i }).click();
     await page.locator(".react-flow").scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
@@ -148,8 +144,7 @@ test.describe("Organogram — drag and drop", () => {
     const to = (await marketing.boundingBox())!;
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
-    // Well past Marketing's right edge, so the drop is unambiguously last.
-    await page.mouse.move(to.x + to.width * 3, to.y + to.height / 2, { steps: 20 });
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 20 });
     await page.mouse.up();
 
     await expect

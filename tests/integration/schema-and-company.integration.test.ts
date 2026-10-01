@@ -27,6 +27,7 @@ describe("schema and migration constraints", () => {
       "job_family_level_titles",
       "job_grades",
       "level_mapping_entries",
+      "organogram_card_offsets",
       "position_assignments",
       "positions",
       "sessions",

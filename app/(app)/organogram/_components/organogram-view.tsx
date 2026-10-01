@@ -10,7 +10,12 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, useConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { ErrorState } from "@/components/patterns/error-state";
 import { LoadingState } from "@/components/patterns/loading-state";
-import { getOrganogramAction } from "@/app/(app)/organogram/actions";
+import {
+  clearCardPositionsAction,
+  getOrganogramAction,
+  resetCardPositionsAction,
+  saveCardPositionAction,
+} from "@/app/(app)/organogram/actions";
 import { PositionFormDialog } from "@/app/(app)/positions/_components/position-form-dialog";
 import {
   deletePositionAction,
@@ -202,6 +207,10 @@ export function OrganogramView({
   }
   const [deleteIntent, setDeleteIntent] = useState<DeleteIntent | null>(null);
   const deleteDialog = useConfirmDialog();
+  // "Reset positions" (D38): puts every HR-placed card back in the automatic layout.
+  const resetDialog = useConfirmDialog();
+  const [resetPending, setResetPending] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -349,12 +358,68 @@ export function OrganogramView({
     [data, moveDialog]
   );
 
-  // Arrange mode: a department box dragged to a new place among its
-  // neighbours saves the new left-to-right order (D33), then redraws.
+  // Arrange mode: a card dropped on empty canvas stays exactly there, for
+  // everyone (D38). Shown at once; saved in the background, and put back
+  // if the save is refused.
+  const handlePlaceCard = useCallback(
+    (nodeKey: string, dx: number, dy: number) => {
+      setDropNotice(null);
+      const previous = data?.cardOffsets[nodeKey];
+      const withOffset = (offset: { dx: number; dy: number } | undefined) =>
+        setData((current) => {
+          if (!current) return current;
+          const cardOffsets = { ...current.cardOffsets };
+          if (offset && (Math.round(offset.dx) !== 0 || Math.round(offset.dy) !== 0)) {
+            cardOffsets[nodeKey] = offset;
+          } else {
+            delete cardOffsets[nodeKey];
+          }
+          return { ...current, cardOffsets };
+        });
+      withOffset({ dx, dy });
+      void (async () => {
+        const result = await saveCardPositionAction({ nodeKey, dx, dy });
+        if (!result.ok) {
+          withOffset(previous);
+          setDropNotice(result.error);
+        }
+      })();
+    },
+    [data]
+  );
+
+  // A card that has just been re-attached somewhere else should land in its
+  // new place, not keep the offset it had in the old one.
+  const clearPlacement = useCallback(
+    async (nodeKey: string) => {
+      if (!data?.cardOffsets[nodeKey]) return;
+      await clearCardPositionsAction({ nodeKeys: [nodeKey] });
+    },
+    [data]
+  );
+
+  const confirmResetPositions = useCallback(() => {
+    setResetPending(true);
+    setResetError(null);
+    void (async () => {
+      const result = await resetCardPositionsAction();
+      setResetPending(false);
+      if (!result.ok) {
+        setResetError(result.error);
+        return;
+      }
+      resetDialog.setOpen(false);
+      refreshAfterMutation();
+    })();
+  }, [resetDialog, refreshAfterMutation]);
+
+  // Arrange mode: a department box dropped onto a sibling department box
+  // takes its place in the order (D33), then the chart redraws.
   const handleReorderDepartments = useCallback(
-    (orderedDepartmentIds: string[]) => {
+    (orderedDepartmentIds: string[], draggedNodeKey: string) => {
       setDropNotice(null);
       void (async () => {
+        await clearPlacement(draggedNodeKey);
         const result = await reorderDepartmentsAction({ orderedDepartmentIds });
         if (!result.ok) {
           setDropNotice(result.error);
@@ -363,7 +428,7 @@ export function OrganogramView({
         refreshAfterMutation();
       })();
     },
-    [refreshAfterMutation]
+    [refreshAfterMutation, clearPlacement]
   );
 
   const confirmMove = useCallback(() => {
@@ -386,11 +451,12 @@ export function OrganogramView({
         setMoveError(result.error);
         return;
       }
+      await clearPlacement(moveIntent.childId);
       moveDialog.setOpen(false);
       setMoveIntent(null);
       refreshAfterMutation();
     })();
-  }, [moveIntent, moveDialog, refreshAfterMutation]);
+  }, [moveIntent, moveDialog, refreshAfterMutation, clearPlacement]);
 
   const handleRequestDelete = useCallback(
     (positionId: string) => {
@@ -824,14 +890,30 @@ export function OrganogramView({
 
       {arrangeMode ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Arrange mode — drag a card and let go with the pointer over another card to change who it
-          reports to, or over a department heading to move it into that department (its whole branch
-          moves with it). The card under the pointer is outlined before you let go. Drag a
-          department heading left or right to reorder the departments. Use{" "}
+          Arrange mode — drag any card and let go on empty space to place it there (everyone sees
+          it). Let go with the pointer over another card to change who it reports to, or over a
+          department heading to move it into that department; its whole branch moves with it. The
+          card under the pointer is outlined before you let go. Drop a department box onto another
+          department box to swap their order. Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
-          the trash icon to delete, and click a card to edit it. A card&apos;s whole branch moves
-          with it while you drag; letting go over empty space puts it back.
+          the trash icon to delete, and click a card to edit it.
         </p>
+      ) : null}
+
+      {arrangeMode && canManage && Object.keys(data.cardOffsets).length > 0 ? (
+        <div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setResetError(null);
+              resetDialog.setOpen(true);
+            }}
+          >
+            Reset positions
+          </Button>
+        </div>
       ) : null}
 
       {arrangeMode && dropNotice ? (
@@ -939,6 +1021,8 @@ export function OrganogramView({
                 onReparent={handleReparent}
                 onInvalidDrop={setDropNotice}
                 onReorderDepartments={handleReorderDepartments}
+                cardOffsets={data.cardOffsets}
+                onPlaceCard={handlePlaceCard}
                 onEditCard={handleEditCard}
                 onAddChild={handleAddChild}
                 onRequestDelete={handleRequestDelete}
@@ -1060,6 +1144,16 @@ export function OrganogramView({
           onConfirm={confirmDelete}
         />
       ) : null}
+      <ConfirmDialog
+        open={resetDialog.open}
+        onOpenChange={resetDialog.setOpen}
+        title="Reset card positions?"
+        description="Every card you have placed by hand goes back to the automatic layout, for everyone. Reporting lines and departments are not changed."
+        confirmLabel="Reset positions"
+        pending={resetPending}
+        errorMessage={resetError}
+        onConfirm={confirmResetPositions}
+      />
     </div>
   );
 }
