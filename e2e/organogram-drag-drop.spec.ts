@@ -107,7 +107,14 @@ test.describe("Organogram — drag and drop", () => {
     expect(branch.departmentId).toBe(engTop.departmentId);
   });
 
-  test("refuses a drop onto the card's own subordinate, saying why", async ({ page }) => {
+  // Since 2026-10-01 a card's branch travels with it while dragging, so its
+  // own subordinates stay the same distance below the pointer and can never
+  // be dropped onto. The refusal itself is still enforced (judgeDrop unit
+  // tests, and the server's cycle check); this checks the user-visible
+  // outcome: aiming at your own report changes nothing.
+  test("dragging a card at its own subordinate changes nothing (the branch moves with it)", async ({
+    page,
+  }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: /arrange/i }).click();
     await expect(card(page, `Engineering Director 1 ${suffix}`)).toBeVisible();
@@ -118,9 +125,6 @@ test.describe("Organogram — drag and drop", () => {
       card(page, `Engineering Director 1 ${suffix}`)
     );
 
-    await expect(
-      page.getByRole("alert").filter({ hasText: /reports \(directly or indirectly\)/ })
-    ).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const lead = await readPositionByTitle(companyId, `Engineering Lead 1 ${suffix}`);
     const director = await readPositionByTitle(companyId, `Engineering Director 1 ${suffix}`);

@@ -26,6 +26,7 @@ import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import {
   collectDisplayedDescendants,
   judgeDrop,
+  moveBranch,
   pickDropTargetAtPoint,
   pointerClientPoint,
   type DropVerdict,
@@ -265,9 +266,18 @@ function CanvasInner({
     setManualPositions((current) => (current.size === 0 ? current : new Map()));
   }, [nodeIdsKey, edgesKey, arrangeMode]);
 
+  // The card being dragged and everything drawn below it, with where each
+  // was when the drag began, so the whole branch can travel with the card.
+  const dragBranchRef = useRef<{
+    id: string;
+    start: { x: number; y: number };
+    branchStart: Map<string, { x: number; y: number }>;
+  } | null>(null);
+
   // Drag bookkeeping (arrange mode only). Position changes stream in during a
-  // drag; we mirror them into `manualPositions` so the card follows the cursor
-  // and stays put on release (a free move). Re-parenting is decided on drop.
+  // drag; we mirror them into `manualPositions` so the card follows the cursor,
+  // and shift its whole branch by the same amount so its reports (and the
+  // lines to them) move with it. Re-parenting / reordering is decided on drop.
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       if (!arrangeMode) return;
@@ -277,6 +287,14 @@ function CanvasInner({
           if (change.type === "position" && change.position) {
             if (next === current) next = new Map(current);
             next.set(change.id, change.position);
+            const branch = dragBranchRef.current;
+            if (branch && branch.id === change.id) {
+              const delta = {
+                x: change.position.x - branch.start.x,
+                y: change.position.y - branch.start.y,
+              };
+              for (const [id, p] of moveBranch(branch.branchStart, delta)) next.set(id, p);
+            }
           }
         }
         return next;
@@ -284,6 +302,19 @@ function CanvasInner({
     },
     [arrangeMode]
   );
+
+  /** Puts a dragged card and its branch back under the computed layout. */
+  const releaseBranch = useCallback((draggedId: string) => {
+    const branchIds = dragBranchRef.current?.branchStart.keys() ?? [];
+    const ids = new Set([draggedId, ...branchIds]);
+    dragBranchRef.current = null;
+    setManualPositions((current) => {
+      if (![...ids].some((id) => current.has(id))) return current;
+      const next = new Map(current);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, []);
 
   // Everything drawn below the card being dragged, captured at drag start, so
   // hovering and dropping can refuse its own subordinates instantly.
@@ -325,9 +356,16 @@ function CanvasInner({
 
   const onNodeDragStart = useCallback(
     (_event: unknown, node: Node) => {
-      dragDescendantsRef.current = collectDisplayedDescendants(node.id, visibleEdges);
+      const descendants = collectDisplayedDescendants(node.id, visibleEdges);
+      dragDescendantsRef.current = descendants;
+      const branchStart = new Map<string, { x: number; y: number }>();
+      for (const id of descendants) {
+        const p = manualPositions.get(id) ?? positions.get(id);
+        if (p) branchStart.set(id, p);
+      }
+      dragBranchRef.current = { id: node.id, start: { ...node.position }, branchStart };
     },
-    [visibleEdges]
+    [visibleEdges, manualPositions, positions]
   );
 
   const onNodeDrag = useCallback(
@@ -362,38 +400,33 @@ function CanvasInner({
         const before = siblings.map((n) => n.departmentId);
         const after = [...siblings].sort((a, b) => xOf(a) - xOf(b)).map((n) => n.departmentId);
         if (after.join() !== before.join()) onReorderDepartments?.(after);
-        setManualPositions((current) => {
-          if (!current.has(node.id)) return current;
-          const next = new Map(current);
-          next.delete(node.id);
-          return next;
-        });
+        releaseBranch(node.id);
         return;
       }
 
-      if (!onReparent) return;
+      if (!onReparent) {
+        releaseBranch(node.id);
+        return;
+      }
       // A drop ONTO a card re-parents (a position) or moves into a department
-      // (a department heading); a drop on empty canvas is left as a visual
-      // nudge. Refused drops say why and snap back.
+      // (a department heading); a drop on empty canvas snaps the card and its
+      // branch back. Refused drops say why and snap back too.
       const judged = judgeDropFor(event, node);
-      if (!judged) return;
-      if (judged.verdict.valid) onReparent(node.id, judged.verdict);
-      else onInvalidDrop?.(judged.verdict.reason);
-      // Snap the dragged card back to the computed layout — the move either
-      // succeeds (a re-layout follows) or is declined/blocked (it belongs
-      // where the layout put it), so a half-dropped card should never linger.
-      setManualPositions((current) => {
-        if (!current.has(node.id)) return current;
-        const next = new Map(current);
-        next.delete(node.id);
-        return next;
-      });
+      if (judged) {
+        if (judged.verdict.valid) onReparent(node.id, judged.verdict);
+        else onInvalidDrop?.(judged.verdict.reason);
+      }
+      // Snap the dragged card and its branch back to the computed layout —
+      // the move either succeeds (a re-layout follows) or is declined/blocked
+      // (it belongs where the layout put it), so nothing half-dropped lingers.
+      releaseBranch(node.id);
     },
     [
       arrangeMode,
       onReparent,
       onInvalidDrop,
       onReorderDepartments,
+      releaseBranch,
       judgeDropFor,
       nodeById,
       visibleNodes,

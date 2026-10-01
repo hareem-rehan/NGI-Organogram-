@@ -829,8 +829,8 @@ export function OrganogramView({
           moves with it). The card under the pointer is outlined before you let go. Drag a
           department heading left or right to reorder the departments. Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
-          the trash icon to delete, and click a card to edit it. A drag onto empty space just nudges
-          the card; the layout is regenerated on reload.
+          the trash icon to delete, and click a card to edit it. A card&apos;s whole branch moves
+          with it while you drag; letting go over empty space puts it back.
         </p>
       ) : null}
 
