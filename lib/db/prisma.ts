@@ -1,6 +1,8 @@
 import "server-only";
 import { PrismaClient } from "@prisma/client";
 
+import { runtimeDatabaseUrl } from "@/lib/db/runtime-database-url";
+
 /**
  * Shared Prisma client instance. Never `new PrismaClient()` anywhere else
  * in the app — in dev, Next.js hot-reloads server modules on every save,
@@ -17,7 +19,18 @@ declare global {
   var __organogramPrisma: PrismaClient | undefined;
 }
 
-export const prisma: PrismaClient = globalThis.__organogramPrisma ?? new PrismaClient();
+function createClient(): PrismaClient {
+  // On Supabase, always the transaction pooler (lib/db/runtime-database-url.ts).
+  const { url, rewritten } = runtimeDatabaseUrl(process.env.DATABASE_URL);
+  if (rewritten) {
+    console.warn(
+      "DATABASE_URL points at Supabase's session pooler; using the transaction pooler (port 6543) instead."
+    );
+  }
+  return url ? new PrismaClient({ datasourceUrl: url }) : new PrismaClient();
+}
+
+export const prisma: PrismaClient = globalThis.__organogramPrisma ?? createClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalThis.__organogramPrisma = prisma;
