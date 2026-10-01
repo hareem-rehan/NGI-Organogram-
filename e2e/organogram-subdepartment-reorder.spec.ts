@@ -112,11 +112,17 @@ test.describe("Organogram — sub-department reorder", () => {
     expect(Math.abs((await managerFromProject()) - managerStart)).toBeLessThan(2);
     await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([productKey]);
 
-    // Saved for everyone: still above its row after a reload.
+    // Saved for everyone: still above its row after a reload. Polled, because
+    // the chart lays itself out a moment after the page loads.
     await page.reload();
     await expect(product).toBeVisible();
-    await page.waitForTimeout(700);
-    expect((await product.boundingBox())!.y).toBeLessThan((await project.boundingBox())!.y - 10);
+    await expect(project).toBeVisible();
+    await expect
+      .poll(async () => {
+        const [p, q] = [await product.boundingBox(), await project.boundingBox()];
+        return p && q ? q.y - p.y : 0;
+      })
+      .toBeGreaterThan(10);
 
     // Reset positions puts it back in line with Project.
     await page.getByRole("button", { name: /arrange/i }).click();

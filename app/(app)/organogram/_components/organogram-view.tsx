@@ -12,10 +12,14 @@ import { ErrorState } from "@/components/patterns/error-state";
 import { LoadingState } from "@/components/patterns/loading-state";
 import {
   clearCardPositionsAction,
+  clearTextStyleAction,
   getOrganogramAction,
   resetCardPositionsAction,
   saveCardPositionAction,
+  saveTextStyleAction,
 } from "@/app/(app)/organogram/actions";
+import { TextStylePanel } from "@/app/(app)/organogram/_components/text-style-panel";
+import { CHART_STYLE_KEY, type TextStyle } from "@/lib/domain/organogram-text-style";
 import { PositionFormDialog } from "@/app/(app)/positions/_components/position-form-dialog";
 import {
   deletePositionAction,
@@ -213,6 +217,10 @@ export function OrganogramView({
   const resetDialog = useConfirmDialog();
   const [resetPending, setResetPending] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  // Text style editing (D41): which target ("chart" or a card's node key) is
+  // open, and the unsaved style previewed on the chart meanwhile.
+  const [styleTarget, setStyleTarget] = useState<string | null>(null);
+  const [styleDraft, setStyleDraft] = useState<TextStyle | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -407,6 +415,57 @@ export function OrganogramView({
     },
     [data]
   );
+
+  // Saved styles with any unsaved draft laid over its target, for the live preview.
+  const previewTextStyles = useMemo(() => {
+    const saved = data?.textStyles ?? { chart: {}, cards: {} };
+    if (!styleTarget || !styleDraft) return saved;
+    return styleTarget === CHART_STYLE_KEY
+      ? { ...saved, chart: styleDraft }
+      : { ...saved, cards: { ...saved.cards, [styleTarget]: styleDraft } };
+  }, [data, styleTarget, styleDraft]);
+
+  const closeStylePanel = useCallback(() => {
+    setStyleTarget(null);
+    setStyleDraft(null);
+  }, []);
+
+  const storeTextStyle = useCallback((nodeKey: string, style: TextStyle) => {
+    setData((current) => {
+      if (!current) return current;
+      const textStyles =
+        nodeKey === CHART_STYLE_KEY
+          ? { ...current.textStyles, chart: style }
+          : {
+              ...current.textStyles,
+              cards: Object.fromEntries(
+                Object.entries({ ...current.textStyles.cards, [nodeKey]: style }).filter(
+                  ([, value]) => Object.keys(value).length > 0
+                )
+              ),
+            };
+      return { ...current, textStyles };
+    });
+  }, []);
+
+  const saveStyle = useCallback(
+    async (style: TextStyle) => {
+      if (!styleTarget) return null;
+      const result = await saveTextStyleAction({ nodeKey: styleTarget, style });
+      if (!result.ok) return result.error;
+      storeTextStyle(styleTarget, style);
+      return null;
+    },
+    [styleTarget, storeTextStyle]
+  );
+
+  const resetStyle = useCallback(async () => {
+    if (!styleTarget) return null;
+    const result = await clearTextStyleAction({ nodeKey: styleTarget });
+    if (!result.ok) return result.error;
+    storeTextStyle(styleTarget, {});
+    return null;
+  }, [styleTarget, storeTextStyle]);
 
   const confirmResetPositions = useCallback(() => {
     setResetPending(true);
@@ -910,19 +969,32 @@ export function OrganogramView({
         </p>
       ) : null}
 
-      {arrangeMode && canManage && Object.keys(data.cardOffsets).length > 0 ? (
-        <div>
+      {arrangeMode && canManage ? (
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => {
-              setResetError(null);
-              resetDialog.setOpen(true);
-            }}
+            onClick={() => setStyleTarget(CHART_STYLE_KEY)}
           >
-            Reset positions
+            <span aria-hidden="true" className="font-bold">
+              Aa
+            </span>
+            Text style
           </Button>
+          {Object.keys(data.cardOffsets).length > 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setResetError(null);
+                resetDialog.setOpen(true);
+              }}
+            >
+              Reset positions
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -1033,6 +1105,8 @@ export function OrganogramView({
                 onReorderDepartments={handleReorderDepartments}
                 cardOffsets={data.cardOffsets}
                 onPlaceCard={handlePlaceCard}
+                textStyles={previewTextStyles}
+                onEditStyle={canManage ? (nodeKey) => setStyleTarget(nodeKey) : undefined}
                 onEditCard={handleEditCard}
                 onAddChild={handleAddChild}
                 onRequestDelete={handleRequestDelete}
@@ -1155,6 +1229,30 @@ export function OrganogramView({
           onConfirm={confirmDelete}
         />
       ) : null}
+      {styleTarget ? (
+        <TextStylePanel
+          // Remount per target so its state starts from that target's style.
+          key={styleTarget}
+          open
+          isChart={styleTarget === CHART_STYLE_KEY}
+          targetLabel={
+            styleTarget === CHART_STYLE_KEY
+              ? "All cards"
+              : (data.nodes.find((n) => n.positionId === styleTarget)?.title ?? "This card")
+          }
+          saved={
+            styleTarget === CHART_STYLE_KEY
+              ? data.textStyles.chart
+              : (data.textStyles.cards[styleTarget] ?? {})
+          }
+          inherited={styleTarget === CHART_STYLE_KEY ? {} : data.textStyles.chart}
+          onPreview={setStyleDraft}
+          onSave={saveStyle}
+          onReset={resetStyle}
+          onClose={closeStylePanel}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={resetDialog.open}
         onOpenChange={resetDialog.setOpen}

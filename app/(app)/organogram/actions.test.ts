@@ -7,6 +7,7 @@ const { requirePermissionMock, getOrganogramChartDataMock, layoutMock } = vi.hoi
     saveCardOffset: vi.fn(),
     clearCardOffsets: vi.fn(),
     resetCardOffsets: vi.fn(),
+    saveTextStyle: vi.fn(),
   },
 }));
 
@@ -22,9 +23,11 @@ vi.mock("@/lib/server/audit-actor", () => ({ toAuditActor: () => ({ userId: "u_1
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
 import {
   clearCardPositionsAction,
+  clearTextStyleAction,
   getOrganogramAction,
   resetCardPositionsAction,
   saveCardPositionAction,
+  saveTextStyleAction,
 } from "./actions";
 
 const ADMIN_USER = { id: "u_1", role: "ADMIN", companyId: "company-trusted", status: "ACTIVE" };
@@ -141,5 +144,55 @@ describe("card placement actions (D38)", () => {
       companyId: "company-trusted",
       actor: { userId: "u_1" },
     });
+  });
+});
+
+describe("text style actions (D41)", () => {
+  afterEach(() => vi.clearAllMocks());
+  const POS = "11111111-1111-4111-8111-111111111111";
+
+  it("saves the chart-wide style with the session's company and the acting user", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    const result = await saveTextStyleAction({
+      nodeKey: "chart",
+      style: { fontFamily: "georgia", fontSize: 15, bold: true, color: "#1e3a8a" },
+    });
+    expect(result).toEqual({ ok: true, data: null });
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    expect(layoutMock.saveTextStyle).toHaveBeenCalledWith({
+      companyId: "company-trusted",
+      actor: { userId: "u_1" },
+      nodeKey: "chart",
+      style: { fontFamily: "georgia", fontSize: 15, bold: true, color: "#1e3a8a" },
+    });
+  });
+
+  it("clearing a card's style saves an empty style for that card", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    await clearTextStyleAction({ nodeKey: `dept:${POS}` });
+    expect(layoutMock.saveTextStyle).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeKey: `dept:${POS}`, style: {} })
+    );
+  });
+
+  it("a viewer cannot change text styles", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+    expect((await saveTextStyleAction({ nodeKey: "chart", style: {} })).ok).toBe(false);
+    expect((await clearTextStyleAction({ nodeKey: "chart" })).ok).toBe(false);
+    expect(layoutMock.saveTextStyle).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an unknown font", { nodeKey: "chart", style: { fontFamily: "comic-sans" } }],
+    ["a size above 20", { nodeKey: "chart", style: { fontSize: 72 } }],
+    ["a size below 9", { nodeKey: "chart", style: { fontSize: 4 } }],
+    ["a non-hex colour", { nodeKey: "chart", style: { color: "red; background:url(x)" } }],
+    ["an unknown field", { nodeKey: "chart", style: { fontVariant: "small-caps" } }],
+    ["a bad card key", { nodeKey: "ceo", style: {} }],
+    ["a client-supplied companyId", { nodeKey: "chart", style: {}, companyId: "x" }],
+  ])("rejects %s before the service runs", async (_label, input) => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    expect((await saveTextStyleAction(input)).ok).toBe(false);
+    expect(layoutMock.saveTextStyle).not.toHaveBeenCalled();
   });
 });

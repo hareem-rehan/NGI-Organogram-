@@ -16,7 +16,11 @@ import {
 import { DEFAULT_LEADERSHIP_VIEW_OPTIONS } from "@/lib/domain/organogram-leadership";
 import { NotFoundError } from "@/lib/domain/errors";
 import type { CardOffset } from "@/lib/domain/organogram-card-offsets";
-import { listCardOffsets } from "@/lib/services/organogram-layout.service";
+import {
+  listCardOffsets,
+  listTextStyles,
+  type OrganogramTextStyles,
+} from "@/lib/services/organogram-layout.service";
 
 export interface OrganogramCompanySummary {
   name: string;
@@ -80,6 +84,8 @@ export interface OrganogramChartData extends OrganogramData {
    * interactive chart and the export alike.
    */
   cardOffsets: Record<string, CardOffset>;
+  /** Card text styles: chart-wide plus per-card overrides (D41). */
+  textStyles: OrganogramTextStyles;
 }
 
 export interface GetOrganogramDataInput {
@@ -175,6 +181,9 @@ export async function getOrganogramChartData(
     DEFAULT_LEADERSHIP_VIEW_OPTIONS,
     activeDepartments
   );
-  const cardOffsets = await listCardOffsets(input.companyId);
-  return { ...full, nodes, edges, leadership: summary, cardOffsets };
+  const [cardOffsets, textStyles] = await Promise.all([
+    listCardOffsets(input.companyId),
+    listTextStyles(input.companyId),
+  ]);
+  return { ...full, nodes, edges, leadership: summary, cardOffsets, textStyles };
 }

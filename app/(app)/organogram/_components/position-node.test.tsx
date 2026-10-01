@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ReactFlowProvider, type NodeProps } from "@xyflow/react";
 
@@ -543,5 +543,69 @@ describe("PositionNode — + on department and sub-division boxes (2026-10-02)",
       onAddChild: vi.fn(),
     });
     expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  });
+});
+
+describe("PositionNode — text style (D41)", () => {
+  it("shows Aa on every card type in Arrange mode and reports which card", async () => {
+    const onEditStyle = vi.fn();
+    const user = userEvent.setup();
+    renderNode({
+      node: makeNode({ positionId: "p1", title: "CTO" }),
+      arrangeMode: true,
+      onEditStyle,
+      onAddChild: vi.fn(),
+    });
+    await user.click(screen.getByRole("button", { name: "Text style for CTO" }));
+    expect(onEditStyle).toHaveBeenCalledWith("p1");
+    cleanup();
+
+    renderNode({
+      node: makeNode({
+        kind: "department",
+        positionId: "dept:d1",
+        departmentName: "Engineering",
+        hasChildren: true,
+        departmentMemberCount: 1,
+      }),
+      arrangeMode: true,
+      onEditStyle,
+    });
+    await user.click(screen.getByRole("button", { name: "Text style for Engineering" }));
+    expect(onEditStyle).toHaveBeenLastCalledWith("dept:d1");
+  });
+
+  it("shows no Aa outside Arrange mode", () => {
+    renderNode({ node: makeNode({ title: "CTO" }), arrangeMode: false, onEditStyle: vi.fn() });
+    expect(screen.queryByRole("button", { name: /text style for/i })).not.toBeInTheDocument();
+  });
+
+  it("applies the card's style: font, size, colour, italic, and weight/decoration hooks", () => {
+    renderNode({
+      node: makeNode({ title: "CTO" }),
+      textStyle: {
+        fontFamily: "georgia",
+        fontSize: 16,
+        color: "#ff0000",
+        italic: true,
+        bold: false,
+        underline: true,
+      },
+    });
+    const card = document.querySelector("[data-org-weight]") as HTMLElement;
+    expect(card).not.toBeNull();
+    expect(card).toHaveAttribute("data-org-deco");
+    expect(card.style.fontFamily).toContain("Georgia");
+    expect(card.style.fontSize).toBe("16px");
+    expect(card.style.color).toBe("rgb(255, 0, 0)");
+    expect(card.style.fontStyle).toBe("italic");
+    expect(card.style.getPropertyValue("--org-card-weight")).toBe("400");
+    expect(card.style.getPropertyValue("--org-card-deco")).toBe("underline");
+  });
+
+  it("keeps the built-in look when no style is set", () => {
+    renderNode({ node: makeNode({ title: "CTO" }) });
+    expect(document.querySelector("[data-org-weight]")).toBeNull();
+    expect(document.querySelector("[data-org-deco]")).toBeNull();
   });
 });

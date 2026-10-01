@@ -9,6 +9,13 @@ import { cn } from "@/lib/utils";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
 import type { OrganogramNode } from "@/lib/domain/organogram";
 import { CARD_TEXT_COLOR, type FamilyColor } from "@/lib/domain/organogram-family-colors";
+import {
+  DEFAULT_TITLE_SIZE,
+  fontFamilyById,
+  fontScaleOf,
+  textDecorationOf,
+  type TextStyle,
+} from "@/lib/domain/organogram-text-style";
 
 /** Which dimension drives a card's colour. Department is the default. */
 export type OrganogramColorMode = "department" | "family";
@@ -35,6 +42,33 @@ function secondaryTextClass(fill: string | undefined): string {
  */
 function cardTextColorOf(color: FamilyColor | null | undefined): string | undefined {
   return color?.fill ? (color.text ?? CARD_TEXT_COLOR) : undefined;
+}
+
+/**
+ * Inline style + data attributes that apply a card's text style (D41) to
+ * every line: family, size (the lines are sized in em, so they scale
+ * together), colour, italic, and — via globals.css — weight and
+ * underline/strikethrough. With no style set the built-in look is kept.
+ */
+function textStyleProps(style: TextStyle | undefined, autoColor: string | undefined) {
+  const s = style ?? {};
+  const family = fontFamilyById(s.fontFamily);
+  const decoration = textDecorationOf(s);
+  return {
+    style: {
+      fontSize: `${DEFAULT_TITLE_SIZE * fontScaleOf(s)}px`,
+      fontFamily: family?.css,
+      color: s.color ?? autoColor,
+      fontStyle: s.italic ? "italic" : undefined,
+      ["--org-card-weight" as string]:
+        s.bold === undefined || s.bold === null ? undefined : s.bold ? 700 : 400,
+      ["--org-card-deco" as string]: decoration,
+    } as React.CSSProperties,
+    attrs: {
+      "data-org-weight": s.bold === undefined || s.bold === null ? undefined : "",
+      "data-org-deco": decoration ? "" : undefined,
+    },
+  };
 }
 
 /** A lighter divider for white text on a dark card; the theme's otherwise. */
@@ -67,6 +101,10 @@ export interface PositionNodeData extends Record<string, unknown> {
   onEdit?: (positionId: string) => void;
   onAddChild?: (positionId: string) => void;
   onRequestDelete?: (positionId: string) => void;
+  /** Opens the text-style panel for this one card (D41, Arrange mode). */
+  onEditStyle?: (nodeKey: string) => void;
+  /** This card's effective text style (its own settings over the chart's), D41. */
+  textStyle?: TextStyle;
   /**
    * Arrange-mode drop feedback while another card is dragged over this one:
    * "valid" (green ring — dropping here is allowed) or "invalid" (red ring —
@@ -124,8 +162,11 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
   const fill = data.cardColor?.fill;
   const border = data.cardColor?.accent ?? "var(--color-primary)";
 
+  const cardText = textStyleProps(data.textStyle, cardTextColorOf(data.cardColor));
+
   return (
     <div
+      {...cardText.attrs}
       className={cn(
         "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
         dropHintClass(data.dropHint),
@@ -136,7 +177,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         height: NODE_HEIGHT,
         borderColor: border,
         backgroundColor: fill,
-        color: cardTextColorOf(data.cardColor),
+        ...cardText.style,
       }}
     >
       <Handle
@@ -168,14 +209,14 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
           ) : null}
           <p
             className={cn(
-              "line-clamp-2 text-[13px] leading-tight font-extrabold tracking-wide uppercase",
-              data.arrangeMode && "pr-7"
+              "line-clamp-2 text-[1em] leading-tight font-extrabold tracking-wide uppercase",
+              data.arrangeMode && "pr-14"
             )}
           >
             {node.departmentName}
           </p>
         </div>
-        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-xs font-semibold")}>
+        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-[0.923em] font-semibold")}>
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
@@ -194,24 +235,49 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
  * sub-division, and the position just above it as the manager.
  */
 function GroupAddButton({ data }: { data: PositionNodeData }) {
-  const { node, arrangeMode, onAddChild } = data;
-  if (!arrangeMode || !onAddChild) return null;
+  const { node, arrangeMode, onAddChild, onEditStyle } = data;
+  if (!arrangeMode || (!onAddChild && !onEditStyle)) return null;
   const label = node.kind === "department" ? node.departmentName : node.title;
   return (
-    <div className="nodrag absolute top-1 right-1 z-10">
-      <button
-        type="button"
-        aria-label={`Add a position in ${label}`}
-        title="Add a position here"
-        onClick={(event) => {
-          event.stopPropagation();
-          onAddChild(node.positionId);
-        }}
-        className="border-border bg-background/90 text-muted-foreground hover:text-foreground focus-visible:ring-ring flex size-6 items-center justify-center rounded border shadow-sm outline-none focus-visible:ring-2"
-      >
-        <Plus aria-hidden="true" className="size-3.5" />
-      </button>
+    <div className="nodrag absolute top-1 right-1 z-10 flex gap-1">
+      {onEditStyle ? (
+        <StyleButton label={label} onClick={() => onEditStyle(node.positionId)} />
+      ) : null}
+      {onAddChild ? (
+        <button
+          type="button"
+          aria-label={`Add a position in ${label}`}
+          title="Add a position here"
+          onClick={(event) => {
+            event.stopPropagation();
+            onAddChild(node.positionId);
+          }}
+          className="border-border bg-background/90 text-muted-foreground hover:text-foreground focus-visible:ring-ring flex size-6 items-center justify-center rounded border shadow-sm outline-none focus-visible:ring-2"
+        >
+          <Plus aria-hidden="true" className="size-3.5" />
+        </button>
+      ) : null}
     </div>
+  );
+}
+
+/** "Aa": opens the text-style panel for one card (D41). */
+function StyleButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Text style for ${label}`}
+      title="Text style for this card"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      // Fixed size and font: the button must not change with the card's own style.
+      style={{ fontFamily: "var(--font-sans)", fontStyle: "normal", fontSize: "11px" }}
+      className="border-border bg-background/90 text-muted-foreground hover:text-foreground focus-visible:ring-ring flex size-6 items-center justify-center rounded border font-bold shadow-sm outline-none focus-visible:ring-2"
+    >
+      Aa
+    </button>
   );
 }
 
@@ -229,8 +295,11 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
   const fill = data.cardColor?.fill;
   const border = data.cardColor?.accent ?? "var(--color-primary)";
 
+  const cardText = textStyleProps(data.textStyle, cardTextColorOf(data.cardColor));
+
   return (
     <div
+      {...cardText.attrs}
       className={cn(
         "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
         dropHintClass(data.dropHint),
@@ -241,7 +310,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
         height: NODE_HEIGHT,
         borderColor: border,
         backgroundColor: fill,
-        color: cardTextColorOf(data.cardColor),
+        ...cardText.style,
       }}
     >
       <Handle
@@ -273,14 +342,14 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
           ) : null}
           <p
             className={cn(
-              "line-clamp-2 text-[13px] leading-tight font-extrabold",
-              data.arrangeMode && "pr-7"
+              "line-clamp-2 text-[1em] leading-tight font-extrabold",
+              data.arrangeMode && "pr-14"
             )}
           >
             {node.title}
           </p>
         </div>
-        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-xs font-semibold")}>
+        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-[0.923em] font-semibold")}>
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
@@ -340,8 +409,11 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         ? " Context — shown to preserve the real reporting path."
         : "";
 
+  const cardText = textStyleProps(data.textStyle, cardTextColorOf(data.cardColor));
+
   return (
     <div
+      {...cardText.attrs}
       className={cn(
         // @xyflow/react sets `pointer-events: none` (inline, inherited by
         // children) on the node wrapper whenever elementsSelectable/
@@ -377,7 +449,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // Own same-hue border, unless selection/match override it via class.
         borderColor: isSelected || matchState === "match" ? undefined : borderColor,
         backgroundColor: cardBackground,
-        color: cardTextColorOf(cardColor),
+        ...cardText.style,
       }}
     >
       <Handle
@@ -391,6 +463,9 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // stopPropagation keeps it from also triggering the card's Edit
         // click behind them.
         <div className="nodrag absolute top-1 right-1 z-10 flex gap-1">
+          {data.onEditStyle ? (
+            <StyleButton label={node.title} onClick={() => data.onEditStyle?.(node.positionId)} />
+          ) : null}
           <button
             type="button"
             aria-label={`Add a report to ${node.title}`}
@@ -448,10 +523,10 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
           <p
-            className={`line-clamp-2 text-[13px] leading-[15px] font-extrabold tracking-tight ${
+            className={`line-clamp-2 text-[1em] leading-[1.15] font-extrabold tracking-tight ${
               // Leave room for the Add / Delete buttons pinned top-right in
               // Arrange mode, so they never sit on top of the title.
-              arrangeMode ? "pr-14" : ""
+              arrangeMode ? "pr-20" : ""
             }`}
           >
             {node.title}
@@ -467,7 +542,9 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           </div>
         </div>
         {occupantName ? (
-          <p className={cn("mt-0.5 truncate text-xs leading-4 font-bold")}>{occupantName}</p>
+          <p className={cn("mt-0.5 truncate text-[0.923em] leading-[1.333] font-bold")}>
+            {occupantName}
+          </p>
         ) : null}
       </button>
       {/* Footer: how many roles sit under it (the expand control) on the
@@ -488,7 +565,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
                 : `Collapse ${node.title}`
             }
             className={cn(
-              "nodrag hover:text-foreground focus-visible:ring-ring flex shrink-0 items-center gap-0.5 rounded text-[11px] font-semibold outline-none focus-visible:ring-2",
+              "nodrag hover:text-foreground focus-visible:ring-ring flex shrink-0 items-center gap-0.5 rounded text-[0.846em] font-semibold outline-none focus-visible:ring-2",
               secondaryTextClass(cardBackground)
             )}
           >
@@ -505,7 +582,10 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           // — e.g. its reports sit under their own department box), but the
           // count is still the real one.
           <p
-            className={cn(secondaryTextClass(cardBackground), "shrink-0 text-[11px] font-semibold")}
+            className={cn(
+              secondaryTextClass(cardBackground),
+              "shrink-0 text-[0.846em] font-semibold"
+            )}
           >
             {rolesUnder > 0 ? (
               <>
@@ -521,7 +601,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           <p
             className={cn(
               secondaryTextClass(cardBackground),
-              "min-w-0 truncate text-right text-[11px] font-semibold"
+              "min-w-0 truncate text-right text-[0.846em] font-semibold"
             )}
           >
             {node.jobGradeCode ? <span className="font-extrabold">{node.jobGradeCode}</span> : null}

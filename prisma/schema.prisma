@@ -207,6 +207,7 @@ model Company {
   departmentLevelTitles DepartmentLevelTitle[]
   jobFamilyLevelTitles  JobFamilyLevelTitle[]
   organogramCardOffsets OrganogramCardOffset[]
+  organogramTextStyles  OrganogramTextStyle[]
   positions             Position[]
   employees             Employee[]
   positionAssignments   PositionAssignment[]
@@ -1027,4 +1028,33 @@ model OrganogramCardOffset {
   @@unique([companyId, nodeKey])
   @@index([companyId])
   @@map("organogram_card_offsets")
+}
+
+// ---------------------------------------------------------------------
+// Organogram text styles (docs/DECISIONS.md D41)
+//
+// How card text looks: one row with nodeKey "chart" for every card, plus a
+// row per card that HR styled on its own (same node keys as
+// OrganogramCardOffset). Every field is optional — null means "inherit"
+// (card → chart → built-in default). Purely visual.
+// ---------------------------------------------------------------------
+model OrganogramTextStyle {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @db.Uuid
+  nodeKey       String
+  fontFamily    String?
+  fontSize      Int?
+  color         String?
+  bold          Boolean?
+  italic        Boolean?
+  underline     Boolean?
+  strikethrough Boolean?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, nodeKey])
+  @@index([companyId])
+  @@map("organogram_text_styles")
 }
