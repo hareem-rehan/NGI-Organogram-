@@ -177,6 +177,14 @@ export async function computeElkLayout(
     }
   }
 
+  // One set of rows for the whole chart (D48): each department box lays out
+  // its own rows, so a box with taller cards drifted lower than its
+  // neighbours, and ELK centres cards of different heights within a row.
+  // Rows come from reporting depth instead, every row's cards share one top
+  // edge, and rows are stacked LAYER_GAP apart — so connectors into a row all
+  // land at the same height and bars never run in parallel.
+  positions = alignRows(positions, edges, (id) => size(id).height);
+
   // Department branches grow AWAY from the centre: left-half departments to
   // the left, right-half ones to the right (outward-layout.ts). Rows and
   // department order are ELK's; only horizontal placement changes.
@@ -211,4 +219,46 @@ export async function computeElkLayout(
     }
   }
   return positions;
+}
+
+/**
+ * Re-derives every card's y from its reporting depth: row k starts LAYER_GAP
+ * below the bottom of the tallest card in row k−1, and every card in a row
+ * shares the row's top edge. Depth is the longest path from a top card, so a
+ * two-head card sits below BOTH heads. x is kept.
+ */
+export function alignRows(
+  positions: ReadonlyMap<string, LayoutPosition>,
+  edges: readonly { sourcePositionId: string; targetPositionId: string }[],
+  heightOf: (id: string) => number
+): Map<string, LayoutPosition> {
+  const heads = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!positions.has(e.sourcePositionId) || !positions.has(e.targetPositionId)) continue;
+    heads.set(e.targetPositionId, [...(heads.get(e.targetPositionId) ?? []), e.sourcePositionId]);
+  }
+  const depth = new Map<string, number>();
+  const depthOf = (id: string, visiting = new Set<string>()): number => {
+    const known = depth.get(id);
+    if (known !== undefined) return known;
+    if (visiting.has(id)) return 0; // defensive: never loop on bad data
+    visiting.add(id);
+    const d = Math.max(-1, ...(heads.get(id) ?? []).map((h) => depthOf(h, visiting))) + 1;
+    visiting.delete(id);
+    depth.set(id, d);
+    return d;
+  };
+  const rowHeight: number[] = [];
+  for (const id of positions.keys()) {
+    const d = depthOf(id);
+    rowHeight[d] = Math.max(rowHeight[d] ?? 0, heightOf(id));
+  }
+  const top = Math.min(...[...positions.values()].map((p) => p.y));
+  const rowTop: number[] = [];
+  for (let d = 0; d < rowHeight.length; d++) {
+    rowTop[d] = d === 0 ? top : rowTop[d - 1]! + (rowHeight[d - 1] ?? 0) + LAYER_GAP;
+  }
+  const out = new Map<string, LayoutPosition>();
+  for (const [id, p] of positions) out.set(id, { x: p.x, y: rowTop[depthOf(id)]! });
+  return out;
 }

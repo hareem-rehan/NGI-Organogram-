@@ -5,7 +5,7 @@ import { seedDepartmentLayoutChart } from "./support/department-layout-fixtures"
 
 /**
  * Opening view and zoom menu (2026-10-02): the chart opens readable — the
- * root and department row at >= 75% — and the zoom menu shows / sets the
+ * root and the nearest department boxes at >= 75% (D48) — and the zoom menu shows / sets the
  * zoom as a percentage, or fits the whole chart.
  */
 test.describe.configure({ mode: "serial" });
@@ -54,12 +54,21 @@ test.describe("Organogram — opening view and zoom", () => {
     );
   };
 
-  test("opens with the root and department row readable (>= 75%)", async ({ page }) => {
+  test("opens readable (>= 75%) on the root and its nearest departments", async ({ page }) => {
     await page.goto("/organogram");
     await expect(page.getByText(`CEO ${suffix}`, { exact: true })).toBeVisible();
     await expect.poll(() => zoomOf(page)).toBeGreaterThanOrEqual(0.75);
     await expect.poll(() => inPane(page, `CEO ${suffix}`)).toBe(true);
-    await expect.poll(() => inPane(page, `Engineering ${suffix}`)).toBe(true);
+    // Since D48 every box is centred over its reports, so a wide department's
+    // box sits further out; the opening view is readable and centred on the
+    // root, with at least the nearest department box in view.
+    await expect
+      .poll(async () => {
+        const names = ["Marketing", "Client Delivery Services", "Engineering"];
+        const seen = await Promise.all(names.map((n) => inPane(page, `${n} ${suffix}`)));
+        return seen.some(Boolean);
+      })
+      .toBe(true);
     await expect(page.getByRole("combobox", { name: "Zoom level" })).toBeVisible();
   });
 

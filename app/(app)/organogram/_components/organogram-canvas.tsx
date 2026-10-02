@@ -265,8 +265,36 @@ function CanvasInner({
     };
     const whole = frame(all);
     // The whole chart when it fits at a readable zoom; otherwise the top tiers
-    // (root, departments, their leaders) as large as they fit.
-    const target = whole.fitZoom >= READABLE_MIN_ZOOM || top.length === 0 ? whole : frame(top);
+    // (root, departments, their leaders) as large as they fit. If even those
+    // are too wide (since D48 each box is centred over its own branch, so a
+    // wide department sits far out), the root plus as many of the NEAREST
+    // department boxes as fit readably, so the chart never opens on empty space.
+    const nearestFit = (): Box[] => {
+      const roots = visibleNodes
+        .filter((n) => (n.displayDepth ?? n.organizationalLevel) <= 1)
+        .map((n) => boxOf(n.positionId))
+        .filter((b): b is Box => b !== undefined);
+      if (roots.length === 0) return top;
+      const rootCentre = roots.reduce((sum, b) => sum + b.x + b.width / 2, 0) / roots.length;
+      const rest = top
+        .filter((b) => !roots.includes(b))
+        .sort(
+          (a, b) =>
+            Math.abs(a.x + a.width / 2 - rootCentre) - Math.abs(b.x + b.width / 2 - rootCentre)
+        );
+      const chosen = [...roots];
+      for (const box of rest) {
+        if (frame([...chosen, box]).fitZoom < READABLE_MIN_ZOOM) break;
+        chosen.push(box);
+      }
+      return chosen;
+    };
+    const target =
+      whole.fitZoom >= READABLE_MIN_ZOOM || top.length === 0
+        ? whole
+        : frame(top).fitZoom >= READABLE_MIN_ZOOM
+          ? frame(top)
+          : frame(nearestFit());
     const zoom = Math.min(1, Math.max(READABLE_MIN_ZOOM, target.fitZoom));
     requestAnimationFrame(() =>
       setViewport(

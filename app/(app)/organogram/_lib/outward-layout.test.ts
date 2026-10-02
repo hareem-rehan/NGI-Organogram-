@@ -56,31 +56,17 @@ describe("growDirectionFor", () => {
 });
 
 describe("layoutBranch", () => {
-  it("grows left: every manager sits above the right edge of its reports", () => {
-    const { placed } = layoutBranch(ids, pos, edges, "left", W, GAP);
-    const x = (id: string) => placed.get(id)!.x;
-    expect(x("lead")).toBe(x("c")); // above its innermost (right-most) report
-    expect(x("a")).toBe(x("a2"));
-    expect(x("a1")).toBeLessThan(x("a")); // reports spread outward (left)
-    for (const id of ["a", "b", "a1", "a2"]) expect(x(id)).toBeLessThanOrEqual(x("lead"));
-    expect(x("a")).toBeLessThan(x("b")); // order kept
-    expect(x("b")).toBeLessThan(x("c"));
-    noOverlapsPerRow(placed, W);
-  });
-
-  it("grows right: the mirror image", () => {
-    const { placed } = layoutBranch(ids, pos, edges, "right", W, GAP);
-    const x = (id: string) => placed.get(id)!.x;
-    expect(x("lead")).toBe(x("a")); // above its innermost (left-most) report
-    for (const id of ["b", "c", "a2"]) expect(x(id)).toBeGreaterThanOrEqual(x("lead"));
-    noOverlapsPerRow(placed, W);
-  });
-
-  it("balanced: each manager centred over its reports", () => {
-    const { placed } = layoutBranch(ids, pos, edges, "balanced", W, GAP);
-    const x = (id: string) => placed.get(id)!.x;
-    expect(x("lead")).toBe((x("a") + x("c")) / 2);
-    noOverlapsPerRow(placed, W);
+  it("centres every manager over its reports, whichever side the branch is on (D48)", () => {
+    for (const direction of ["left", "right", "balanced"] as const) {
+      const { placed } = layoutBranch(ids, pos, edges, direction, W, GAP);
+      const x = (id: string) => placed.get(id)!.x;
+      expect(x("lead")).toBe((x("a") + x("c")) / 2);
+      expect(x("a")).toBe((x("a1") + x("a2")) / 2);
+      expect(x("dept")).toBe(x("lead")); // one report: straight below
+      expect(x("a")).toBeLessThan(x("b")); // order kept
+      expect(x("b")).toBeLessThan(x("c"));
+      noOverlapsPerRow(placed, W);
+    }
   });
 
   it("keeps every card's row", () => {
@@ -131,16 +117,69 @@ describe("layoutBranch with each card's own width (D47)", () => {
     }
   });
 
-  it("aligns a manager's inner edge with its innermost report's", () => {
-    const left = layoutBranch(ids, pos, edges, "left", widthOf, GAP).placed;
-    expect(left.get("lead")!.x + widthOf("lead")).toBe(left.get("c")!.x + widthOf("c"));
-    const right = layoutBranch(ids, pos, edges, "right", widthOf, GAP).placed;
-    expect(right.get("lead")!.x).toBe(right.get("a")!.x);
+  it("centres a manager over reports of different widths (D48)", () => {
+    const centre = (placed: Map<string, { x: number }>, id: string) =>
+      placed.get(id)!.x + widthOf(id) / 2;
+    const { placed } = layoutBranch(ids, pos, edges, "left", widthOf, GAP);
+    expect(centre(placed, "lead")).toBe((centre(placed, "a") + centre(placed, "c")) / 2);
+    expect(centre(placed, "a")).toBe((centre(placed, "a1") + centre(placed, "a2")) / 2);
+    expect(centre(placed, "dept")).toBe(centre(placed, "lead"));
+  });
+
+  it("centres a two-head card and the chain below it between both heads", () => {
+    // ad → (l1 → l2) and (r1 → r2); both l2 and r2 head "join" → "j2".
+    const jIds = ["ad", "l1", "l2", "r1", "r2", "join", "j2"];
+    const jPos = new Map([
+      ["ad", { x: 0, y: 0 }],
+      ["l1", { x: 0, y: 100 }],
+      ["r1", { x: 120, y: 100 }],
+      ["l2", { x: 0, y: 200 }],
+      ["r2", { x: 120, y: 200 }],
+      ["join", { x: 0, y: 300 }],
+      ["j2", { x: 0, y: 400 }],
+    ]);
+    const jEdges = [
+      e("ad", "l1"),
+      e("ad", "r1"),
+      e("l1", "l2"),
+      e("r1", "r2"),
+      e("l2", "join"),
+      e("r2", "join"),
+      e("join", "j2"),
+    ];
+    const { placed } = layoutBranch(jIds, jPos, jEdges, "left", W, GAP);
+    const x = (id: string) => placed.get(id)!.x;
+    expect(x("join")).toBe((x("l2") + x("r2")) / 2);
+    expect(x("j2")).toBe(x("join")); // the chain below stays straight
+    expect(x("ad")).toBe((x("l1") + x("r1")) / 2);
+  });
+
+  it("keeps a straight single-report chain of different widths on one vertical line", () => {
+    const chainIds = ["p", "q", "r"];
+    const chainPos = new Map([
+      ["p", { x: 0, y: 0 }],
+      ["q", { x: 0, y: 100 }],
+      ["r", { x: 0, y: 200 }],
+    ]);
+    const w: Record<string, number> = { p: 300, q: 150, r: 220 };
+    for (const direction of ["left", "right", "balanced"] as const) {
+      const { placed } = layoutBranch(
+        chainIds,
+        chainPos,
+        [e("p", "q"), e("q", "r")],
+        direction,
+        (id) => w[id]!,
+        GAP
+      );
+      const centres = chainIds.map((id) => placed.get(id)!.x + w[id]! / 2);
+      expect(new Set(centres).size).toBe(1);
+      expect(Math.min(...chainIds.map((id) => placed.get(id)!.x))).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 
 describe("arrangeBranchesOutward", () => {
-  it("packs branches in their order without overlapping, each growing its own way", () => {
+  it("packs branches in their order without overlapping", () => {
     const two = new Map([
       ["L", { x: 0, y: 0 }],
       ["L1", { x: 0, y: 100 }],
@@ -161,14 +200,14 @@ describe("arrangeBranchesOutward", () => {
       50
     );
     const x = (id: string) => out.get(id)!.x;
-    expect(x("L")).toBe(x("L2")); // left branch: head over its right edge
-    expect(x("R")).toBe(x("R1")); // right branch: head over its left edge
+    expect(x("L")).toBe((x("L1") + x("L2")) / 2); // each head centred over its reports (D48)
+    expect(x("R")).toBe((x("R1") + x("R2")) / 2);
     expect(x("R1") - (x("L2") + W)).toBeGreaterThanOrEqual(50);
   });
 });
 
 describe("computeElkLayout — outward branches (end to end)", () => {
-  it("the left-most department grows left and the right-most grows right of its box", async () => {
+  it("centres each department box over its reports, departments in order", async () => {
     const nodeIds = ["ceo", "dL", "dM", "dR", "l1", "l2", "m1", "r1", "r2"];
     const edgesE = [
       e("ceo", "dL"),
@@ -192,10 +231,10 @@ describe("computeElkLayout — outward branches (end to end)", () => {
     ]);
     const p = await computeElkLayout(nodeIds, edgesE, clusterOf);
     const x = (id: string) => p.get(id)!.x;
-    expect(Math.max(x("l1"), x("l2"))).toBe(x("dL"));
-    expect(Math.min(x("l1"), x("l2"))).toBeLessThan(x("dL"));
-    expect(Math.min(x("r1"), x("r2"))).toBe(x("dR"));
-    expect(Math.max(x("r1"), x("r2"))).toBeGreaterThan(x("dR"));
+    // Each department box is centred over its two reports (D48).
+    expect(x("dL")).toBe((x("l1") + x("l2")) / 2);
+    expect(x("dR")).toBe((x("r1") + x("r2")) / 2);
+    expect(x("dM")).toBe(x("m1"));
     // The CEO stays centred over the department row.
     expect(x("ceo") + NODE_WIDTH / 2).toBeCloseTo((x("dL") + x("dR") + NODE_WIDTH) / 2, 0);
   });

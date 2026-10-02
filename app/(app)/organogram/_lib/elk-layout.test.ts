@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  alignRows,
   computeElkLayout,
   DEPARTMENT_SIDE_PADDING,
   LAYER_GAP,
@@ -201,5 +202,49 @@ describe("computeElkLayout — spacing inside a department box", () => {
     const left = Math.min(p.get("r1")!.x, p.get("r2")!.x);
     const right = Math.max(p.get("r1")!.x, p.get("r2")!.x);
     expect(right - (left + NODE_WIDTH)).toBeGreaterThanOrEqual(NODE_GAP);
+  });
+});
+
+describe("alignRows (D48)", () => {
+  const edge = (s: string, t: string) => ({ sourcePositionId: s, targetPositionId: t });
+
+  it("puts every card of a reporting depth on one shared top edge, across departments", async () => {
+    const sizes: Record<string, { width: number; height: number }> = {
+      r: { width: 188, height: 56 },
+      a: { width: 300, height: 90 },
+      b: { width: 188, height: 56 },
+      a1: { width: 188, height: 56 },
+      b1: { width: 188, height: 70 },
+    };
+    const positions = await computeElkLayout(
+      Object.keys(sizes),
+      [edge("r", "a"), edge("r", "b"), edge("a", "a1"), edge("b", "b1")],
+      new Map([
+        ["a", "A"],
+        ["a1", "A"],
+        ["b", "B"],
+        ["b1", "B"],
+      ]),
+      (id) => sizes[id]!
+    );
+    expect(positions.get("a")!.y).toBe(positions.get("b")!.y);
+    expect(positions.get("a1")!.y).toBe(positions.get("b1")!.y);
+    // The row starts one gap below the tallest card of the row above.
+    expect(positions.get("a1")!.y - positions.get("a")!.y).toBe(90 + LAYER_GAP);
+  });
+
+  it("places a two-head card below its deeper head", () => {
+    const placed = alignRows(
+      new Map([
+        ["r", { x: 0, y: 0 }],
+        ["a", { x: 0, y: 100 }],
+        ["a1", { x: 0, y: 200 }],
+        ["b", { x: 200, y: 100 }],
+        ["both", { x: 100, y: 120 }],
+      ]),
+      [edge("r", "a"), edge("r", "b"), edge("a", "a1"), edge("a1", "both"), edge("b", "both")],
+      () => 50
+    );
+    expect(placed.get("both")!.y).toBe(placed.get("a1")!.y + 50 + LAYER_GAP);
   });
 });
