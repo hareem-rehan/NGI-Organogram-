@@ -721,7 +721,7 @@ describe("applyTextStyleToCardSvg (D41)", () => {
     expect(applyTextStyleToCardSvg(card, undefined)).toBe(card);
   });
 
-  it("applies family (as the PDF base font), size, weight, colour, italic and decoration", () => {
+  it("applies family (as the PDF base font), weight, colour, italic and decoration", () => {
     const out = applyTextStyleToCardSvg(card, {
       fontFamily: "georgia",
       fontSize: 26, // clamped to 20 → ×(20/13)
@@ -733,8 +733,8 @@ describe("applyTextStyleToCardSvg (D41)", () => {
     expect(out).toContain('font-family="Times"');
     expect(out).toContain('font-style="italic"');
     expect(out).toContain('text-decoration="underline"');
-    expect(out).toContain('font-size="20"');
-    expect(out).toContain('font-size="16.2"');
+    // Size is laid out by the card renderers (D45), not rewritten here.
+    expect(out).toContain('font-size="13"');
     expect(out).not.toContain('font-weight="800"');
     expect(out).toContain('font-weight="400"');
     expect(out).not.toContain('fill="#ffffff"');
@@ -746,5 +746,72 @@ describe("applyTextStyleToCardSvg (D41)", () => {
     const out = applyTextStyleToCardSvg(card, { color: "#333333" });
     expect(out).not.toContain('fill="#333333"');
     expect(out).toContain('fill="#ffffff"');
+  });
+});
+
+describe("renderOrganogramSvg — text size lays the card out (D45)", () => {
+  const big = { fontSize: 20 };
+  const render = (n: SvgRenderNode, style?: { fontSize: number }) =>
+    renderOrganogramSvg([n], [], new Map([[n.positionId, { x: 0, y: 0 }]]), METADATA, {
+      ...BASE_OPTIONS,
+      textStyleByNodeId: style ? new Map([[n.positionId, style]]) : undefined,
+    }).svg;
+  const textYs = (svg: string, size: string) =>
+    [...svg.matchAll(new RegExp(`<text x="[\\d.]+" y="([\\d.]+)" font-size="${size}"`, "g"))].map(
+      (m) => Number(m[1])
+    );
+
+  it("keeps the built-in layout exactly at the default size", () => {
+    const svg = render(
+      node({
+        positionId: "p1",
+        title: "Principal Product Analyst II",
+        occupancyStatus: "occupied",
+        occupantDisplayName: "Ayesha Khan",
+      })
+    );
+    expect(textYs(svg, "13")).toEqual([19, 34]);
+    expect(svg).toContain('y="50" font-size="12"');
+    expect(svg).toContain(`y1="${NODE_HEIGHT - 20}"`);
+  });
+
+  it("wraps sooner, spaces lines further apart and keeps the person above the footer", () => {
+    const svg = render(
+      node({
+        positionId: "p1",
+        title: "Principal Product Analyst II",
+        occupancyStatus: "occupied",
+        occupantDisplayName: "Ayesha Khan",
+        jobGradeCode: "L8",
+      }),
+      big
+    );
+    const titles = textYs(svg, "20");
+    expect(titles).toHaveLength(1); // two lines would push the person into the footer
+    const occupantY = textYs(svg, "18.5")[0]!;
+    expect(occupantY - titles[0]!).toBeGreaterThanOrEqual(18);
+    const dividerY = Number(/<line x1="8" y1="([\d.]+)"/.exec(svg)![1]);
+    expect(occupantY).toBeLessThan(dividerY);
+    // The footer grows only a little (capped), so it still fits on one row.
+    expect(svg).toContain('font-size="11.6" font-weight="600"');
+  });
+
+  it("gives an unfilled card's long title two well-spaced lines at a large size", () => {
+    const svg = render(node({ positionId: "p1", title: "Principal Product Analyst II" }), big);
+    const [first, second] = textYs(svg, "20");
+    expect(second! - first!).toBeGreaterThanOrEqual(20 * 1.1);
+  });
+
+  it("keeps a department card's name and role count inside the card at a large size", () => {
+    const svg = render(
+      node({ positionId: "d1", kind: "department", departmentName: "Client Delivery Services" }),
+      big
+    );
+    const names = textYs(svg, "20");
+    expect(names.length).toBeGreaterThan(0);
+    const rolesY = Number(/y="([\d.]+)" font-size="12.1"/.exec(svg)![1]);
+    expect(rolesY).toBeGreaterThan(names[names.length - 1]!);
+    expect(rolesY).toBeLessThanOrEqual(NODE_HEIGHT - 6);
+    expect(names[0]! - 20).toBeGreaterThanOrEqual(0);
   });
 });
