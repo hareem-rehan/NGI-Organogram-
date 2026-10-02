@@ -102,6 +102,43 @@ describe("layoutBranch", () => {
   });
 });
 
+describe("layoutBranch with each card's own width (D47)", () => {
+  const widths: Record<string, number> = {
+    dept: 100,
+    lead: 180,
+    a: 100,
+    b: 260,
+    c: 100,
+    a1: 140,
+    a2: 100,
+  };
+  const widthOf = (id: string) => widths[id]!;
+
+  it("never overlaps cards of different widths on a row", () => {
+    for (const direction of ["left", "right", "balanced"] as const) {
+      const { placed } = layoutBranch(ids, pos, edges, direction, widthOf, GAP);
+      const rows = new Map<number, string[]>();
+      for (const [id, p] of placed) rows.set(p.y, [...(rows.get(p.y) ?? []), id]);
+      for (const row of rows.values()) {
+        row.sort((x, y) => placed.get(x)!.x - placed.get(y)!.x);
+        for (let i = 1; i < row.length; i++) {
+          const prev = row[i - 1]!;
+          expect(placed.get(row[i]!)!.x).toBeGreaterThanOrEqual(
+            placed.get(prev)!.x + widthOf(prev)
+          );
+        }
+      }
+    }
+  });
+
+  it("aligns a manager's inner edge with its innermost report's", () => {
+    const left = layoutBranch(ids, pos, edges, "left", widthOf, GAP).placed;
+    expect(left.get("lead")!.x + widthOf("lead")).toBe(left.get("c")!.x + widthOf("c"));
+    const right = layoutBranch(ids, pos, edges, "right", widthOf, GAP).placed;
+    expect(right.get("lead")!.x).toBe(right.get("a")!.x);
+  });
+});
+
 describe("arrangeBranchesOutward", () => {
   it("packs branches in their order without overlapping, each growing its own way", () => {
     const two = new Map([

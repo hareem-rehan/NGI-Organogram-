@@ -1,4 +1,5 @@
 import {
+  DEFAULT_TITLE_SIZE,
   fontFamilyById,
   fontScaleOf,
   fontWeightOf,
@@ -7,15 +8,24 @@ import {
   textDecorationOf,
   type TextStyle,
 } from "@/lib/domain/organogram-text-style";
+import { ORG_EDGE_BUS_OFFSET } from "@/app/(app)/organogram/_lib/elk-layout";
 import {
-  NODE_HEIGHT,
-  NODE_WIDTH,
-  ORG_EDGE_BUS_OFFSET,
-} from "@/app/(app)/organogram/_lib/elk-layout";
+  CARD_METRICS,
+  CHEVRON_BOX,
+  DEFAULT_CARD_SIZE,
+  cardSizeFor,
+  equalizeRowHeights,
+  gradeFamilyLabel,
+  headingNameRowHeight,
+  measureTextWidth,
+  rolesUnderLabel,
+  wrapToWidth,
+  type CardSize,
+} from "@/lib/domain/organogram-card-size";
 import { cardTextColor, lightTint, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 import { EXPORT_COLORS, resolveDepartmentColor } from "./colors";
-import { escapeXmlText, wrapText } from "./svg-text";
+import { escapeXmlText } from "./svg-text";
 import type { ExportColorMode } from "./types";
 
 /**
@@ -205,77 +215,151 @@ function nodeBadge(node: SvgRenderNode): { label: string; color: string } | null
   return { label: labels.join(" · "), color };
 }
 
-/**
- * The department tier's card. Mirrors `position-node.tsx`'s
- * DepartmentNodeCard: filled rather than outlined, uppercase name, role
- * count, and no occupancy dot or status badge — a department is a
- * heading, not a seat. This renderer draws its own copy of every card, so
- * the two only stay alike if they are changed together.
- */
-function renderDepartmentCard(
-  node: SvgRenderNode,
-  position: SvgLayoutPosition,
-  roleCount: number,
-  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined,
-  colorMode: ExportColorMode = "department",
-  familyColorById?: ReadonlyMap<string, FamilyColor>
-): string {
-  const {
-    fill: bodyFill,
-    accent: accentColor,
-    text: textColor,
-  } = cardColorsFor(node, colorMode, familyColorById, departmentColorByName);
-  const nameLines = wrapText(node.departmentName.toUpperCase(), 22, 2);
+/** Where a line's baseline sits inside its line box, as CSS places it. */
+function baseline(lineTop: number, lineHeight: number, fontSize: number): number {
+  return round1(lineTop + (lineHeight - fontSize) / 2 + 0.8 * fontSize);
+}
 
-  const parts: string[] = [];
-  parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="1">`);
-  parts.push(
-    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${bodyFill}" stroke="${accentColor}" stroke-width="1.5" />`
-  );
-  nameLines.forEach((line, index) => {
-    parts.push(
-      `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" letter-spacing="0.6" fill="${textColor}">${escapeXmlText(line)}</text>`
-    );
-  });
-  parts.push(
-    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${textColor}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
-  );
-  parts.push("</g>");
-  return parts.join("");
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+/** The expand chevron the screen card shows (lucide ChevronDown), in a `box`-px square. */
+function chevronDown(left: number, centerY: number, box: number, color: string): string {
+  const x = left + box * 0.25;
+  const half = box * 0.25;
+  const drop = box * 0.25;
+  const y = centerY - drop / 2;
+  return `<polyline points="${round1(x)},${round1(y)} ${round1(x + half)},${round1(y + drop)} ${round1(x + 2 * half)},${round1(y)}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />`;
+}
+
+/** Title font size for a card's text style (D41). */
+function titleFontSize(style: TextStyle | undefined): number {
+  return DEFAULT_TITLE_SIZE * (style ? fontScaleOf(style) : 1);
 }
 
 /**
- * A synthetic sub-division grouping card. Like the department heading but
- * labelled with the sub-division name, and painted in its parent department's
- * colour so the department and its sub-divisions read as one coloured group.
+ * The size each card is drawn at (D47): the same content-sized cards as the
+ * interactive chart (lib/domain/organogram-card-size.ts), so an export lays
+ * out exactly like the screen. Callers lay the chart out with these.
  */
-function renderSubdivisionCard(
+export function exportCardSizes(
+  nodes: readonly SvgRenderNode[],
+  edges: readonly SvgRenderEdge[],
+  textStyleByNodeId?: ReadonlyMap<string, TextStyle>
+): Map<string, CardSize> {
+  const childCount = childCountsOf(edges, nodes);
+  return new Map(
+    nodes.map((node) => {
+      const children = childCount.get(node.positionId) ?? 0;
+      const isHeading = node.kind === "department" || node.kind === "subdivision";
+      return [
+        node.positionId,
+        cardSizeFor(
+          {
+            kind: node.kind,
+            title: node.title,
+            departmentName: node.departmentName,
+            occupantName: node.occupancyStatus === "occupied" ? node.occupantDisplayName : null,
+            roleCount: isHeading ? children : rolesUnderOf(node),
+            hasChildren: children > 0,
+            jobGradeCode: node.jobGradeCode,
+            jobFamilyName: node.jobFamilyName,
+            badgeWidth: node.positionStatus !== "ACTIVE" ? STATUS_BADGE_WIDTH : 0,
+          },
+          textStyleByNodeId?.get(node.positionId)
+        ),
+      ];
+    })
+  );
+}
+
+/** Same allowance as the screen card for a "Planned" / "Inactive" badge. */
+const STATUS_BADGE_WIDTH = 66;
+
+/** Children per card, counting only edges whose both ends are drawn. */
+function childCountsOf(
+  edges: readonly SvgRenderEdge[],
+  nodes: readonly SvgRenderNode[]
+): Map<string, number> {
+  const drawn = new Set(nodes.map((n) => n.positionId));
+  const counts = new Map<string, number>();
+  for (const edge of edges) {
+    if (!drawn.has(edge.sourcePositionId) || !drawn.has(edge.targetPositionId)) continue;
+    counts.set(edge.sourcePositionId, (counts.get(edge.sourcePositionId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function rolesUnderOf(node: SvgRenderNode): number {
+  return node.totalReportCount ?? node.displayChildCount ?? node.directReportCount ?? 0;
+}
+
+/**
+ * A department heading or sub-division grouping card, mirroring
+ * position-node.tsx: filled, an expand chevron when it has cards under it,
+ * the name (uppercase for a department) and its role count, centred
+ * vertically. No occupancy dot or status badge — a heading is not a seat.
+ * This renderer draws its own copy of every card, so the two only stay
+ * alike if they are changed together.
+ */
+function renderHeadingCard(
   node: SvgRenderNode,
   position: SvgLayoutPosition,
+  size: CardSize,
   roleCount: number,
   departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined,
-  colorMode: ExportColorMode = "department",
-  familyColorById?: ReadonlyMap<string, FamilyColor>
+  colorMode: ExportColorMode,
+  familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
+  style: TextStyle | undefined
 ): string {
+  const m = CARD_METRICS;
   const {
     fill: bodyFill,
     accent: accentColor,
     text: textColor,
   } = cardColorsFor(node, colorMode, familyColorById, departmentColorByName);
-  const nameLines = wrapText(node.title, 22, 2);
+  const isDepartment = node.kind === "department";
+  const f = titleFontSize(style);
+  const lineHeight = f * m.titleLeading;
+  const rolesSize = f * m.secondaryEm;
+  const rolesLineHeight = rolesSize * m.secondaryLeading;
+  const left = m.border + m.headingPadX;
+  const hasChevron = roleCount > 0;
+  const nameX = left + (hasChevron ? m.headingChevron : 0);
+  const nameLines = wrapToWidth(
+    isDepartment ? node.departmentName.toUpperCase() : node.title,
+    size.width - m.border - m.headingPadX - nameX,
+    f,
+    size.titleLines,
+    {
+      bold: true,
+      uppercase: isDepartment,
+      letterSpacingEm: isDepartment ? 0.025 : 0,
+      fontFamily: style?.fontFamily,
+    }
+  );
+  const nameRow = headingNameRowHeight(nameLines.length, f, hasChevron);
+  const blockHeight = nameRow + 2 + rolesLineHeight;
+  const top = (size.height - blockHeight) / 2;
+  // Name lines centred in their row, as flex items-center does on screen.
+  const nameTop = top + (nameRow - nameLines.length * lineHeight) / 2;
 
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="1">`);
   parts.push(
-    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${bodyFill}" stroke="${accentColor}" stroke-width="1.5" />`
+    `<rect x="0" y="0" width="${size.width}" height="${size.height}" rx="8" fill="${bodyFill}" stroke="${accentColor}" stroke-width="1.5" />`
   );
+  if (hasChevron) {
+    parts.push(chevronDown(left, top + nameRow / 2, CHEVRON_BOX, textColor));
+  }
   nameLines.forEach((line, index) => {
     parts.push(
-      `<text x="16" y="${42 + index * 16}" font-size="13" font-weight="700" fill="${textColor}">${escapeXmlText(line)}</text>`
+      `<text x="${nameX}" y="${baseline(nameTop + index * lineHeight, lineHeight, f)}" font-size="${round1(f)}" font-weight="800"${isDepartment ? ` letter-spacing="${round1(0.025 * f)}"` : ""} fill="${textColor}">${escapeXmlText(line)}</text>`
     );
   });
   parts.push(
-    `<text x="16" y="${44 + nameLines.length * 16}" font-size="11" fill="${textColor}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
+    `<text x="${left}" y="${baseline(top + nameRow + 2, rolesLineHeight, rolesSize)}" font-size="${round1(rolesSize)}" font-weight="600" fill="${textColor}">${roleCount} role${roleCount === 1 ? "" : "s"}</text>`
   );
   parts.push("</g>");
   return parts.join("");
@@ -318,10 +402,14 @@ function cardColorsFor(
 function renderNodeCard(
   node: SvgRenderNode,
   position: SvgLayoutPosition,
+  size: CardSize,
+  hasChildren: boolean,
   colorMode: ExportColorMode,
   familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
-  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
+  departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined,
+  style: TextStyle | undefined
 ): string {
+  const m = CARD_METRICS;
   const {
     fill: bodyFill,
     accent: accentColor,
@@ -330,79 +418,94 @@ function renderNodeCard(
   const isMatch = node.matchState === "match";
   const isContext = node.matchState === "context";
   // A search match keeps the strong primary ring; otherwise the border is the
-  // card's own same-hue accent (no separate left accent bar), matching the
-  // reference cards.
+  // card's own same-hue accent, matching the reference cards.
   const strokeColor = isMatch ? EXPORT_COLORS.primary : accentColor;
   const strokeWidth = isMatch ? 2 : 1;
   const opacity = isContext ? 0.6 : 1;
 
-  // Mirrors position-node.tsx's compact card exactly: role title, then
-  // the person in it (omitted entirely when the role is unfilled), then
-  // the grade. The position code and the repeated department name were
-  // removed there (Demo 1 feedback) and must be removed here too — this
-  // renderer draws its own copy of the card, so the two silently diverge
-  // unless changed together.
-  const titleLines = wrapText(node.title, 22, 2);
-  const isOccupied = node.occupancyStatus === "occupied";
-  const occupantName = isOccupied ? (node.occupantDisplayName ?? null) : null;
+  // Mirrors position-node.tsx's compact card (D47): the role, the person in
+  // it (omitted when unfilled), then a footer with the roles under it and
+  // the level. Same sizes and spacing as on screen.
+  const family = style?.fontFamily;
+  const f = titleFontSize(style);
+  const left = m.border + m.padX;
+  const right = size.width - m.border - m.padX;
   const badge = nodeBadge(node);
+  const badgeWidth = badge ? measureTextWidth(badge.label, 8, { bold: true }) + 8 : 0;
 
   const parts: string[] = [];
   parts.push(`<g transform="translate(${position.x}, ${position.y})" opacity="${opacity}">`);
   parts.push(
-    `<rect x="0" y="0" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${bodyFill}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`
+    `<rect x="0" y="0" width="${size.width}" height="${size.height}" rx="8" fill="${bodyFill}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`
   );
 
+  const top = m.border + m.padTop;
+  const lineHeight = f * m.titleLeading;
   if (badge) {
     parts.push(
-      `<text x="${NODE_WIDTH - 14}" y="16" font-size="8" font-weight="600" letter-spacing="0.3" text-anchor="end" fill="${badge.color}">${escapeXmlText(badge.label)}</text>`
+      `<text x="${right}" y="${baseline(top, lineHeight, 8)}" font-size="8" font-weight="600" letter-spacing="0.3" text-anchor="end" fill="${badge.color}">${escapeXmlText(badge.label)}</text>`
     );
   }
-
-  // Row 1 — the role, wrapped to at most two lines. An OCCUPIED card
-  // carries a green occupancy dot (colour is never the only signal — the
-  // name on row 2 says the same thing); a vacant card shows no dot and no
-  // "Vacant" wording, conveying the empty seat by the absent name alone,
-  // exactly like position-node.tsx on screen. Title starts flush-left when
-  // there is no dot so the text is not indented into empty space.
-  const titleX = isOccupied ? 26 : 10;
-  if (isOccupied) {
-    parts.push(`<circle cx="15" cy="15" r="3.5" fill="${EXPORT_COLORS.statusFilled}" />`);
-  }
+  const titleLines = wrapToWidth(node.title, right - left - badgeWidth, f, size.titleLines, {
+    bold: true,
+    fontFamily: family,
+  });
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="${titleX}" y="${19 + index * 15}" font-size="13" font-weight="800" fill="${textColor}">${escapeXmlText(line)}</text>`
+      `<text x="${left}" y="${baseline(top + index * lineHeight, lineHeight, f)}" font-size="${round1(f)}" font-weight="800" fill="${textColor}">${escapeXmlText(line)}</text>`
     );
   });
 
-  // Row 2 — the person (omitted when nobody holds the role), placed BELOW
-  // however many title lines were drawn so a two-line title is never
-  // overprinted. Every exported card is colour-filled, so all text uses the
-  // foreground colour — the muted grey falls below WCAG AA on the stronger
-  // fills.
+  const occupantName =
+    node.occupancyStatus === "occupied" ? (node.occupantDisplayName ?? null) : null;
   if (occupantName) {
+    const occupantSize = f * m.secondaryEm;
+    const occupantLineHeight = occupantSize * m.secondaryLeading;
+    const occupantTop = top + titleLines.length * lineHeight + 1;
+    const line = wrapToWidth(occupantName, right - left, occupantSize, 1, {
+      bold: true,
+      fontFamily: family,
+    })[0];
     parts.push(
-      `<text x="10" y="${20 + titleLines.length * 15}" font-size="12" font-weight="700" fill="${textColor}">${escapeXmlText(occupantName)}</text>`
+      `<text x="${left}" y="${baseline(occupantTop, occupantLineHeight, occupantSize)}" font-size="${round1(occupantSize)}" font-weight="700" fill="${textColor}">${escapeXmlText(line ?? "")}</text>`
     );
   }
 
-  // Footer (compact card, docs/DECISIONS.md D30): every role in the
-  // position's whole branch on the left, the level (and sub-division) on
-  // the right, under a thin divider — mirroring position-node.tsx.
-  const rolesUnder = node.totalReportCount ?? node.displayChildCount ?? node.directReportCount ?? 0;
-  const footerY = NODE_HEIGHT - 7;
+  // Footer: roles under it on the left, the level (and sub-division) on the
+  // right, under a thin divider — pinned to the card's bottom edge.
+  const footerSize = f * m.footerEm;
+  const footerLineHeight = Math.max(14, footerSize * m.footerLeading);
+  const footerTop = size.height - m.border - m.footerPadBottom - footerLineHeight;
+  const dividerY = round1(footerTop - m.footerPadTop - 0.5);
+  const footerY = baseline(footerTop, footerLineHeight, footerSize);
+  const rolesUnder = rolesUnderOf(node);
+  const rolesX = left + (hasChildren ? m.footerChevron : 0);
   parts.push(
-    `<line x1="8" y1="${NODE_HEIGHT - 20}" x2="${NODE_WIDTH - 8}" y2="${NODE_HEIGHT - 20}" stroke="${textColor}" stroke-opacity="0.25" stroke-width="1" />`,
-    `<text x="10" y="${footerY}" font-size="10.5" font-weight="600" fill="${textColor}">${
+    `<line x1="${left}" y1="${dividerY}" x2="${right}" y2="${dividerY}" stroke="${textColor}" stroke-opacity="0.25" stroke-width="1" />`
+  );
+  if (hasChildren) {
+    parts.push(chevronDown(left, footerTop + footerLineHeight / 2, 14, textColor));
+  }
+  parts.push(
+    `<text x="${rolesX}" y="${footerY}" font-size="${round1(footerSize)}" font-weight="600" fill="${textColor}">${
       rolesUnder > 0
         ? `<tspan font-weight="800">${rolesUnder}</tspan> ${rolesUnder === 1 ? "role" : "roles"} under`
         : "No roles under"
     }</text>`
   );
-  const gradeFamilyLine = [node.jobGradeCode, node.jobFamilyName].filter(Boolean).join(" · ");
+  const gradeFamilyLine = gradeFamilyLabel(node.jobGradeCode, node.jobFamilyName);
   if (gradeFamilyLine) {
+    const rolesWidth = measureTextWidth(rolesUnderLabel(rolesUnder), footerSize, {
+      bold: true,
+      fontFamily: family,
+    });
+    const room = right - rolesX - rolesWidth - 10;
+    const line = wrapToWidth(gradeFamilyLine, room, footerSize, 1, {
+      bold: true,
+      fontFamily: family,
+    })[0];
     parts.push(
-      `<text x="${NODE_WIDTH - 10}" y="${footerY}" font-size="10.5" font-weight="700" text-anchor="end" fill="${textColor}">${escapeXmlText(wrapText(gradeFamilyLine, 16, 1)[0] ?? "")}</text>`
+      `<text x="${right}" y="${footerY}" font-size="${round1(footerSize)}" font-weight="700" text-anchor="end" fill="${textColor}">${escapeXmlText(line ?? "")}</text>`
     );
   }
 
@@ -412,20 +515,15 @@ function renderNodeCard(
 
 /**
  * Applies a card's text style (D41) to its exported SVG: the closest PDF
- * base font, sizes scaled from the built-in title size, weight, colour,
- * italic and underline/strikethrough. Text positions are not re-flowed, so
- * very large sizes sit tighter than on screen.
+ * base font, weight, colour, italic and underline/strikethrough. The SIZE is
+ * not applied here: the card renderers lay their text out for it (D45), so
+ * larger text wraps and spaces itself instead of overprinting.
  */
 export function applyTextStyleToCardSvg(cardSvg: string, style: TextStyle | undefined): string {
   if (!style || isEmptyTextStyle(style)) return cardSvg;
-  const scale = fontScaleOf(style);
-  let out = cardSvg
-    .replace(/font-size="([\d.]+)"/g, (_m, size: string) => {
-      return `font-size="${Math.round(Number(size) * scale * 10) / 10}"`;
-    })
-    .replace(/font-weight="(\d+)"/g, (_m, weight: string) => {
-      return `font-weight="${fontWeightOf(style, Number(weight))}"`;
-    });
+  let out = cardSvg.replace(/font-weight="(\d+)"/g, (_m, weight: string) => {
+    return `font-weight="${fontWeightOf(style, Number(weight))}"`;
+  });
   if (style.color) {
     // Kept only where readable on this card's own fill (its first <rect>).
     const fill = /<rect\b[^>]*? fill="(#[0-9a-fA-F]{6})"/.exec(out)?.[1] ?? "#ffffff";
@@ -442,14 +540,19 @@ export function applyTextStyleToCardSvg(cardSvg: string, style: TextStyle | unde
   return out.replace(/^<g /, `<g ${groupAttrs} `);
 }
 
-function renderEdgePath(source: SvgLayoutPosition, target: SvgLayoutPosition): string {
-  const sx = source.x + NODE_WIDTH / 2;
-  const sy = source.y + NODE_HEIGHT;
-  const tx = target.x + NODE_WIDTH / 2;
+function renderEdgePath(
+  source: SvgLayoutPosition,
+  sourceSize: CardSize,
+  target: SvgLayoutPosition,
+  targetSize: CardSize
+): string {
+  const sx = round1(source.x + sourceSize.width / 2);
+  const sy = source.y + sourceSize.height;
+  const tx = round1(target.x + targetSize.width / 2);
   const ty = target.y;
-  // The same connector as on screen (org-chart-edge.tsx): one shared bar a
-  // fixed distance below the parent, so siblings' lines coincide exactly.
-  const busY = Math.min(sy + ORG_EDGE_BUS_OFFSET, ty);
+  // The same connector as on screen (org-chart-edge.tsx): one bar halfway
+  // down the gap above the target row, so siblings' lines coincide exactly.
+  const busY = ty - ORG_EDGE_BUS_OFFSET > sy ? ty - ORG_EDGE_BUS_OFFSET : (sy + ty) / 2;
   const d = `M ${sx} ${sy} L ${sx} ${busY} L ${tx} ${busY} L ${tx} ${ty}`;
   return `<path d="${d}" fill="none" stroke="${EXPORT_COLORS.mutedForeground}" stroke-width="1.5" />`;
 }
@@ -593,6 +696,13 @@ export function renderOrganogramSvg(
     };
   }
 
+  // Content-sized cards (D47); a row shares its tallest card's height.
+  const sizes = equalizeRowHeights(
+    positions,
+    exportCardSizes(nodes, edges, options.textStyleByNodeId)
+  );
+  const sizeOf = (id: string) => sizes.get(id) ?? DEFAULT_CARD_SIZE;
+
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -602,8 +712,8 @@ export function renderOrganogramSvg(
     if (!pos) continue;
     minX = Math.min(minX, pos.x);
     minY = Math.min(minY, pos.y);
-    maxX = Math.max(maxX, pos.x + NODE_WIDTH);
-    maxY = Math.max(maxY, pos.y + NODE_HEIGHT);
+    maxX = Math.max(maxX, pos.x + sizeOf(node.positionId).width);
+    maxY = Math.max(maxY, pos.y + sizeOf(node.positionId).height);
   }
   const graphWidth = maxX - minX;
   const graphHeight = maxY - minY;
@@ -612,13 +722,7 @@ export function renderOrganogramSvg(
   const graphOffsetY = headerHeight;
 
   const nodesById = new Map(nodes.map((n) => [n.positionId, n]));
-  const childCountByParent = new Map<string, number>();
-  for (const edge of edges) {
-    childCountByParent.set(
-      edge.sourcePositionId,
-      (childCountByParent.get(edge.sourcePositionId) ?? 0) + 1
-    );
-  }
+  const childCountByParent = childCountsOf(edges, nodes);
   const nodesSvg = nodes
     .map((node) => {
       const pos = positions.get(node.positionId);
@@ -632,32 +736,30 @@ export function renderOrganogramSvg(
     .join("");
 
   function renderCard(node: SvgRenderNode, at: SvgLayoutPosition): string {
-    if (node.kind === "department") {
-      return renderDepartmentCard(
+    const style = options.textStyleByNodeId?.get(node.positionId);
+    const size = sizeOf(node.positionId);
+    const children = childCountByParent.get(node.positionId) ?? 0;
+    if (node.kind === "department" || node.kind === "subdivision") {
+      return renderHeadingCard(
         node,
         at,
-        childCountByParent.get(node.positionId) ?? 0,
+        size,
+        children,
         options.departmentColorByName,
         options.colorMode ?? "department",
-        options.familyColorById
-      );
-    }
-    if (node.kind === "subdivision") {
-      return renderSubdivisionCard(
-        node,
-        at,
-        childCountByParent.get(node.positionId) ?? 0,
-        options.departmentColorByName,
-        options.colorMode ?? "department",
-        options.familyColorById
+        options.familyColorById,
+        style
       );
     }
     return renderNodeCard(
       node,
       at,
+      size,
+      children > 0,
       options.colorMode ?? "department",
       options.familyColorById,
-      options.departmentColorByName
+      options.departmentColorByName,
+      style
     );
   }
 
@@ -675,7 +777,9 @@ export function renderOrganogramSvg(
       }
       return renderEdgePath(
         { x: sourcePos.x - minX, y: sourcePos.y - minY },
-        { x: targetPos.x - minX, y: targetPos.y - minY }
+        sizeOf(edge.sourcePositionId),
+        { x: targetPos.x - minX, y: targetPos.y - minY },
+        sizeOf(edge.targetPositionId)
       );
     })
     .join("");

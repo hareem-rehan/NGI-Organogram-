@@ -237,6 +237,76 @@ describe("Department", () => {
     expect(events).toEqual([]);
   });
 
+  it("deletes a department whose only leftovers are its own unused levels, and removes them", async () => {
+    // Adding a position at a level creates a level just for that department;
+    // it stays behind after the position is moved out and used to block the
+    // delete with a vague "still referenced" error.
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id, { code: "IT" });
+    const shared = await testPrisma.jobGrade.create({
+      data: { companyId: company.id, code: "L3", name: "Junior" },
+    });
+    await testPrisma.jobGrade.create({
+      data: { companyId: company.id, departmentId: dept.id, code: "L3", name: "Junior" },
+    });
+
+    await deleteDepartment(dept.id, company.id);
+
+    await expect(testPrisma.department.findUnique({ where: { id: dept.id } })).resolves.toBeNull();
+    await expect(
+      testPrisma.jobGrade.findMany({ where: { departmentId: dept.id } })
+    ).resolves.toEqual([]);
+    // Company-wide levels are never touched.
+    await expect(
+      testPrisma.jobGrade.findUnique({ where: { id: shared.id } })
+    ).resolves.not.toBeNull();
+  });
+
+  it("names a level still used elsewhere and changes nothing", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id, { code: "IT" });
+    const other = await makeDepartment(company.id, { code: "OPS" });
+    const used = await testPrisma.jobGrade.create({
+      data: { companyId: company.id, departmentId: dept.id, code: "L6", name: "Senior" },
+    });
+    const unused = await testPrisma.jobGrade.create({
+      data: { companyId: company.id, departmentId: dept.id, code: "L3", name: "Junior" },
+    });
+    // A position moved to another department kept this department's level.
+    await testPrisma.position.create({
+      data: {
+        companyId: company.id,
+        departmentId: other.id,
+        jobGradeId: used.id,
+        title: "CEO",
+        positionCode: "POS-LVL-1",
+        organizationalLevel: 1,
+      },
+    });
+
+    await expect(deleteDepartment(dept.id, company.id)).rejects.toThrow(/L6/);
+
+    // The whole delete rolled back, including the clean-up of unused levels.
+    await expect(
+      testPrisma.department.findUnique({ where: { id: dept.id } })
+    ).resolves.not.toBeNull();
+    await expect(
+      testPrisma.jobGrade.findUnique({ where: { id: unused.id } })
+    ).resolves.not.toBeNull();
+  });
+
+  it("names the sub-divisions that block a delete", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id, { code: "DOA" });
+    await testPrisma.jobFamily.create({
+      data: { companyId: company.id, departmentId: dept.id, code: "ADMIN", name: "Admin" },
+    });
+
+    const attempt = deleteDepartment(dept.id, company.id);
+    await expect(attempt).rejects.toBeInstanceOf(UnsafeMutationError);
+    await expect(attempt).rejects.toThrow(/sub-division Admin/);
+  });
+
   it("refuses to delete a department belonging to another company", async () => {
     const companyA = await makeCompany();
     const companyB = await makeCompany();

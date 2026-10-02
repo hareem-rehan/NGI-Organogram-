@@ -353,7 +353,7 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
           open={deleteDialog.open}
           onOpenChange={deleteDialog.setOpen}
           title="Delete department?"
-          description={`${deleteTarget.name} (${deleteTarget.code}) will be permanently removed. This cannot be undone. A department can only be deleted while it is empty — if it still has positions or sub-departments, deactivate it instead.`}
+          description={`${deleteTarget.name} (${deleteTarget.code}) will be permanently removed. This cannot be undone. A department can only be deleted while it is empty — if it still has positions, sub-departments or sub-divisions, deactivate it instead.`}
           confirmLabel="Delete"
           destructive
           pending={deletePending}

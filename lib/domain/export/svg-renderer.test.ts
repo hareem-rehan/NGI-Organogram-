@@ -721,7 +721,7 @@ describe("applyTextStyleToCardSvg (D41)", () => {
     expect(applyTextStyleToCardSvg(card, undefined)).toBe(card);
   });
 
-  it("applies family (as the PDF base font), size, weight, colour, italic and decoration", () => {
+  it("applies family (as the PDF base font), weight, colour, italic and decoration", () => {
     const out = applyTextStyleToCardSvg(card, {
       fontFamily: "georgia",
       fontSize: 26, // clamped to 20 → ×(20/13)
@@ -733,8 +733,8 @@ describe("applyTextStyleToCardSvg (D41)", () => {
     expect(out).toContain('font-family="Times"');
     expect(out).toContain('font-style="italic"');
     expect(out).toContain('text-decoration="underline"');
-    expect(out).toContain('font-size="20"');
-    expect(out).toContain('font-size="16.2"');
+    // Size is laid out by the card renderers (D45), not rewritten here.
+    expect(out).toContain('font-size="13"');
     expect(out).not.toContain('font-weight="800"');
     expect(out).toContain('font-weight="400"');
     expect(out).not.toContain('fill="#ffffff"');
@@ -746,5 +746,112 @@ describe("applyTextStyleToCardSvg (D41)", () => {
     const out = applyTextStyleToCardSvg(card, { color: "#333333" });
     expect(out).not.toContain('fill="#333333"');
     expect(out).toContain('fill="#ffffff"');
+  });
+});
+
+describe("renderOrganogramSvg — content-sized cards (D47)", () => {
+  const renderAt = (
+    list: SvgRenderNode[],
+    positions: [string, { x: number; y: number }][],
+    styles?: [string, { fontSize: number }][],
+    edges: { sourcePositionId: string; targetPositionId: string }[] = []
+  ) =>
+    renderOrganogramSvg(list, edges, new Map(positions), METADATA, {
+      ...BASE_OPTIONS,
+      textStyleByNodeId: styles ? new Map(styles) : undefined,
+    }).svg;
+  const render = (n: SvgRenderNode, style?: { fontSize: number }) =>
+    renderAt([n], [[n.positionId, { x: 0, y: 0 }]], style ? [[n.positionId, style]] : undefined);
+  const rect = (svg: string) => {
+    const m = /<rect x="0" y="0" width="([\d.]+)" height="([\d.]+)"/.exec(svg)!;
+    return { width: Number(m[1]), height: Number(m[2]) };
+  };
+  const textYs = (svg: string, size: string) =>
+    [...svg.matchAll(new RegExp(`<text x="[\\d.]+" y="([\\d.]+)" font-size="${size}"`, "g"))].map(
+      (m) => Number(m[1])
+    );
+  const dividerY = (svg: string) => Number(/<line x1="[\d.]+" y1="([\d.]+)"/.exec(svg)![1]);
+
+  it("is only as tall as its text, with no empty band above the footer", () => {
+    const svg = render(node({ positionId: "p1", title: "CFO", jobGradeCode: "L18" }));
+    const { width, height } = rect(svg);
+    expect(width).toBe(188);
+    expect(height).toBeLessThan(60);
+    const [titleY] = textYs(svg, "13");
+    // Title, then straight to the divider: no more than one line of air.
+    expect(dividerY(svg) - titleY!).toBeLessThan(14);
+  });
+
+  it("widens for a long title instead of wrapping it", () => {
+    const svg = render(node({ positionId: "p1", title: "Head of Internal Audit and Compliance" }));
+    expect(rect(svg).width).toBeGreaterThan(188);
+    expect(textYs(svg, "13")).toHaveLength(1);
+    expect(svg).toContain(">Head of Internal Audit and Compliance<");
+  });
+
+  it("wraps only a title too long for the widest card", () => {
+    const svg = render(
+      node({
+        positionId: "p1",
+        title: "Associate Director of Strategic Partnerships and Enterprise Client Success",
+      })
+    );
+    expect(rect(svg).width).toBe(320);
+    expect(textYs(svg, "13")).toHaveLength(2);
+  });
+
+  it("keeps the person and footer inside the card at a large text size", () => {
+    const svg = render(
+      node({
+        positionId: "p1",
+        title: "Principal Product Analyst II",
+        occupancyStatus: "occupied",
+        occupantDisplayName: "Ayesha Khan",
+        jobGradeCode: "L8",
+      }),
+      { fontSize: 20 }
+    );
+    const [titleY] = textYs(svg, "20");
+    const [occupantY] = textYs(svg, "18.5");
+    expect(occupantY! - titleY!).toBeGreaterThanOrEqual(18);
+    expect(occupantY!).toBeLessThan(dividerY(svg));
+    const [footerY] = textYs(svg, "16.9");
+    expect(footerY!).toBeLessThan(rect(svg).height);
+  });
+
+  it("gives every card on a row the row's tallest height", () => {
+    const svg = renderAt(
+      [
+        node({ positionId: "a", title: "CFO" }),
+        node({
+          positionId: "b",
+          title: "CSO",
+          occupancyStatus: "occupied",
+          occupantDisplayName: "Sam Lee",
+        }),
+      ],
+      [
+        ["a", { x: 0, y: 0 }],
+        ["b", { x: 240, y: 0 }],
+      ]
+    );
+    const heights = [...svg.matchAll(/<rect x="0" y="0" width="[\d.]+" height="([\d.]+)"/g)].map(
+      (m) => m[1]
+    );
+    expect(heights).toHaveLength(2);
+    expect(heights[0]).toBe(heights[1]);
+  });
+
+  it("centres a department card's name and role count inside it", () => {
+    const svg = render(
+      node({ positionId: "d1", kind: "department", departmentName: "Client Delivery Services" })
+    );
+    const { height } = rect(svg);
+    const [nameY] = textYs(svg, "13");
+    const rolesY = Number(/y="([\d.]+)" font-size="12" font-weight="600"/.exec(svg)![1]);
+    expect(nameY! - 13).toBeGreaterThan(0);
+    expect(rolesY).toBeLessThan(height);
+    // Roughly the same space above the name as below the role count.
+    expect(Math.abs(nameY! - 10 - (height - rolesY))).toBeLessThan(6);
   });
 });

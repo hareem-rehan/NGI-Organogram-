@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { NODE_HEIGHT, NODE_WIDTH } from "@/app/(app)/organogram/_lib/elk-layout";
+import { DEFAULT_CARD_SIZE, type CardSize } from "@/lib/domain/organogram-card-size";
 import type { OrganogramNode } from "@/lib/domain/organogram";
 import { CARD_TEXT_COLOR, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 import {
@@ -114,6 +114,8 @@ export interface PositionNodeData extends Record<string, unknown> {
   groupSelected?: boolean;
   /** This card's effective text style (its own settings over the chart's), D41. */
   textStyle?: TextStyle;
+  /** The card's size for its content (D47), from the canvas layout. */
+  size?: CardSize;
   /**
    * Arrange-mode drop feedback while another card is dragged over this one:
    * "valid" (green ring — dropping here is allowed) or "invalid" (red ring —
@@ -177,18 +179,19 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
   const border = data.cardColor?.accent ?? "var(--color-primary)";
 
   const cardText = textStyleProps(data.textStyle, data.cardColor);
+  const size = data.size ?? DEFAULT_CARD_SIZE;
 
   return (
     <div
       {...cardText.attrs}
       className={cn(
-        "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        "text-foreground pointer-events-auto relative flex flex-col rounded-lg border shadow-sm",
         dropHintClass(data.dropHint, data.groupSelected),
         !fill && "bg-muted"
       )}
       style={{
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        width: size.width,
+        height: size.height,
         borderColor: border,
         backgroundColor: fill,
         ...cardText.style,
@@ -209,7 +212,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         }}
         aria-expanded={!isCollapsed}
         aria-label={`${node.departmentName} department, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
-        className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex min-w-0 flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 py-[9px] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {node.hasChildren ? (
@@ -227,14 +230,19 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
           ) : null}
           <p
             className={cn(
-              "line-clamp-2 text-[1em] leading-tight font-extrabold tracking-wide uppercase",
-              data.arrangeMode && "pr-14"
+              "min-w-0 text-[1em] leading-[1.2] font-extrabold tracking-wide uppercase",
+              size.titleLines > 1 ? "line-clamp-2" : "truncate"
             )}
           >
             {node.departmentName}
           </p>
         </div>
-        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-[0.923em] font-semibold")}>
+        <p
+          className={cn(
+            secondaryTextClass(fill),
+            "mt-0.5 truncate text-[0.923em] leading-[1.3] font-semibold"
+          )}
+        >
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
@@ -257,7 +265,7 @@ function GroupAddButton({ data }: { data: PositionNodeData }) {
   if (!arrangeMode || (!onAddChild && !onEditStyle)) return null;
   const label = node.kind === "department" ? node.departmentName : node.title;
   return (
-    <div className="nodrag absolute top-1 right-1 z-10 flex gap-1">
+    <div className="nodrag absolute -top-7 right-0 z-10 flex gap-1">
       {onEditStyle ? (
         <StyleButton label={label} onClick={() => onEditStyle(node.positionId)} />
       ) : null}
@@ -314,18 +322,19 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
   const border = data.cardColor?.accent ?? "var(--color-primary)";
 
   const cardText = textStyleProps(data.textStyle, data.cardColor);
+  const size = data.size ?? DEFAULT_CARD_SIZE;
 
   return (
     <div
       {...cardText.attrs}
       className={cn(
-        "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
+        "text-foreground pointer-events-auto relative flex flex-col rounded-lg border shadow-sm",
         dropHintClass(data.dropHint, data.groupSelected),
         !fill && "bg-muted"
       )}
       style={{
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        width: size.width,
+        height: size.height,
         borderColor: border,
         backgroundColor: fill,
         ...cardText.style,
@@ -346,7 +355,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
         }}
         aria-expanded={!isCollapsed}
         aria-label={`${node.title} sub-division, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
-        className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex min-w-0 flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 py-[9px] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {node.hasChildren ? (
@@ -364,14 +373,19 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
           ) : null}
           <p
             className={cn(
-              "line-clamp-2 text-[1em] leading-tight font-extrabold",
-              data.arrangeMode && "pr-14"
+              "min-w-0 text-[1em] leading-[1.2] font-extrabold",
+              size.titleLines > 1 ? "line-clamp-2" : "truncate"
             )}
           >
             {node.title}
           </p>
         </div>
-        <p className={cn(secondaryTextClass(fill), "mt-1 truncate text-[0.923em] font-semibold")}>
+        <p
+          className={cn(
+            secondaryTextClass(fill),
+            "mt-0.5 truncate text-[0.923em] leading-[1.3] font-semibold"
+          )}
+        >
           {roleCount} role{roleCount === 1 ? "" : "s"}
         </p>
       </button>
@@ -432,6 +446,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         : "";
 
   const cardText = textStyleProps(data.textStyle, data.cardColor);
+  const size = data.size ?? DEFAULT_CARD_SIZE;
 
   return (
     <div
@@ -445,7 +460,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // inherited value at this element so the buttons below actually
         // receive events — see e2e/organogram.spec.ts, which caught this
         // as a real click-through-to-the-pane failure before this fix.
-        "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm transition-colors",
+        "text-foreground pointer-events-auto relative flex flex-col rounded-lg border shadow-sm transition-colors",
         dropHintClass(data.dropHint, data.groupSelected),
         // Neutral card background only when no colour fill applies.
         !cardBackground && "bg-background",
@@ -466,8 +481,8 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         matchState === "context" && "opacity-60"
       )}
       style={{
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        width: size.width,
+        height: size.height,
         // Own same-hue border, unless selection/match override it via class.
         borderColor: isSelected || matchState === "match" ? undefined : borderColor,
         backgroundColor: cardBackground,
@@ -479,12 +494,28 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         position={Position.Top}
         className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
       />
+      {matchState !== "none" ? (
+        // Search badges sit on the card's top edge, not beside the title: they
+        // come and go with a search, so they must never squeeze the title or
+        // change the card's size (D47).
+        <div className="pointer-events-none absolute bottom-full left-1 z-10 mb-1">
+          {matchState === "match" ? (
+            <Badge variant="default" className="h-4 px-1.5 text-[10px] leading-none">
+              Match
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-background h-4 px-1.5 text-[10px] leading-none">
+              Context
+            </Badge>
+          )}
+        </div>
+      ) : null}
       {arrangeMode ? (
         // Inline management controls (managers only, arrange mode).
         // `nodrag` keeps a click on these from starting a node drag, and
         // stopPropagation keeps it from also triggering the card's Edit
         // click behind them.
-        <div className="nodrag absolute top-1 right-1 z-10 flex gap-1">
+        <div className="nodrag absolute -top-7 right-0 z-10 flex gap-1">
           {data.onEditStyle ? (
             <StyleButton label={node.title} onClick={() => data.onEditStyle?.(node.positionId)} />
           ) : null}
@@ -538,7 +569,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // is released without moving — so a click edits and a press-drag
         // re-parents, sharing one surface. The +/Delete/collapse controls stay
         // `nodrag` so they never start a drag.
-        className="focus-visible:ring-ring flex min-h-0 flex-1 flex-col rounded-t-[calc(0.5rem-2px)] px-2 pt-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex min-h-0 min-w-0 flex-1 flex-col rounded-t-[calc(0.5rem-2px)] px-2 pt-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         {/* Compact leadership card (Demo 1 feedback): role, then the
             person in it, then the level. Deliberately NOT shown — the
@@ -550,26 +581,30 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
           <p
-            className={`line-clamp-2 text-[1em] leading-[1.15] font-extrabold tracking-tight ${
-              // Leave room for the Add / Delete buttons pinned top-right in
-              // Arrange mode, so they never sit on top of the title.
-              arrangeMode ? "pr-20" : ""
-            }`}
+            className={cn(
+              "min-w-0 text-[1em] leading-[1.2] font-extrabold tracking-tight",
+              // One line unless the card is at its widest (D47); a line that
+              // still doesn't fit ends in "…" instead of spilling.
+              size.titleLines > 1 ? "line-clamp-2" : "truncate"
+            )}
           >
             {node.title}
           </p>
           <div className="flex shrink-0 items-center gap-1">
-            {matchState === "match" ? <Badge variant="default">Match</Badge> : null}
-            {matchState === "context" ? <Badge variant="outline">Context</Badge> : null}
             {node.positionStatus !== "ACTIVE" ? (
-              <Badge variant={node.positionStatus === "PLANNED" ? "outline" : "muted"}>
+              <Badge
+                variant={node.positionStatus === "PLANNED" ? "outline" : "muted"}
+                // Compact, so it never makes the title row taller than the card allows (D47).
+                className="h-4 px-1.5 text-[10px] leading-none"
+                style={{ fontFamily: "var(--font-sans)", fontStyle: "normal", fontSize: "10px" }}
+              >
                 {node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}
               </Badge>
             ) : null}
           </div>
         </div>
         {occupantName ? (
-          <p className={cn("mt-0.5 truncate text-[0.923em] leading-[1.333] font-bold")}>
+          <p className={cn("mt-px truncate text-[0.923em] leading-[1.3] font-bold")}>
             {occupantName}
           </p>
         ) : null}
@@ -578,7 +613,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           left, the level (and sub-division) on the right — one row, so the
           card stays compact (docs/DECISIONS.md D30). */}
       <div
-        className="border-foreground/15 mx-2 mb-1 flex min-w-0 items-center justify-between gap-2 border-t pt-1"
+        className="border-foreground/15 mx-2 mt-1.5 flex min-w-0 items-center justify-between gap-2 border-t pt-[3px] pb-1 leading-[1.4]"
         style={{ borderTopColor: dividerColorOf(cardColor) }}
       >
         {node.hasChildren ? (

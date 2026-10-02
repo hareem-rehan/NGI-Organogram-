@@ -95,11 +95,15 @@ const BASE_LAYOUT_OPTIONS = {
 export async function computeElkLayout(
   nodeIds: readonly string[],
   edges: readonly { sourcePositionId: string; targetPositionId: string }[],
-  clusterOf?: ReadonlyMap<string, string>
+  clusterOf?: ReadonlyMap<string, string>,
+  /** Each card's own size (content-sized cards, D47); the standard size otherwise. */
+  sizeOf?: (id: string) => { width: number; height: number }
 ): Promise<Map<string, LayoutPosition>> {
   if (nodeIds.length === 0) return new Map();
 
-  const leaf = (id: string): ElkNode => ({ id, width: NODE_WIDTH, height: NODE_HEIGHT });
+  const size = sizeOf ?? (() => ({ width: NODE_WIDTH, height: NODE_HEIGHT }));
+  const widthOf = (id: string) => size(id).width;
+  const leaf = (id: string): ElkNode => ({ id, ...size(id) });
   // ELK weighs EDGE order as well as node order ("NODES_AND_EDGES"), and the
   // callers' edges are sorted by id, which is effectively random for
   // department / sub-department boxes. Put the edges in the same order as the
@@ -181,7 +185,7 @@ export async function computeElkLayout(
       positions,
       clusterIds.map((cluster) => membersByCluster.get(cluster)!),
       edges,
-      NODE_WIDTH,
+      widthOf,
       NODE_GAP,
       2 * DEPARTMENT_SIDE_PADDING + NODE_GAP
     );
@@ -194,14 +198,16 @@ export async function computeElkLayout(
   // creates an overlap.
   if (clustered) {
     for (const id of looseIds) {
-      const childXs = edges
+      const children = edges
         .filter((e) => e.sourcePositionId === id)
-        .map((e) => positions.get(e.targetPositionId)?.x)
-        .filter((x): x is number => x !== undefined);
+        .map((e) => e.targetPositionId)
+        .filter((child) => positions.has(child));
       const own = positions.get(id);
-      if (!own || childXs.length === 0) continue;
-      const centre = (Math.min(...childXs) + Math.max(...childXs) + NODE_WIDTH) / 2;
-      positions.set(id, { x: centre - NODE_WIDTH / 2, y: own.y });
+      if (!own || children.length === 0) continue;
+      const lefts = children.map((child) => positions.get(child)!.x);
+      const rights = children.map((child) => positions.get(child)!.x + widthOf(child));
+      const centre = (Math.min(...lefts) + Math.max(...rights)) / 2;
+      positions.set(id, { x: centre - widthOf(id) / 2, y: own.y });
     }
   }
   return positions;
