@@ -78,6 +78,16 @@ function textStyleProps(style: TextStyle | undefined, cardColor: FamilyColor | n
   };
 }
 
+/**
+ * A wrapped title shows exactly the lines its card was sized for (D49); a
+ * one-line title truncates instead (class `truncate`).
+ */
+function titleClamp(lines: number): React.CSSProperties | undefined {
+  return lines > 1
+    ? { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines }
+    : undefined;
+}
+
 /** A lighter divider for white text on a dark card; the theme's otherwise. */
 function dividerColorOf(color: FamilyColor | null | undefined): string | undefined {
   return cardTextColorOf(color) === "#ffffff" ? "rgba(255,255,255,0.35)" : undefined;
@@ -231,8 +241,9 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
           <p
             className={cn(
               "min-w-0 text-[1em] leading-[1.2] font-extrabold tracking-wide uppercase",
-              size.titleLines > 1 ? "line-clamp-2" : "truncate"
+              size.titleLines > 1 ? "overflow-hidden" : "truncate"
             )}
+            style={titleClamp(size.titleLines)}
           >
             {node.departmentName}
           </p>
@@ -374,8 +385,9 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
           <p
             className={cn(
               "min-w-0 text-[1em] leading-[1.2] font-extrabold",
-              size.titleLines > 1 ? "line-clamp-2" : "truncate"
+              size.titleLines > 1 ? "overflow-hidden" : "truncate"
             )}
+            style={titleClamp(size.titleLines)}
           >
             {node.title}
           </p>
@@ -585,8 +597,9 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
               "min-w-0 text-[1em] leading-[1.2] font-extrabold tracking-tight",
               // One line unless the card is at its widest (D47); a line that
               // still doesn't fit ends in "…" instead of spilling.
-              size.titleLines > 1 ? "line-clamp-2" : "truncate"
+              size.titleLines > 1 ? "overflow-hidden" : "truncate"
             )}
+            style={titleClamp(size.titleLines)}
           >
             {node.title}
           </p>

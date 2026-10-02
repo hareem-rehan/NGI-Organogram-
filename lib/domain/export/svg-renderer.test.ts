@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { NODE_HEIGHT } from "@/app/(app)/organogram/_lib/elk-layout";
-
 import { EXPORT_COLORS } from "./colors";
 import {
   applyTextStyleToCardSvg,
@@ -72,7 +70,8 @@ describe("renderOrganogramSvg — colour by sub-division", () => {
     expect(result.svg).toContain('fill="#6fbf3f"');
     // The grade and family share the compact card's footer (D30), shortened
     // to fit; the full sub-division name is in the legend.
-    expect(result.svg).toContain("L7 · Software");
+    // Cards keep one width (D49), so a long label ends in "…".
+    expect(result.svg).toContain("L7 · Softwa");
     expect(result.svg).toContain(">Software Engineering<");
     // The legend keys sub-divisions, not departments.
     expect(result.svg).toContain("Sub-divisions");
@@ -578,7 +577,11 @@ describe("renderOrganogramSvg", () => {
     expect(cardGroup).toBeDefined();
     const ys = [...(cardGroup ?? "").matchAll(/\sy="(\d+(?:\.\d+)?)"/g)].map((m) => Number(m[1]));
     expect(ys.length).toBeGreaterThan(0);
-    expect(Math.max(...ys)).toBeLessThanOrEqual(NODE_HEIGHT);
+    // Cards are content-sized (D47, D49): compare against the card's own box.
+    const cardHeight = Number(
+      /<rect x="0" y="0" width="[\d.]+" height="([\d.]+)"/.exec(cardGroup!)![1]
+    );
+    expect(Math.max(...ys)).toBeLessThanOrEqual(cardHeight);
   });
 
   it("colors a status badge to match its own legend swatch", () => {
@@ -782,22 +785,25 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
     expect(dividerY(svg) - titleY!).toBeLessThan(14);
   });
 
-  it("widens for a long title instead of wrapping it", () => {
+  it("keeps one width and wraps a long title, growing taller (D49)", () => {
+    const short = render(node({ positionId: "p1", title: "CFO" }));
     const svg = render(node({ positionId: "p1", title: "Head of Internal Audit and Compliance" }));
-    expect(rect(svg).width).toBeGreaterThan(188);
-    expect(textYs(svg, "13")).toHaveLength(1);
-    expect(svg).toContain(">Head of Internal Audit and Compliance<");
+    expect(rect(svg).width).toBe(188);
+    expect(textYs(svg, "13")).toHaveLength(2);
+    expect(rect(svg).height).toBeGreaterThan(rect(short).height);
   });
 
-  it("wraps only a title too long for the widest card", () => {
+  it("ends a title longer than three lines in …", () => {
     const svg = render(
       node({
         positionId: "p1",
-        title: "Associate Director of Strategic Partnerships and Enterprise Client Success",
+        title:
+          "Associate Director of Strategic Partnerships and Enterprise Client Success Operations",
       })
     );
-    expect(rect(svg).width).toBe(320);
-    expect(textYs(svg, "13")).toHaveLength(2);
+    expect(rect(svg).width).toBe(188);
+    expect(textYs(svg, "13")).toHaveLength(3);
+    expect(svg).toMatch(/…<\/text>/);
   });
 
   it("keeps the person and footer inside the card at a large text size", () => {

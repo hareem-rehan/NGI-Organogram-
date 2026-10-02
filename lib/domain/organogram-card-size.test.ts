@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CARD_MAX_WIDTH,
-  CARD_MIN_WIDTH,
+  CARD_WIDTH,
+  MAX_TITLE_LINES,
   cardSizeFor,
   equalizeRowHeights,
   measureTextWidth,
@@ -49,7 +49,7 @@ describe("wrapToWidth", () => {
 describe("cardSizeFor", () => {
   it("keeps the standard width and a compact height for short text", () => {
     const size = cardSizeFor(position);
-    expect(size.width).toBe(CARD_MIN_WIDTH);
+    expect(size.width).toBe(CARD_WIDTH);
     expect(size.height).toBeLessThan(60);
     expect(size.titleLines).toBe(1);
   });
@@ -60,26 +60,28 @@ describe("cardSizeFor", () => {
     expect(filled.height - empty.height).toBeGreaterThan(14);
   });
 
-  it("widens for a long title, up to the cap, then wraps", () => {
-    const longer = cardSizeFor({ ...position, title: "Head of Internal Audit and Compliance" });
-    expect(longer.width).toBeGreaterThan(CARD_MIN_WIDTH);
-    expect(longer.width).toBeLessThan(CARD_MAX_WIDTH);
-    expect(longer.titleLines).toBe(1);
+  it("keeps one width and wraps a long title onto more lines, growing taller (D49)", () => {
+    const short = cardSizeFor(position);
+    const two = cardSizeFor({ ...position, title: "Principal Software Engineer II" });
+    expect(two.width).toBe(CARD_WIDTH);
+    expect(two.titleLines).toBe(2);
+    expect(two.height).toBeGreaterThan(short.height);
 
     const longest = cardSizeFor({
       ...position,
       title: "Associate Director of Strategic Partnerships and Enterprise Client Success",
     });
-    expect(longest.width).toBe(CARD_MAX_WIDTH);
-    expect(longest.titleLines).toBe(2);
-    expect(longest.height).toBeGreaterThan(longer.height);
+    expect(longest.width).toBe(CARD_WIDTH);
+    expect(longest.titleLines).toBe(MAX_TITLE_LINES);
+    expect(longest.height).toBeGreaterThan(two.height);
   });
 
   it("grows with a larger text size", () => {
     const base = cardSizeFor({ ...position, title: "VP Startup and Ventures" });
     const big = cardSizeFor({ ...position, title: "VP Startup and Ventures" }, { fontSize: 20 });
     expect(big.height).toBeGreaterThan(base.height);
-    expect(big.width).toBeGreaterThan(base.width);
+    expect(big.width).toBe(base.width); // wraps rather than widening
+    expect(big.titleLines).toBeGreaterThan(base.titleLines);
   });
 
   it("sizes a department heading for its uppercase name", () => {
@@ -89,9 +91,9 @@ describe("cardSizeFor", () => {
       departmentName: "Delivery Org / Administration",
       roleCount: 0,
     });
-    expect(size.width).toBeGreaterThan(CARD_MIN_WIDTH);
-    expect(size.titleLines).toBe(1);
-    expect(size.height).toBeLessThan(60);
+    expect(size.width).toBe(CARD_WIDTH);
+    expect(size.titleLines).toBe(2); // "DELIVERY ORG / ADMINISTRATION" wraps
+    expect(size.height).toBeLessThan(80);
   });
 });
 

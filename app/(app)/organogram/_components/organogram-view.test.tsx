@@ -2,13 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const { getOrganogramActionMock, searchParamsMock } = vi.hoisted(() => ({
-  getOrganogramActionMock: vi.fn(),
-  searchParamsMock: vi.fn(() => new URLSearchParams()),
-}));
+const { getOrganogramActionMock, searchParamsMock, saveTextStyleMock, clearTextStyleMock } =
+  vi.hoisted(() => ({
+    getOrganogramActionMock: vi.fn(),
+    searchParamsMock: vi.fn(() => new URLSearchParams()),
+    saveTextStyleMock: vi.fn(async () => ({ ok: true, data: null })),
+    clearTextStyleMock: vi.fn(async () => ({ ok: true, data: null })),
+  }));
 
 vi.mock("@/app/(app)/organogram/actions", () => ({
   getOrganogramAction: getOrganogramActionMock,
+  saveTextStyleAction: saveTextStyleMock,
+  clearTextStyleAction: clearTextStyleMock,
+  saveCardPositionAction: vi.fn(async () => ({ ok: true, data: null })),
+  clearCardPositionsAction: vi.fn(async () => ({ ok: true, data: null })),
+  resetCardPositionsAction: vi.fn(async () => ({ ok: true, data: { cleared: 0 } })),
 }));
 
 // Arrange-mode wiring imports the Positions server actions (directly, and via
@@ -367,5 +375,32 @@ describe("OrganogramView", () => {
     // The form options are loaded lazily on first entry, re-authorized server-side.
     await waitFor(() => expect(listDepartmentOptionsAction).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: /arranging/i })).toBeInTheDocument();
+  });
+
+  it("Undo reverses the last Arrange change, step by step (D49)", async () => {
+    const user = userEvent.setup();
+    saveTextStyleMock.mockClear();
+    clearTextStyleMock.mockClear();
+    getOrganogramActionMock.mockResolvedValue({ ok: true, data: rootedOrg() });
+    render(<OrganogramView canManage={true} canViewEmployeeDetails={true} canExport={true} />);
+    await user.click(await screen.findByRole("button", { name: /^arrange$/i }));
+
+    // Nothing to undo yet.
+    expect(screen.getByRole("button", { name: /undo \(nothing to undo yet\)/i })).toBeDisabled();
+
+    // Change the text style for all cards.
+    await user.click(screen.getByRole("button", { name: "Text style" }));
+    await user.selectOptions(screen.getByLabelText("Size"), "16");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(saveTextStyleMock).toHaveBeenCalledWith({ nodeKey: "chart", style: { fontSize: 16 } })
+    );
+
+    // Undo puts the previous (empty) style back and says what it undid.
+    const undo = await screen.findByRole("button", { name: "Undo: Text style (all cards)" });
+    await user.click(undo);
+    await waitFor(() => expect(clearTextStyleMock).toHaveBeenCalledWith({ nodeKey: "chart" }));
+    expect(await screen.findByText("Undid: Text style (all cards)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /undo \(nothing to undo yet\)/i })).toBeDisabled();
   });
 });

@@ -71,6 +71,12 @@ const READABLE_MIN_ZOOM = 0.75;
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 /** Screen-space margin around the automatically framed area. */
 const FRAME_PADDING = 32;
+/**
+ * Space kept above the top card when framing: the zoom menu and the
+ * "N positions shown" counter sit over the canvas's top edge, and must never
+ * cover the root card.
+ */
+const FRAME_TOP = 64;
 
 interface DepartmentLegendEntry {
   id: string;
@@ -128,7 +134,11 @@ interface OrganogramCanvasProps {
    * A department box was dropped onto a sibling department box (D33, D38):
    * the department ids of that row in their new order, and the dragged box.
    */
-  onReorderDepartments?: (orderedDepartmentIds: string[], draggedNodeKey: string) => void;
+  onReorderDepartments?: (
+    orderedDepartmentIds: string[],
+    draggedNodeKey: string,
+    previousOrderedIds?: string[]
+  ) => void;
   /**
    * Saved card offsets from the automatic layout, keyed by node id (D38).
    * Cards without one sit where the layout puts them.
@@ -136,6 +146,8 @@ interface OrganogramCanvasProps {
   cardOffsets?: Readonly<Record<string, CardOffset>>;
   /** A card was dropped on empty canvas: its new offset from the automatic spot. */
   onPlaceCard?: (nodeKey: string, dx: number, dy: number) => void;
+  /** A whole selected group placed at once (one Undo step, D49). Falls back to `onPlaceCard` per card. */
+  onPlaceCards?: (moves: { nodeKey: string; dx: number; dy: number }[]) => void;
   /** Card text styles: chart-wide plus per-card overrides (D41). */
   textStyles?: { chart: TextStyle; cards: Readonly<Record<string, TextStyle>> };
   /** "Aa" on a card (Arrange mode): edit that one card's text style. */
@@ -170,6 +182,7 @@ function CanvasInner({
   onReorderDepartments,
   cardOffsets = NO_OFFSETS,
   onPlaceCard,
+  onPlaceCards,
   textStyles,
   onEditStyle,
   onEditCard,
@@ -259,20 +272,48 @@ function CanvasInner({
       const maxY = Math.max(...boxes.map((p) => p.y + p.height));
       const fitZoom = Math.min(
         (paneWidth - 2 * FRAME_PADDING) / (maxX - minX),
-        (paneHeight - 2 * FRAME_PADDING) / (maxY - minY)
+        (paneHeight - FRAME_TOP - FRAME_PADDING) / (maxY - minY)
       );
       return { minX, maxX, minY, fitZoom };
     };
     const whole = frame(all);
     // The whole chart when it fits at a readable zoom; otherwise the top tiers
-    // (root, departments, their leaders) as large as they fit.
-    const target = whole.fitZoom >= READABLE_MIN_ZOOM || top.length === 0 ? whole : frame(top);
+    // (root, departments, their leaders) as large as they fit. If even those
+    // are too wide (since D48 each box is centred over its own branch, so a
+    // wide department sits far out), the root plus as many of the NEAREST
+    // department boxes as fit readably, so the chart never opens on empty space.
+    const nearestFit = (): Box[] => {
+      const roots = visibleNodes
+        .filter((n) => (n.displayDepth ?? n.organizationalLevel) <= 1)
+        .map((n) => boxOf(n.positionId))
+        .filter((b): b is Box => b !== undefined);
+      if (roots.length === 0) return top;
+      const rootCentre = roots.reduce((sum, b) => sum + b.x + b.width / 2, 0) / roots.length;
+      const rest = top
+        .filter((b) => !roots.includes(b))
+        .sort(
+          (a, b) =>
+            Math.abs(a.x + a.width / 2 - rootCentre) - Math.abs(b.x + b.width / 2 - rootCentre)
+        );
+      const chosen = [...roots];
+      for (const box of rest) {
+        if (frame([...chosen, box]).fitZoom < READABLE_MIN_ZOOM) break;
+        chosen.push(box);
+      }
+      return chosen;
+    };
+    const target =
+      whole.fitZoom >= READABLE_MIN_ZOOM || top.length === 0
+        ? whole
+        : frame(top).fitZoom >= READABLE_MIN_ZOOM
+          ? frame(top)
+          : frame(nearestFit());
     const zoom = Math.min(1, Math.max(READABLE_MIN_ZOOM, target.fitZoom));
     requestAnimationFrame(() =>
       setViewport(
         {
           x: paneWidth / 2 - ((target.minX + target.maxX) / 2) * zoom,
-          y: FRAME_PADDING - target.minY * zoom,
+          y: FRAME_TOP - target.minY * zoom,
           zoom,
         },
         { duration: 200 }
@@ -479,13 +520,20 @@ function CanvasInner({
       // A selected group is only ever placed, wherever it is let go: reporting
       // lines never change from a group drag.
       if (nodes && nodes.length > 1) {
+        const moves: { nodeKey: string; dx: number; dy: number }[] = [];
         for (const moved of nodes) {
           const auto = positions.get(moved.id);
           if (auto) {
-            onPlaceCard?.(moved.id, moved.position.x - auto.x, moved.position.y - auto.y);
+            moves.push({
+              nodeKey: moved.id,
+              dx: moved.position.x - auto.x,
+              dy: moved.position.y - auto.y,
+            });
           }
           releaseDrag(moved.id);
         }
+        if (onPlaceCards) onPlaceCards(moves);
+        else for (const m of moves) onPlaceCard?.(m.nodeKey, m.dx, m.dy);
         return;
       }
 
@@ -516,7 +564,8 @@ function CanvasInner({
             .map((n) => n.departmentId);
           onReorderDepartments?.(
             departmentOrderAfterDrop(row, dragged.departmentId, target.departmentId),
-            node.id
+            node.id,
+            row
           );
           releaseDrag(node.id);
           return;
@@ -543,6 +592,7 @@ function CanvasInner({
       onInvalidDrop,
       onReorderDepartments,
       onPlaceCard,
+      onPlaceCards,
       releaseDrag,
       judgeDropFor,
       targetUnderPointer,

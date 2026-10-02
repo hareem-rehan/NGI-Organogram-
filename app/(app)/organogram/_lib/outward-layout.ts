@@ -43,14 +43,15 @@ interface Edge {
 }
 
 /**
- * Lays one department's cards out as a tree growing in `direction`, from
- * x = 0. Returns the new positions (same y as given) and the branch width.
+ * Lays one department's cards out as a tree from x = 0, every manager
+ * centred over its reports (D48). `_direction` is kept for callers; since
+ * D48 a branch no longer leans towards one side. Returns the new positions (same y as given) and the branch width.
  */
 export function layoutBranch(
   memberIds: readonly string[],
   positions: ReadonlyMap<string, Point>,
   edges: readonly Edge[],
-  direction: GrowDirection,
+  _direction: GrowDirection,
   nodeWidth: CardWidth,
   gap: number
 ): { placed: Map<string, Point>; width: number } {
@@ -80,68 +81,100 @@ export function layoutBranch(
     else roots.push(id);
   }
 
-  const span = new Map<string, number>();
-  const spanOf = (id: string, seen = new Set<string>()): number => {
-    if (span.has(id)) return span.get(id)!;
-    if (seen.has(id)) return widthOf(id); // defensive: never loop
+  // Each subtree is measured once: its total width, where its own card sits
+  // in that width, and where its children block starts. A manager is centred
+  // over its reports (D48), so a single report hangs straight below it even
+  // when the two cards differ in width; the subtree widens to fit any
+  // overhang, so nothing overlaps.
+  interface Measure {
+    width: number;
+    /** The card's own x, relative to the subtree's left edge. */
+    cardX: number;
+    /** Where the children block starts, relative to the subtree's left edge. */
+    childrenX: number;
+  }
+  const measured = new Map<string, Measure>();
+  const measure = (id: string, seen = new Set<string>()): Measure => {
+    const cached = measured.get(id);
+    if (cached) return cached;
+    const own = widthOf(id);
+    const kids = seen.has(id) ? [] : (children.get(id) ?? []); // defensive: never loop
     seen.add(id);
-    const kids = children.get(id) ?? [];
-    const width =
-      kids.length === 0
-        ? widthOf(id)
-        : Math.max(
-            widthOf(id),
-            kids.reduce((sum, k) => sum + spanOf(k, seen), 0) + gap * (kids.length - 1)
-          );
-    span.set(id, width);
-    return width;
+    let result: Measure;
+    if (kids.length === 0) {
+      result = { width: own, cardX: 0, childrenX: 0 };
+    } else {
+      // Children side by side from 0; note each child's card centre.
+      let cursor = 0;
+      const centres: number[] = [];
+      for (const kid of kids) {
+        const m = measure(kid, seen);
+        centres.push(cursor + m.cardX + widthOf(kid) / 2);
+        cursor += m.width + gap;
+      }
+      const childrenWidth = cursor - gap;
+      // Centred over its reports (user request, D48): midway between the
+      // first and last report's card centres. With one report that is
+      // exactly above it, so the line between them is straight.
+      const anchor = (centres[0]! + centres[centres.length - 1]!) / 2;
+      const cardX = anchor - own / 2;
+      const minX = Math.min(0, cardX);
+      const maxX = Math.max(childrenWidth, cardX + own);
+      result = { width: maxX - minX, cardX: cardX - minX, childrenX: -minX };
+    }
+    measured.set(id, result);
+    return result;
   };
 
   const placed = new Map<string, Point>();
   const place = (id: string, left: number) => {
-    const kids = children.get(id) ?? [];
-    const width = spanOf(id);
-    const childrenWidth =
-      kids.reduce((sum, k) => sum + spanOf(k), 0) + gap * Math.max(0, kids.length - 1);
-    // The children block sits at the outer side of this subtree's span.
-    let cursor =
-      direction === "left"
-        ? left + width - childrenWidth
-        : direction === "right"
-          ? left
-          : left + (width - childrenWidth) / 2;
-    for (const kid of kids) {
+    const m = measure(id);
+    placed.set(id, { x: left + m.cardX, y: yOf(id) });
+    let cursor = left + m.childrenX;
+    for (const kid of children.get(id) ?? []) {
       place(kid, cursor);
-      cursor += spanOf(kid) + gap;
+      cursor += measure(kid).width + gap;
     }
-    const own = widthOf(id);
-    let x: number;
-    if (kids.length === 0) {
-      x =
-        direction === "left"
-          ? left + width - own
-          : direction === "right"
-            ? left
-            : left + (width - own) / 2;
-    } else {
-      const first = placed.get(kids[0]!)!.x;
-      const lastKid = kids[kids.length - 1]!;
-      const lastRight = placed.get(lastKid)!.x + widthOf(lastKid);
-      if (direction === "left") {
-        x = lastRight - own; // above its innermost (right-most) report, right edges aligned
-      } else if (direction === "right") {
-        x = first; // above its innermost (left-most) report, left edges aligned
-      } else {
-        x = (first + lastRight) / 2 - own / 2;
-      }
-    }
-    placed.set(id, { x, y: yOf(id) });
   };
 
   let cursor = 0;
   for (const root of roots) {
     place(root, cursor);
-    cursor += spanOf(root) + gap;
+    cursor += measure(root).width + gap;
+  }
+
+  // A two-head card sits under one head in the tree above. Centre it (and the
+  // chain below it) between BOTH heads instead, like the reference chart, so
+  // the two lines meet symmetrically — only when nothing would overlap.
+  const headsOf = (id: string) =>
+    edges
+      .filter((e) => e.targetPositionId === id && placed.has(e.sourcePositionId))
+      .map((e) => e.sourcePositionId);
+  const centreOf = (id: string) => placed.get(id)!.x + widthOf(id) / 2;
+  const subtreeOf = (id: string): string[] => [
+    id,
+    ...(children.get(id) ?? []).flatMap((kid) => subtreeOf(kid)),
+  ];
+  for (const id of memberIds) {
+    const heads = headsOf(id);
+    if (heads.length !== 2 || !placed.has(id)) continue;
+    const delta = (centreOf(heads[0]!) + centreOf(heads[1]!)) / 2 - centreOf(id);
+    if (Math.abs(delta) < 0.5) continue;
+    const moving = new Set(subtreeOf(id));
+    const clashes = [...moving].some((m) => {
+      const p = placed.get(m)!;
+      const left = p.x + delta;
+      const right = left + widthOf(m);
+      return [...placed].some(
+        ([other, q]) =>
+          !moving.has(other) &&
+          q.y === p.y &&
+          left < q.x + widthOf(other) + gap / 2 &&
+          q.x < right + gap / 2
+      );
+    });
+    if (clashes) continue;
+    for (const m of moving) placed.set(m, { x: placed.get(m)!.x + delta, y: placed.get(m)!.y });
   }
   return { placed, width: Math.max(0, cursor - gap) };
 }
