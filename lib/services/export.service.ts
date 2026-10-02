@@ -2,9 +2,14 @@ import "server-only";
 import type { ExportJob, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
-import { computeElkLayout } from "@/app/(app)/organogram/_lib/elk-layout";
+import {
+  computeElkLayout,
+  NODE_GAP,
+  NODE_HEIGHT,
+  NODE_WIDTH,
+} from "@/app/(app)/organogram/_lib/elk-layout";
 import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
-import { applyCardOffsets } from "@/lib/domain/organogram-card-offsets";
+import { placeCards } from "@/lib/domain/organogram-card-offsets";
 import { effectiveTextStyle } from "@/lib/domain/organogram-text-style";
 import { DomainValidationError, NotFoundError, UnsafeMutationError } from "@/lib/domain/errors";
 import {
@@ -190,13 +195,15 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
   // Same department segregation as the interactive chart, so an export
   // never shows one department's cards drifting under another's.
   // HR-placed cards (D38) sit where they were dragged, on paper as on screen.
-  const positions = applyCardOffsets(
+  const positions = placeCards(
     await computeElkLayout(
       subgraph.nodes.map((n) => n.positionId),
       subgraph.edges,
       computeLayoutClusters(subgraph.nodes)
     ),
-    organogram.cardOffsets
+    organogram.cardOffsets,
+    { width: NODE_WIDTH, height: NODE_HEIGHT },
+    NODE_GAP
   );
 
   // Each department is coloured by its OWN stored colour (denormalised onto

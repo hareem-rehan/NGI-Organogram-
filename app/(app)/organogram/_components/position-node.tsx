@@ -103,6 +103,8 @@ export interface PositionNodeData extends Record<string, unknown> {
   onRequestDelete?: (positionId: string) => void;
   /** Opens the text-style panel for this one card (D41, Arrange mode). */
   onEditStyle?: (nodeKey: string) => void;
+  /** Part of the current multi-card selection (Arrange mode). */
+  groupSelected?: boolean;
   /** This card's effective text style (its own settings over the chart's), D41. */
   textStyle?: TextStyle;
   /**
@@ -114,9 +116,14 @@ export interface PositionNodeData extends Record<string, unknown> {
 }
 
 /** Ring shown on a card while a dragged card hovers over it (arrange mode). */
-function dropHintClass(hint: PositionNodeData["dropHint"]): string | false {
+function dropHintClass(
+  hint: PositionNodeData["dropHint"],
+  groupSelected?: boolean
+): string | false {
   if (hint === "valid") return "ring-4 ring-emerald-500 ring-offset-2";
   if (hint === "invalid") return "ring-4 ring-red-600 ring-offset-2";
+  // Part of a multi-card selection (Shift+drag / Shift+click in Arrange mode).
+  if (groupSelected) return "ring-primary ring-2 ring-offset-2";
   return false;
 }
 
@@ -169,7 +176,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
       {...cardText.attrs}
       className={cn(
         "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
-        dropHintClass(data.dropHint),
+        dropHintClass(data.dropHint, data.groupSelected),
         !fill && "bg-muted"
       )}
       style={{
@@ -188,7 +195,11 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
       <GroupAddButton data={data} />
       <button
         type="button"
-        onClick={() => onToggleCollapse(node.positionId)}
+        onClick={(event) => {
+          // Shift+click selects (Arrange mode) instead of collapsing.
+          if (event.shiftKey && data.arrangeMode) return;
+          onToggleCollapse(node.positionId);
+        }}
         aria-expanded={!isCollapsed}
         aria-label={`${node.departmentName} department, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
         className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
@@ -302,7 +313,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
       {...cardText.attrs}
       className={cn(
         "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm",
-        dropHintClass(data.dropHint),
+        dropHintClass(data.dropHint, data.groupSelected),
         !fill && "bg-muted"
       )}
       style={{
@@ -321,7 +332,11 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
       <GroupAddButton data={data} />
       <button
         type="button"
-        onClick={() => onToggleCollapse(node.positionId)}
+        onClick={(event) => {
+          // Shift+click selects (Arrange mode) instead of collapsing.
+          if (event.shiftKey && data.arrangeMode) return;
+          onToggleCollapse(node.positionId);
+        }}
         aria-expanded={!isCollapsed}
         aria-label={`${node.title} sub-division, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
         className="focus-visible:ring-ring flex flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
@@ -424,7 +439,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // receive events — see e2e/organogram.spec.ts, which caught this
         // as a real click-through-to-the-pane failure before this fix.
         "text-foreground pointer-events-auto relative flex flex-col overflow-hidden rounded-lg border shadow-sm transition-colors",
-        dropHintClass(data.dropHint),
+        dropHintClass(data.dropHint, data.groupSelected),
         // Neutral card background only when no colour fill applies.
         !cardBackground && "bg-background",
         // Selection/search override the border with a stronger ring; otherwise
@@ -505,7 +520,12 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // was not. In arrange mode the click opens the Edit form, so the
         // label says so.
         aria-label={`${arrangeMode ? `Edit ${node.title}` : node.title}. ${occupantName ?? "Vacant"}.${node.jobGradeCode ? ` Level ${node.jobGradeCode}.` : ""} ${node.departmentName}, organizational level ${node.organizationalLevel}.${node.positionStatus !== "ACTIVE" ? ` ${node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}.` : ""}${matchStateLabel}`}
-        onClick={() => (arrangeMode ? onEdit?.(node.positionId) : onSelect(node.positionId))}
+        onClick={(event) => {
+          // Shift+click selects the card for a group move (Arrange mode).
+          if (event.shiftKey && arrangeMode) return;
+          if (arrangeMode) onEdit?.(node.positionId);
+          else onSelect(node.positionId);
+        }}
         // Deliberately NOT `nodrag`: in arrange mode the whole card body is the
         // drag surface, and React Flow still fires this click when the pointer
         // is released without moving — so a click edits and a press-drag
@@ -557,7 +577,11 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         {node.hasChildren ? (
           <button
             type="button"
-            onClick={() => onToggleCollapse(node.positionId)}
+            onClick={(event) => {
+              // Shift+click selects (Arrange mode) instead of collapsing.
+              if (event.shiftKey && data.arrangeMode) return;
+              onToggleCollapse(node.positionId);
+            }}
             aria-expanded={!isCollapsed}
             aria-label={
               isCollapsed
