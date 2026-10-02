@@ -183,3 +183,23 @@ export function buildSubdivisionShadeMap(
   }
   return map;
 }
+
+/**
+ * The colour a chart card is painted in the active colour mode (shared by the
+ * chart and the text-style panel, so both agree). "Sub-division" mode (D29):
+ * only sub-divisions carry colour — department headings and cards outside
+ * any sub-division are neutral (null). "Department" mode: every card,
+ * including a sub-division box, takes its department's colour.
+ */
+export function chartCardColor(
+  node: { kind?: string; departmentId: string; jobFamilyId: string | null },
+  colorMode: "department" | "family",
+  departmentColorById: ReadonlyMap<string, FamilyColor>,
+  familyColorById: ReadonlyMap<string, FamilyColor>
+): FamilyColor | null {
+  if (colorMode === "family") {
+    if (node.kind === "department") return null;
+    return node.jobFamilyId ? (familyColorById.get(node.jobFamilyId) ?? null) : null;
+  }
+  return departmentColorById.get(node.departmentId) ?? null;
+}

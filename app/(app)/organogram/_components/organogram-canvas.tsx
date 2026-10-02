@@ -54,7 +54,7 @@ import {
   type FamilyLegendEntry,
 } from "@/app/(app)/organogram/_components/organogram-legend";
 import type { OrganogramEdge, OrganogramNode } from "@/lib/domain/organogram";
-import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
+import { chartCardColor, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 /**
  * Display tiers framed on first open: the root and the department row, so
@@ -607,20 +607,8 @@ function CanvasInner({
   // position in sub-division mode takes its sub-division's palette colour
   // (null when unclassified, leaving a neutral card).
   const resolveCardColor = useCallback(
-    (node: OrganogramNode): FamilyColor | null => {
-      // "Colour by: Sub-division" (docs/DECISIONS.md D29): ONLY sub-divisions
-      // carry colour — each sub-division box and every card in that
-      // sub-division take the sub-division's colour; department headings and
-      // cards outside any sub-division stay neutral, so the view reads as a
-      // map of sub-divisions rather than of departments.
-      if (colorMode === "family") {
-        if (node.kind === "department") return null;
-        return node.jobFamilyId ? (familyColorById.get(node.jobFamilyId) ?? null) : null;
-      }
-      // Department mode: a sub-division box takes its parent department's
-      // colour, so a department and its sub-divisions read as one group.
-      return departmentColorById.get(node.departmentId) ?? null;
-    },
+    (node: OrganogramNode): FamilyColor | null =>
+      chartCardColor(node, colorMode, departmentColorById, familyColorById),
     [colorMode, departmentColorById, familyColorById]
   );
 

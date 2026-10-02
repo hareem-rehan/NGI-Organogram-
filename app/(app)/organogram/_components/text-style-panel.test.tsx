@@ -71,4 +71,28 @@ describe("TextStylePanel (D41)", () => {
     renderPanel();
     expect(screen.queryByRole("button", { name: /reset|use the style/i })).not.toBeInTheDocument();
   });
+
+  it("shows the text colour a card really uses when the chosen one isn't readable on it (D50)", () => {
+    // White for all cards, on a gold card: the chart shows dark text there.
+    renderPanel({
+      targetLabel: "Human Resources",
+      isChart: false,
+      inherited: { color: "#ffffff" },
+      cardFill: "#d4a72c",
+    });
+    expect(screen.getByLabelText("Text colour")).toHaveValue("#2d2d2d");
+    expect(screen.getByText("#2d2d2d on this card")).toBeInTheDocument();
+    expect(screen.getByText(/#ffffff is hard to read on this card's colour/)).toBeInTheDocument();
+  });
+
+  it("keeps a chosen colour that reads well on the card", () => {
+    renderPanel({
+      targetLabel: "Engineering",
+      isChart: false,
+      inherited: { color: "#ffffff" },
+      cardFill: "#1e3a8a",
+    });
+    expect(screen.getByLabelText("Text colour")).toHaveValue("#ffffff");
+    expect(screen.getByText("#ffffff (same as all cards)")).toBeInTheDocument();
+  });
 });
