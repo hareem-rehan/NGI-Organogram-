@@ -3,6 +3,7 @@ import {
   fontScaleOf,
   fontWeightOf,
   isEmptyTextStyle,
+  readableTextColor,
   textDecorationOf,
   type TextStyle,
 } from "@/lib/domain/organogram-text-style";
@@ -11,7 +12,7 @@ import {
   NODE_WIDTH,
   ORG_EDGE_BUS_OFFSET,
 } from "@/app/(app)/organogram/_lib/elk-layout";
-import { lightTint, type FamilyColor } from "@/lib/domain/organogram-family-colors";
+import { cardTextColor, lightTint, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 import { EXPORT_COLORS, resolveDepartmentColor } from "./colors";
 import { escapeXmlText, wrapText } from "./svg-text";
@@ -426,7 +427,10 @@ export function applyTextStyleToCardSvg(cardSvg: string, style: TextStyle | unde
       return `font-weight="${fontWeightOf(style, Number(weight))}"`;
     });
   if (style.color) {
-    out = out.replace(/(<text\b[^>]*?) fill="[^"]*"/g, `$1 fill="${style.color}"`);
+    // Kept only where readable on this card's own fill (its first <rect>).
+    const fill = /<rect\b[^>]*? fill="(#[0-9a-fA-F]{6})"/.exec(out)?.[1] ?? "#ffffff";
+    const color = readableTextColor(style.color, fill, cardTextColor(fill));
+    out = out.replace(/(<text\b[^>]*?) fill="[^"]*"/g, `$1 fill="${color}"`);
   }
   const groupAttrs = [
     `font-family="${fontFamilyById(style.fontFamily)?.exportFamily ?? EXPORT_FONT_FAMILY}"`,

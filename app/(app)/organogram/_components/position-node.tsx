@@ -13,6 +13,7 @@ import {
   DEFAULT_TITLE_SIZE,
   fontFamilyById,
   fontScaleOf,
+  readableTextColor,
   textDecorationOf,
   type TextStyle,
 } from "@/lib/domain/organogram-text-style";
@@ -50,15 +51,21 @@ function cardTextColorOf(color: FamilyColor | null | undefined): string | undefi
  * together), colour, italic, and — via globals.css — weight and
  * underline/strikethrough. With no style set the built-in look is kept.
  */
-function textStyleProps(style: TextStyle | undefined, autoColor: string | undefined) {
+function textStyleProps(style: TextStyle | undefined, cardColor: FamilyColor | null | undefined) {
   const s = style ?? {};
+  const autoColor = cardTextColorOf(cardColor);
+  // A chosen colour is kept only where it is readable on this card's fill
+  // (a neutral card is white); otherwise the automatic readable colour.
+  const color = s.color
+    ? readableTextColor(s.color, cardColor?.fill ?? "#ffffff", autoColor ?? CARD_TEXT_COLOR)
+    : autoColor;
   const family = fontFamilyById(s.fontFamily);
   const decoration = textDecorationOf(s);
   return {
     style: {
       fontSize: `${DEFAULT_TITLE_SIZE * fontScaleOf(s)}px`,
       fontFamily: family?.css,
-      color: s.color ?? autoColor,
+      color,
       fontStyle: s.italic ? "italic" : undefined,
       ["--org-card-weight" as string]:
         s.bold === undefined || s.bold === null ? undefined : s.bold ? 700 : 400,
@@ -169,7 +176,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
   const fill = data.cardColor?.fill;
   const border = data.cardColor?.accent ?? "var(--color-primary)";
 
-  const cardText = textStyleProps(data.textStyle, cardTextColorOf(data.cardColor));
+  const cardText = textStyleProps(data.textStyle, data.cardColor);
 
   return (
     <div
@@ -306,7 +313,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
   const fill = data.cardColor?.fill;
   const border = data.cardColor?.accent ?? "var(--color-primary)";
 
-  const cardText = textStyleProps(data.textStyle, cardTextColorOf(data.cardColor));
+  const cardText = textStyleProps(data.textStyle, data.cardColor);
 
   return (
     <div
@@ -424,7 +431,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         ? " Context — shown to preserve the real reporting path."
         : "";
 
-  const cardText = textStyleProps(data.textStyle, cardTextColorOf(data.cardColor));
+  const cardText = textStyleProps(data.textStyle, data.cardColor);
 
   return (
     <div

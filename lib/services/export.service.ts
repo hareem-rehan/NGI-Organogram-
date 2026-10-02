@@ -26,7 +26,7 @@ import {
   type SvgLegendFamily,
 } from "@/lib/domain/export/svg-renderer";
 import {
-  buildFamilyColorMap,
+  buildSubdivisionShadeMap,
   departmentColorFromHex,
   type FamilyColor,
 } from "@/lib/domain/organogram-family-colors";
@@ -230,14 +230,21 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
 
   // Sub-divisions present in this export, ordered by name so the colour
   // assignment is stable and identical to the interactive chart's.
-  const familiesByName = new Map<string, { id: string; name: string }>();
+  const familiesByName = new Map<
+    string,
+    { id: string; name: string; departmentColor: string | null }
+  >();
   for (const node of subgraph.nodes) {
     if (node.jobFamilyId && node.jobFamilyName && !familiesByName.has(node.jobFamilyId)) {
-      familiesByName.set(node.jobFamilyId, { id: node.jobFamilyId, name: node.jobFamilyName });
+      familiesByName.set(node.jobFamilyId, {
+        id: node.jobFamilyId,
+        name: node.jobFamilyName,
+        departmentColor: node.departmentColor,
+      });
     }
   }
   const familiesInOrder = [...familiesByName.values()].sort((a, b) => a.name.localeCompare(b.name));
-  const familyColorById = buildFamilyColorMap(familiesInOrder.map((f) => f.id));
+  const familyColorById = buildSubdivisionShadeMap(familiesInOrder);
   const familyLegendEntries: SvgLegendFamily[] = familiesInOrder.map((f) => ({
     id: f.id,
     name: f.name,

@@ -1,3 +1,5 @@
+import { cardTextColor, contrastRatio } from "@/lib/domain/organogram-family-colors";
+
 /**
  * Organogram text styles (docs/DECISIONS.md D41): one style for every card
  * ("chart"), and optional per-card overrides. Each field is optional — unset
@@ -138,4 +140,20 @@ export function fontWeightOf(style: TextStyle, builtIn: number): number {
   if (style.bold === true) return Math.max(builtIn, 700);
   if (style.bold === false) return 400;
   return builtIn;
+}
+
+/**
+ * The text colour actually used on a card (2026-10-02): the chosen colour
+ * when it is readable on the card's fill (contrast >= 2.5:1 — a deliberate
+ * choice like white on a mid-blue is kept), otherwise whichever of white or
+ * the dark card text reads better — so a style set for strong department
+ * colours never vanishes on a pale sub-division or neutral card.
+ */
+export function readableTextColor(
+  chosen: string | null | undefined,
+  fill: string,
+  auto: string
+): string {
+  if (!chosen) return auto;
+  return contrastRatio(chosen, fill) >= 2.5 ? chosen : cardTextColor(fill);
 }

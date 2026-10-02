@@ -726,7 +726,7 @@ describe("applyTextStyleToCardSvg (D41)", () => {
       fontFamily: "georgia",
       fontSize: 26, // clamped to 20 → ×(20/13)
       bold: false,
-      color: "#ff0000",
+      color: "#ffff00",
       italic: true,
       underline: true,
     });
@@ -739,5 +739,12 @@ describe("applyTextStyleToCardSvg (D41)", () => {
     expect(out).toContain('font-weight="400"');
     expect(out).not.toContain('fill="#ffffff"');
     expect(out).toContain('<rect fill="#111ed4" />'); // the card colour itself is kept
+  });
+
+  it("swaps a chosen colour that would be unreadable on the card for a readable one", () => {
+    // Dark grey on a deep blue card is hard to read: the export uses white instead.
+    const out = applyTextStyleToCardSvg(card, { color: "#333333" });
+    expect(out).not.toContain('fill="#333333"');
+    expect(out).toContain('fill="#ffffff"');
   });
 });

@@ -138,3 +138,48 @@ export function vividFill(accent: string): string {
   }
   return lightTint(accent, 0.1);
 }
+
+/** Mixes `hex` toward black (t < 0) or white (t > 0) by |t| (0–1). */
+export function shadeOf(hex: string, t: number): string {
+  if (t === 0) return hex.toLowerCase();
+  if (t > 0) return lightTint(hex, 1 - t);
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const int = parseInt(m[1]!, 16);
+  const darken = (c: number) => Math.round(c * (1 + t));
+  const to2 = (c: number) => c.toString(16).padStart(2, "0");
+  return `#${to2(darken((int >> 16) & 0xff))}${to2(darken((int >> 8) & 0xff))}${to2(darken(int & 0xff))}`;
+}
+
+/**
+ * Sub-division colours for "Colour by: Sub-division" (user request,
+ * 2026-10-02): each sub-division takes a SHADE of its own department's
+ * colour, from deeper to lighter in the order given, so sub-divisions stay in
+ * their department's colour family but can still be told apart. A department
+ * with one sub-division uses its exact colour. Text is whichever of white or
+ * dark reads better on each shade. Sub-divisions whose department has no
+ * colour fall back to the fixed palette.
+ */
+export function buildSubdivisionShadeMap(
+  families: readonly { id: string; departmentColor: string | null | undefined }[]
+): Map<string, FamilyColor> {
+  const byDepartment = new Map<string, string[]>();
+  const uncoloured: string[] = [];
+  for (const f of families) {
+    const hex = f.departmentColor?.trim().toLowerCase();
+    if (hex && /^#[0-9a-f]{6}$/.test(hex)) {
+      byDepartment.set(hex, [...(byDepartment.get(hex) ?? []), f.id]);
+    } else {
+      uncoloured.push(f.id);
+    }
+  }
+  const map = buildFamilyColorMap(uncoloured);
+  for (const [hex, ids] of byDepartment) {
+    ids.forEach((id, i) => {
+      const t = ids.length === 1 ? 0 : -0.3 + (0.75 * i) / (ids.length - 1);
+      const shade = shadeOf(hex, Math.round(t * 100) / 100);
+      map.set(id, { fill: shade, accent: shade, text: cardTextColor(shade) });
+    });
+  }
+  return map;
+}
