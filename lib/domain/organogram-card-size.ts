@@ -1,9 +1,9 @@
 /**
- * Content-sized organogram cards (docs/DECISIONS.md D47). Every card is just
- * tall enough for what it shows, and keeps the standard width unless its text
- * needs more: then it widens (up to a cap) so the text stays on one line, and
- * only text longer than the cap wraps to a second line. Cards on the same row
- * share the row's tallest height so the chart stays aligned.
+ * Content-sized organogram cards (docs/DECISIONS.md D47, D49). Every card has
+ * the same width (about 24 characters of title per line) and is just tall
+ * enough for what it shows: a long title wraps onto more lines (up to three)
+ * and the card grows taller instead of wider. Cards on the same row share
+ * the row's tallest height so the chart stays aligned.
  *
  * One pure function sizes a card for the screen AND the PDF/PNG export, so
  * both draw the same chart. Text width is estimated from Helvetica/Arial
@@ -17,10 +17,14 @@ import {
   type TextStyle,
 } from "@/lib/domain/organogram-text-style";
 
-/** The standard card width; a card only grows past it for long text. */
-export const CARD_MIN_WIDTH = 188;
-/** The widest a card grows before its title wraps to a second line. */
-export const CARD_MAX_WIDTH = 320;
+/** Every card's width (D49): about 24 characters of title per line. */
+export const CARD_WIDTH = 188;
+/** @deprecated Since D49 every card is CARD_WIDTH wide. */
+export const CARD_MIN_WIDTH = CARD_WIDTH;
+/** A title longer than this many lines ends in "…". */
+export const MAX_TITLE_LINES = 3;
+/** Slack kept on each line for font differences between estimate and screen. */
+const WRAP_SLACK = 4;
 
 /** Vertical rhythm, in px at the built-in size. Shared by screen and export. */
 export const CARD_METRICS = {
@@ -205,13 +209,8 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
       letterSpacingEm: isDepartment ? 0.025 : 0,
     };
     const chrome = 2 * m.border + 2 * m.headingPadX + (card.hasChildren ? m.headingChevron : 0);
-    const rolesWidth = measureTextWidth(`${card.roleCount} roles`, f * m.secondaryEm, {
-      bold: true,
-      fontFamily: family,
-    });
-    const nameWidth = measureTextWidth(name, f, nameFont);
-    const width = clampWidth(Math.max(nameWidth, rolesWidth) + chrome);
-    const titleLines = nameWidth + chrome > CARD_MAX_WIDTH ? 2 : 1;
+    const titleLines = linesFor(name, CARD_WIDTH - chrome - WRAP_SLACK, f, nameFont);
+    const width = CARD_WIDTH;
     const height =
       2 * m.border +
       2 * m.headingPadY +
@@ -222,18 +221,14 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
   }
 
   const chrome = 2 * m.border + 2 * m.padX;
-  const titleWidth = measureTextWidth(card.title, f, titleFont) + (card.badgeWidth ?? 0);
-  const occupantWidth = card.occupantName
-    ? measureTextWidth(card.occupantName, f * m.secondaryEm, titleFont)
-    : 0;
   const footerFont = f * m.footerEm;
-  const gradeLabel = gradeFamilyLabel(card.jobGradeCode, card.jobFamilyName);
-  const footerWidth =
-    (card.hasChildren ? m.footerChevron : 0) +
-    measureTextWidth(rolesUnderLabel(card.roleCount), footerFont, titleFont) +
-    (gradeLabel ? 10 + measureTextWidth(gradeLabel, footerFont, titleFont) : 0);
-  const width = clampWidth(Math.max(titleWidth, occupantWidth, footerWidth) + chrome);
-  const titleLines = titleWidth + chrome > CARD_MAX_WIDTH ? 2 : 1;
+  const titleLines = linesFor(
+    card.title,
+    CARD_WIDTH - chrome - (card.badgeWidth ?? 0) - WRAP_SLACK,
+    f,
+    titleFont
+  );
+  const width = CARD_WIDTH;
   const height =
     2 * m.border +
     m.padTop +
@@ -258,9 +253,9 @@ const BADGE_HEIGHT = 16;
 /** The heading chevron's square box, px (size-4 on screen). */
 export const CHEVRON_BOX = 16;
 
-function clampWidth(width: number): number {
-  // A few px of slack for font differences, in whole px.
-  return Math.ceil(Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, width + 4)));
+/** How many lines (1 to MAX_TITLE_LINES) a title wraps onto at this width. */
+function linesFor(text: string, width: number, fontSize: number, font: MeasureOptions): number {
+  return Math.max(1, wrapToWidth(text, width, fontSize, MAX_TITLE_LINES, font).length);
 }
 
 /**

@@ -134,7 +134,11 @@ interface OrganogramCanvasProps {
    * A department box was dropped onto a sibling department box (D33, D38):
    * the department ids of that row in their new order, and the dragged box.
    */
-  onReorderDepartments?: (orderedDepartmentIds: string[], draggedNodeKey: string) => void;
+  onReorderDepartments?: (
+    orderedDepartmentIds: string[],
+    draggedNodeKey: string,
+    previousOrderedIds?: string[]
+  ) => void;
   /**
    * Saved card offsets from the automatic layout, keyed by node id (D38).
    * Cards without one sit where the layout puts them.
@@ -142,6 +146,8 @@ interface OrganogramCanvasProps {
   cardOffsets?: Readonly<Record<string, CardOffset>>;
   /** A card was dropped on empty canvas: its new offset from the automatic spot. */
   onPlaceCard?: (nodeKey: string, dx: number, dy: number) => void;
+  /** A whole selected group placed at once (one Undo step, D49). Falls back to `onPlaceCard` per card. */
+  onPlaceCards?: (moves: { nodeKey: string; dx: number; dy: number }[]) => void;
   /** Card text styles: chart-wide plus per-card overrides (D41). */
   textStyles?: { chart: TextStyle; cards: Readonly<Record<string, TextStyle>> };
   /** "Aa" on a card (Arrange mode): edit that one card's text style. */
@@ -176,6 +182,7 @@ function CanvasInner({
   onReorderDepartments,
   cardOffsets = NO_OFFSETS,
   onPlaceCard,
+  onPlaceCards,
   textStyles,
   onEditStyle,
   onEditCard,
@@ -513,13 +520,20 @@ function CanvasInner({
       // A selected group is only ever placed, wherever it is let go: reporting
       // lines never change from a group drag.
       if (nodes && nodes.length > 1) {
+        const moves: { nodeKey: string; dx: number; dy: number }[] = [];
         for (const moved of nodes) {
           const auto = positions.get(moved.id);
           if (auto) {
-            onPlaceCard?.(moved.id, moved.position.x - auto.x, moved.position.y - auto.y);
+            moves.push({
+              nodeKey: moved.id,
+              dx: moved.position.x - auto.x,
+              dy: moved.position.y - auto.y,
+            });
           }
           releaseDrag(moved.id);
         }
+        if (onPlaceCards) onPlaceCards(moves);
+        else for (const m of moves) onPlaceCard?.(m.nodeKey, m.dx, m.dy);
         return;
       }
 
@@ -550,7 +564,8 @@ function CanvasInner({
             .map((n) => n.departmentId);
           onReorderDepartments?.(
             departmentOrderAfterDrop(row, dragged.departmentId, target.departmentId),
-            node.id
+            node.id,
+            row
           );
           releaseDrag(node.id);
           return;
@@ -577,6 +592,7 @@ function CanvasInner({
       onInvalidDrop,
       onReorderDepartments,
       onPlaceCard,
+      onPlaceCards,
       releaseDrag,
       judgeDropFor,
       targetUnderPointer,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, Download, Plus } from "lucide-react";
+import { AlertTriangle, Download, Plus, Undo2 } from "lucide-react";
 import type { CareerTrack, Department, JobFamily, JobGrade, Position } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,11 @@ import {
   saveTextStyleAction,
 } from "@/app/(app)/organogram/actions";
 import { TextStylePanel } from "@/app/(app)/organogram/_components/text-style-panel";
-import { CHART_STYLE_KEY, type TextStyle } from "@/lib/domain/organogram-text-style";
+import {
+  CHART_STYLE_KEY,
+  isEmptyTextStyle,
+  type TextStyle,
+} from "@/lib/domain/organogram-text-style";
 import { PositionFormDialog } from "@/app/(app)/positions/_components/position-form-dialog";
 import {
   deletePositionAction,
@@ -61,6 +65,7 @@ import {
   type OrganogramNode,
 } from "@/lib/domain/organogram";
 import type { DropVerdict } from "@/lib/domain/organogram-drag";
+import type { CardOffset } from "@/lib/domain/organogram-card-offsets";
 import { addPositionPrefill } from "@/lib/domain/add-position-prefill";
 import { reorderDepartmentsAction } from "@/app/(app)/departments/actions";
 import { isBelowThreshold } from "@/lib/domain/organogram-leadership";
@@ -128,6 +133,9 @@ function defaultCollapsedIds(data: OrganogramChartData): Set<string> {
 function allCollapsibleIds(data: OrganogramChartData): Set<string> {
   return new Set(data.nodes.filter((n) => n.hasChildren).map((n) => n.positionId));
 }
+
+/** How many Arrange changes Undo can step back through. */
+const UNDO_LIMIT = 20;
 
 export function OrganogramView({
   canManage,
@@ -223,6 +231,19 @@ export function OrganogramView({
   const [styleDraft, setStyleDraft] = useState<TextStyle | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Undo for Arrange changes (D49): each step knows how to put its change
+  // back. Newest last; kept for this page visit.
+  interface UndoStep {
+    label: string;
+    run: () => Promise<string | null>;
+  }
+  const [undoSteps, setUndoSteps] = useState<UndoStep[]>([]);
+  const [undoPending, setUndoPending] = useState(false);
+  const [undoNotice, setUndoNotice] = useState<string | null>(null);
+  const pushUndo = useCallback((step: UndoStep) => {
+    setUndoNotice(null);
+    setUndoSteps((steps) => [...steps, step].slice(-UNDO_LIMIT));
+  }, []);
 
   // Shallow-routing via the native History API — NOT `router.push`/
   // `router.replace`, which re-invoke the server component tree (a real
@@ -376,34 +397,72 @@ export function OrganogramView({
     [data, moveDialog]
   );
 
-  // Arrange mode: a card dropped on empty canvas stays exactly there, for
-  // everyone (D38). Shown at once; saved in the background, and put back
-  // if the save is refused.
-  const handlePlaceCard = useCallback(
-    (nodeKey: string, dx: number, dy: number) => {
-      setDropNotice(null);
-      const previous = data?.cardOffsets[nodeKey];
-      const withOffset = (offset: { dx: number; dy: number } | undefined) =>
-        setData((current) => {
-          if (!current) return current;
-          const cardOffsets = { ...current.cardOffsets };
-          if (offset && (Math.round(offset.dx) !== 0 || Math.round(offset.dy) !== 0)) {
-            cardOffsets[nodeKey] = offset;
-          } else {
-            delete cardOffsets[nodeKey];
-          }
-          return { ...current, cardOffsets };
-        });
-      withOffset({ dx, dy });
-      void (async () => {
-        const result = await saveCardPositionAction({ nodeKey, dx, dy });
-        if (!result.ok) {
-          withOffset(previous);
-          setDropNotice(result.error);
+  // Puts cards' saved offsets back to `previous` (undefined = no offset),
+  // on the server and on screen. Returns an error message, or null.
+  const restoreOffsets = useCallback(
+    async (previous: Readonly<Record<string, CardOffset | undefined>>) => {
+      const toClear = Object.keys(previous).filter((key) => !previous[key]);
+      if (toClear.length > 0) {
+        const cleared = await clearCardPositionsAction({ nodeKeys: toClear });
+        if (!cleared.ok) return cleared.error;
+      }
+      for (const [nodeKey, offset] of Object.entries(previous)) {
+        if (!offset) continue;
+        const saved = await saveCardPositionAction({ nodeKey, dx: offset.dx, dy: offset.dy });
+        if (!saved.ok) return saved.error;
+      }
+      setData((current) => {
+        if (!current) return current;
+        const cardOffsets = { ...current.cardOffsets };
+        for (const [nodeKey, offset] of Object.entries(previous)) {
+          if (offset) cardOffsets[nodeKey] = offset;
+          else delete cardOffsets[nodeKey];
         }
+        return { ...current, cardOffsets };
+      });
+      return null;
+    },
+    []
+  );
+
+  // Arrange mode: cards dropped on empty canvas stay exactly there, for
+  // everyone (D38) — one card, or a whole selected group as ONE undo step.
+  // Shown at once; saved in the background, and put back if refused.
+  const handlePlaceCards = useCallback(
+    (moves: readonly { nodeKey: string; dx: number; dy: number }[]) => {
+      if (moves.length === 0) return;
+      setDropNotice(null);
+      const previous: Record<string, CardOffset | undefined> = {};
+      for (const { nodeKey } of moves) previous[nodeKey] = data?.cardOffsets[nodeKey];
+      setData((current) => {
+        if (!current) return current;
+        const cardOffsets = { ...current.cardOffsets };
+        for (const { nodeKey, dx, dy } of moves) {
+          if (Math.round(dx) !== 0 || Math.round(dy) !== 0) cardOffsets[nodeKey] = { dx, dy };
+          else delete cardOffsets[nodeKey];
+        }
+        return { ...current, cardOffsets };
+      });
+      void (async () => {
+        for (const { nodeKey, dx, dy } of moves) {
+          const result = await saveCardPositionAction({ nodeKey, dx, dy });
+          if (!result.ok) {
+            await restoreOffsets(previous);
+            setDropNotice(result.error);
+            return;
+          }
+        }
+        pushUndo({
+          label: moves.length > 1 ? `Move ${moves.length} cards` : "Move card",
+          run: () => restoreOffsets(previous),
+        });
       })();
     },
-    [data]
+    [data, restoreOffsets, pushUndo]
+  );
+  const handlePlaceCard = useCallback(
+    (nodeKey: string, dx: number, dy: number) => handlePlaceCards([{ nodeKey, dx, dy }]),
+    [handlePlaceCards]
   );
 
   // A card that has just been re-attached somewhere else should land in its
@@ -448,28 +507,54 @@ export function OrganogramView({
     });
   }, []);
 
+  // An undo step that puts a target's text style back to what it was.
+  const textStyleUndo = useCallback(
+    (nodeKey: string): UndoStep => {
+      const previous =
+        (nodeKey === CHART_STYLE_KEY ? data?.textStyles.chart : data?.textStyles.cards[nodeKey]) ??
+        {};
+      return {
+        label: nodeKey === CHART_STYLE_KEY ? "Text style (all cards)" : "Text style (one card)",
+        run: async () => {
+          const result = isEmptyTextStyle(previous)
+            ? await clearTextStyleAction({ nodeKey })
+            : await saveTextStyleAction({ nodeKey, style: previous });
+          if (!result.ok) return result.error;
+          storeTextStyle(nodeKey, previous);
+          return null;
+        },
+      };
+    },
+    [data, storeTextStyle]
+  );
+
   const saveStyle = useCallback(
     async (style: TextStyle) => {
       if (!styleTarget) return null;
+      const undo = textStyleUndo(styleTarget);
       const result = await saveTextStyleAction({ nodeKey: styleTarget, style });
       if (!result.ok) return result.error;
       storeTextStyle(styleTarget, style);
+      pushUndo(undo);
       return null;
     },
-    [styleTarget, storeTextStyle]
+    [styleTarget, storeTextStyle, textStyleUndo, pushUndo]
   );
 
   const resetStyle = useCallback(async () => {
     if (!styleTarget) return null;
+    const undo = textStyleUndo(styleTarget);
     const result = await clearTextStyleAction({ nodeKey: styleTarget });
     if (!result.ok) return result.error;
     storeTextStyle(styleTarget, {});
+    pushUndo(undo);
     return null;
-  }, [styleTarget, storeTextStyle]);
+  }, [styleTarget, storeTextStyle, textStyleUndo, pushUndo]);
 
   const confirmResetPositions = useCallback(() => {
     setResetPending(true);
     setResetError(null);
+    const previous: Record<string, CardOffset | undefined> = { ...(data?.cardOffsets ?? {}) };
     void (async () => {
       const result = await resetCardPositionsAction();
       setResetPending(false);
@@ -478,15 +563,24 @@ export function OrganogramView({
         return;
       }
       resetDialog.setOpen(false);
+      pushUndo({
+        label: "Reset positions",
+        run: async () => {
+          const error = await restoreOffsets(previous);
+          refreshAfterMutation();
+          return error;
+        },
+      });
       refreshAfterMutation();
     })();
-  }, [resetDialog, refreshAfterMutation]);
+  }, [data, resetDialog, refreshAfterMutation, restoreOffsets, pushUndo]);
 
   // Arrange mode: a department box dropped onto a sibling department box
   // takes its place in the order (D33), then the chart redraws.
   const handleReorderDepartments = useCallback(
-    (orderedDepartmentIds: string[], draggedNodeKey: string) => {
+    (orderedDepartmentIds: string[], draggedNodeKey: string, previousOrderedIds?: string[]) => {
       setDropNotice(null);
+      const previousOffset = data?.cardOffsets[draggedNodeKey];
       void (async () => {
         await clearPlacement(draggedNodeKey);
         const result = await reorderDepartmentsAction({ orderedDepartmentIds });
@@ -494,17 +588,42 @@ export function OrganogramView({
           setDropNotice(result.error);
           return;
         }
+        if (previousOrderedIds) {
+          pushUndo({
+            label: "Reorder departments",
+            run: async () => {
+              const back = await reorderDepartmentsAction({
+                orderedDepartmentIds: previousOrderedIds,
+              });
+              if (!back.ok) return back.error;
+              const error = previousOffset
+                ? await restoreOffsets({ [draggedNodeKey]: previousOffset })
+                : null;
+              refreshAfterMutation();
+              return error;
+            },
+          });
+        }
         refreshAfterMutation();
       })();
     },
-    [refreshAfterMutation, clearPlacement]
+    [data, refreshAfterMutation, clearPlacement, pushUndo, restoreOffsets]
   );
 
   const confirmMove = useCallback(() => {
     if (!moveIntent) return;
     setMovePending(true);
     setMoveError(null);
+    const previousOffset = data?.cardOffsets[moveIntent.childId];
     void (async () => {
+      // The REAL head before the move (the chart may show a department box
+      // as its parent), so the move can be undone exactly.
+      const before =
+        moveIntent.kind === "position"
+          ? await listAllPositionsAction().then((r) =>
+              r.ok ? r.data.find((p) => p.id === moveIntent.childId) : undefined
+            )
+          : undefined;
       const result =
         moveIntent.kind === "department"
           ? await movePositionToDepartmentAction({
@@ -523,9 +642,71 @@ export function OrganogramView({
       await clearPlacement(moveIntent.childId);
       moveDialog.setOpen(false);
       setMoveIntent(null);
+      const previousHeadId = before?.primaryReportsToPositionId;
+      if (moveIntent.kind === "position" && previousHeadId) {
+        const childId = moveIntent.childId;
+        pushUndo({
+          label: `Re-attach ${moveIntent.childTitle}`,
+          run: async () => {
+            const back = await movePositionAction({
+              positionId: childId,
+              newParentPositionId: previousHeadId,
+            });
+            if (!back.ok) return back.error;
+            const error = previousOffset
+              ? await restoreOffsets({ [childId]: previousOffset })
+              : null;
+            refreshAfterMutation();
+            return error;
+          },
+        });
+      } else if (moveIntent.kind === "department") {
+        // Moving into a department also clears sub-divisions and may re-key
+        // levels, which can't be put back from here: earlier steps no longer
+        // apply cleanly either.
+        setUndoSteps([]);
+      }
       refreshAfterMutation();
     })();
-  }, [moveIntent, moveDialog, refreshAfterMutation, clearPlacement]);
+  }, [
+    data,
+    moveIntent,
+    moveDialog,
+    refreshAfterMutation,
+    clearPlacement,
+    pushUndo,
+    restoreOffsets,
+  ]);
+
+  // Undo the newest Arrange change.
+  const undoLast = useCallback(() => {
+    const step = undoSteps[undoSteps.length - 1];
+    if (!step || undoPending) return;
+    setUndoPending(true);
+    setDropNotice(null);
+    void (async () => {
+      const error = await step.run();
+      setUndoPending(false);
+      setUndoSteps((steps) => steps.slice(0, -1));
+      setUndoNotice(error ? `Couldn't undo "${step.label}": ${error}` : `Undid: ${step.label}`);
+    })();
+  }, [undoSteps, undoPending]);
+
+  // Ctrl+Z / Cmd+Z undoes in Arrange mode (not while typing in a field).
+  useEffect(() => {
+    if (!arrangeMode) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.key.toLowerCase() !== "z")
+        return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']"))
+        return;
+      event.preventDefault();
+      undoLast();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [arrangeMode, undoLast]);
 
   const handleRequestDelete = useCallback(
     (positionId: string) => {
@@ -975,7 +1156,27 @@ export function OrganogramView({
       ) : null}
 
       {arrangeMode && canManage ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={undoSteps.length === 0 || undoPending}
+            onClick={undoLast}
+            title={
+              undoSteps.length > 0
+                ? `Undo: ${undoSteps[undoSteps.length - 1]!.label} (Ctrl+Z)`
+                : "Nothing to undo yet"
+            }
+            aria-label={
+              undoSteps.length > 0
+                ? `Undo: ${undoSteps[undoSteps.length - 1]!.label}`
+                : "Undo (nothing to undo yet)"
+            }
+          >
+            <Undo2 aria-hidden="true" />
+            {undoPending ? "Undoing..." : "Undo"}
+          </Button>
           <Button
             type="button"
             size="sm"
@@ -1001,6 +1202,12 @@ export function OrganogramView({
             </Button>
           ) : null}
         </div>
+      ) : null}
+
+      {arrangeMode && undoNotice ? (
+        <p role="status" className="text-muted-foreground text-sm">
+          {undoNotice}
+        </p>
       ) : null}
 
       {arrangeMode && dropNotice ? (
@@ -1110,6 +1317,7 @@ export function OrganogramView({
                 onReorderDepartments={handleReorderDepartments}
                 cardOffsets={data.cardOffsets}
                 onPlaceCard={handlePlaceCard}
+                onPlaceCards={handlePlaceCards}
                 textStyles={previewTextStyles}
                 onEditStyle={canManage ? (nodeKey) => setStyleTarget(nodeKey) : undefined}
                 onEditCard={handleEditCard}
@@ -1200,7 +1408,7 @@ export function OrganogramView({
                   moveIntent.affectedCount > 0
                     ? ` The ${moveIntent.affectedCount} position${moveIntent.affectedCount === 1 ? "" : "s"} beneath it move${moveIntent.affectedCount === 1 ? "s" : ""} along, keep${moveIntent.affectedCount === 1 ? "s" : ""} their reporting lines, and join ${moveIntent.parentTitle} too.`
                     : ""
-                } Levels are kept; a sub-division from the old department is cleared.`
+                } Levels are kept; a sub-division from the old department is cleared. This move can't be reversed with Undo.`
               : `${moveIntent.childTitle} will report to ${moveIntent.parentTitle}.${
                   moveIntent.affectedCount > 0
                     ? ` The ${moveIntent.affectedCount} position${moveIntent.affectedCount === 1 ? "" : "s"} beneath it move${moveIntent.affectedCount === 1 ? "s" : ""} along and keep${moveIntent.affectedCount === 1 ? "s" : ""} their reporting lines; levels are recalculated.`
