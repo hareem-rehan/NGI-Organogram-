@@ -92,8 +92,19 @@ export async function GET() {
       { status: 200 }
     );
   } catch (error) {
+    // The driver's error CODE (e.g. P1000 wrong credentials, P1001 can't
+    // reach the server, P1013 invalid connection string) goes to the
+    // server log so an outage can be diagnosed from the deployment logs —
+    // never the message text, which can echo the connection string.
+    const code =
+      error && typeof error === "object" && "errorCode" in error
+        ? String((error as { errorCode?: unknown }).errorCode ?? "")
+        : error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code ?? "")
+          : "";
     logger.error("readiness check failed", {
       reason: error instanceof Error ? error.name : "unknown",
+      code: code || "none",
       stage: databaseReachable ? "schema" : "connection",
     });
     // 503, not 500: "not ready yet" is what a load balancer or a deploy
