@@ -81,3 +81,43 @@ describe("GET /api/health/ready", () => {
     expect(JSON.stringify(body)).not.toMatch(/ECONNREFUSED|hunter2|5432/);
   });
 });
+
+describe("GET /api/health/ready — diagnostics", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("logs the driver's error code (not its message) when the database can't be reached", async () => {
+    const error = Object.assign(new Error("Authentication failed for postgres:secret@host"), {
+      name: "PrismaClientInitializationError",
+      errorCode: "P1000",
+    });
+    queryRawMock.mockRejectedValueOnce(error);
+
+    const response = await GET();
+
+    expect(response.status).toBe(503);
+    expect(loggerErrorMock).toHaveBeenCalledWith("readiness check failed", {
+      reason: "PrismaClientInitializationError",
+      code: "P1000",
+      stage: "connection",
+    });
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain("secret");
+  });
+
+  it("logs 'other' instead of a value that isn't shaped like an error code", async () => {
+    const error = Object.assign(new Error("boom"), {
+      name: "PrismaClientInitializationError",
+      errorCode: "postgresql://user:secret@host:5432/db",
+    });
+    queryRawMock.mockRejectedValueOnce(error);
+
+    const response = await GET();
+
+    expect(response.status).toBe(503);
+    expect(loggerErrorMock).toHaveBeenCalledWith("readiness check failed", {
+      reason: "PrismaClientInitializationError",
+      code: "other",
+      stage: "connection",
+    });
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain("secret");
+  });
+});
