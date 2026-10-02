@@ -50,7 +50,7 @@ import type {
   PositionNodeMatchState,
 } from "@/app/(app)/organogram/_components/position-node";
 import {
-  buildFamilyColorMap,
+  buildSubdivisionShadeMap,
   departmentColorFromHex,
   type FamilyColor,
 } from "@/lib/domain/organogram-family-colors";
@@ -710,22 +710,26 @@ export function OrganogramView({
   );
 
   // Every sub-division present on the chart, ordered by name so colour
-  // assignment is stable and reproducible, then mapped to the palette.
+  // assignment is stable; each takes a shade of its department colour.
   const familiesInOrder = useMemo(() => {
-    if (!data) return [] as { id: string; name: string }[];
-    const seen = new Map<string, string>();
+    if (!data) return [] as { id: string; name: string; departmentColor: string | null }[];
+    const seen = new Map<string, { name: string; departmentColor: string | null }>();
     for (const node of data.nodes) {
       if (node.jobFamilyId && node.jobFamilyName && !seen.has(node.jobFamilyId)) {
-        seen.set(node.jobFamilyId, node.jobFamilyName);
+        seen.set(node.jobFamilyId, {
+          name: node.jobFamilyName,
+          departmentColor: node.departmentColor,
+        });
       }
     }
     return [...seen.entries()]
-      .map(([id, name]) => ({ id, name }))
+      .map(([id, f]) => ({ id, ...f }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
   const familyColorById = useMemo(
-    () => buildFamilyColorMap(familiesInOrder.map((f) => f.id)),
+    // Shades of each sub-division's department colour (2026-10-02).
+    () => buildSubdivisionShadeMap(familiesInOrder),
     [familiesInOrder]
   );
 

@@ -7,6 +7,7 @@ import {
   fontScaleOf,
   fontWeightOf,
   isEmptyTextStyle,
+  readableTextColor,
   textDecorationOf,
 } from "./organogram-text-style";
 
@@ -60,5 +61,23 @@ describe("style helpers", () => {
     expect(fontFamilyById("courier")?.exportFamily).toBe("Courier");
     expect(fontFamilyById("verdana")?.exportFamily).toBe("Helvetica");
     expect(fontFamilyById("comic-sans")).toBeUndefined();
+  });
+});
+
+describe("readableTextColor (2026-10-02)", () => {
+  it("keeps a chosen colour that reads on the card (white on a mid-blue)", () => {
+    expect(readableTextColor("#ffffff", "#3aa4e8", "#2d2d2d")).toBe("#ffffff");
+  });
+
+  it("switches to a readable colour where the chosen one would vanish", () => {
+    // White text on a pale sub-division card, and on a neutral white card.
+    expect(readableTextColor("#ffffff", "#d3f1b7", "#2d2d2d")).toBe("#2d2d2d");
+    expect(readableTextColor("#ffffff", "#ffffff", "#2d2d2d")).toBe("#2d2d2d");
+    // Dark text on a near-black card.
+    expect(readableTextColor("#222222", "#0b1d4a", "#ffffff")).toBe("#ffffff");
+  });
+
+  it("uses the automatic colour when none is chosen", () => {
+    expect(readableTextColor(null, "#3aa4e8", "#123456")).toBe("#123456");
   });
 });

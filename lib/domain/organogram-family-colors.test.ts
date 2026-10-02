@@ -9,6 +9,8 @@ import {
   vividFill,
   CARD_TEXT_COLOR,
   lightTint,
+  buildSubdivisionShadeMap,
+  shadeOf,
 } from "./organogram-family-colors";
 
 describe("lightTint", () => {
@@ -130,4 +132,49 @@ describe("vividFill / palette readability (WCAG AA)", () => {
       expect(contrastRatio(colour.fill, CARD_TEXT_COLOR)).toBeGreaterThanOrEqual(4.5);
     }
   );
+});
+
+describe("buildSubdivisionShadeMap (shades of the department colour, 2026-10-02)", () => {
+  it("gives each sub-division a different shade of its department's colour, deeper to lighter", () => {
+    const map = buildSubdivisionShadeMap([
+      { id: "product", departmentColor: "#3aa4e8" },
+      { id: "project", departmentColor: "#3aa4e8" },
+    ]);
+    const product = map.get("product")!;
+    const project = map.get("project")!;
+    expect(product.fill).not.toBe(project.fill);
+    expect(product.fill).toBe(shadeOf("#3aa4e8", -0.3));
+    expect(project.fill).toBe(shadeOf("#3aa4e8", 0.45));
+    // Both stay in the blue family: blue channel dominant.
+    for (const hex of [product.fill, project.fill]) {
+      const n = parseInt(hex.slice(1), 16);
+      expect(n & 0xff).toBeGreaterThan((n >> 16) & 0xff);
+    }
+  });
+
+  it("a department's only sub-division uses its exact colour", () => {
+    expect(buildSubdivisionShadeMap([{ id: "qa", departmentColor: "#4FAE2F" }]).get("qa")).toEqual({
+      fill: "#4fae2f",
+      accent: "#4fae2f",
+      text: cardTextColor("#4fae2f"),
+    });
+  });
+
+  it("keeps text readable on every shade", () => {
+    const map = buildSubdivisionShadeMap(
+      ["a", "b", "c", "d"].map((id) => ({ id, departmentColor: "#1549b2" }))
+    );
+    for (const c of map.values()) {
+      const best = Math.max(
+        contrastRatio(c.fill, "#ffffff"),
+        contrastRatio(c.fill, CARD_TEXT_COLOR)
+      );
+      expect(contrastRatio(c.fill, c.text!)).toBe(best);
+    }
+  });
+
+  it("falls back to the palette when the department has no colour", () => {
+    const map = buildSubdivisionShadeMap([{ id: "x", departmentColor: null }]);
+    expect(map.get("x")).toEqual(FAMILY_COLOR_PALETTE[0]);
+  });
 });
