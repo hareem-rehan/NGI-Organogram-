@@ -16,15 +16,9 @@ Project rules live in `CLAUDE.md`. Every product decision is in
 - **Env files are not in git.** Recreate `.env` / `.env.local` / `.env.test`
   from `.env.example`. Never commit any `.env*` file.
 
-## Open pull requests (merge in this order)
+## Pull requests
 
-| PR  | What                                             | Notes                        |
-| --- | ------------------------------------------------ | ---------------------------- |
-| #48 | Export: proper spacing for large card text (D45) | CI green                     |
-| #49 | Empty department can be deleted (D46)            | CI green                     |
-| #50 | Compact, content-sized cards (D47)               | Contains #48 and #49 already |
-
-No migrations in any of them. After merging, delete the three branches.
+None open. The latest work, D45–D47 (export spacing, deleting empty departments, compact content-sized cards), merged to `main` in #50 on 2026-10-02. The handoff notes merged in #51. GitHub has only `main` and the paused `health-log-db-error-code` branch.
 
 ## Still to do
 
@@ -42,7 +36,7 @@ No migrations in any of them. After merging, delete the three branches.
    `.env.staging.local` holds the staging `DATABASE_URL`. The person who owns
    the password enters it themselves, never in chat. Delete the file afterwards.
 
-2. **After #49 is live:** delete the old separate **IT** department (the
+2. **Now possible (#50 is live):** delete the old separate **IT** department (the
    sub-division replaces it).
 3. **Engineering** is hidden because it is marked Inactive. Reactivate it on
    the Departments page if it should show.
