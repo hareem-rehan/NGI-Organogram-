@@ -155,4 +155,64 @@ test.describe("Organogram — sub-department reorder", () => {
     );
     await dialog.getByRole("button", { name: /cancel/i }).click();
   });
+
+  test("Shift+drag selects several boxes, and dragging one moves the whole group (placed only)", async ({
+    page,
+  }) => {
+    const productKey = `dept:${await readDepartmentId(companyId, `Product ${suffix}`)}`;
+    const projectKey = `dept:${await readDepartmentId(companyId, `Project ${suffix}`)}`;
+    await page.goto("/organogram");
+    await page.getByRole("button", { name: /arrange/i }).click();
+    const product = box(page, `Product ${suffix}`);
+    const project = box(page, `Project ${suffix}`);
+    await expect(project).toBeVisible();
+    await settle(page);
+
+    // Shift + drag a selection box around both boxes.
+    const a = (await product.boundingBox())!;
+    const b = (await project.boundingBox())!;
+    const left = Math.min(a.x, b.x) - 12;
+    const right = Math.max(a.x + a.width, b.x + b.width) + 12;
+    const top = Math.min(a.y, b.y) - 12;
+    const bottom = Math.max(a.y + a.height, b.y + b.height) + 12;
+    await page.keyboard.down("Shift");
+    await page.mouse.move(left, top);
+    await page.mouse.down();
+    await page.mouse.move(right, bottom, { steps: 12 });
+    await page.mouse.up();
+    await page.keyboard.up("Shift");
+    await expect(product).toHaveClass(/selected/);
+    await expect(project).toHaveClass(/selected/);
+
+    // Start again with exactly these two: click empty space to clear, then
+    // Shift+click each box (the box above may also catch a card between them).
+    const pane = (await page.locator(".react-flow").boundingBox())!;
+    await page.mouse.click(pane.x + pane.width - 40, pane.y + pane.height - 40);
+    await expect(product).not.toHaveClass(/selected/);
+    await page.keyboard.down("Shift");
+    await product.click({ position: { x: 20, y: a.height - 10 } });
+    await project.click({ position: { x: 20, y: b.height - 10 } });
+    await page.keyboard.up("Shift");
+    await expect(product).toHaveClass(/selected/);
+    await expect(project).toHaveClass(/selected/);
+
+    // Drag one of them: both move by the same amount, and both are saved.
+    const gapBefore = b.x - a.x;
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 120, { steps: 15 });
+    await page.mouse.up();
+    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([productKey, projectKey].sort());
+    const a2 = (await product.boundingBox())!;
+    const b2 = (await project.boundingBox())!;
+    expect(a2.y - a.y).toBeGreaterThan(40);
+    expect(Math.abs(b2.y - a2.y - (b.y - a.y))).toBeLessThan(2);
+    expect(Math.abs(b2.x - a2.x - gapBefore)).toBeLessThan(2);
+    // A group move never changes the order (no reporting change either).
+    expect(
+      (await readDepartmentOrder(companyId)).filter(
+        (n) => n === `Product ${suffix}` || n === `Project ${suffix}`
+      )
+    ).toEqual([`Project ${suffix}`, `Product ${suffix}`]);
+  });
 });

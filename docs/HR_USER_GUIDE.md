@@ -190,6 +190,8 @@ Open **Organogram** from the menu — this is the automatically-generated chart.
   - Drop a department box onto another department box to swap their order.
   - **+ on any card**, whether a position, department box or sub-division box, opens **Add Position** already filled in for that spot: its department, its sub-division, and the position just above it as the manager. Pick the level and title, change anything else you like, and save.
   - **Text style** (above the chart) changes the font for **every card**: font, size, colour, bold or regular, italic, underline and strikethrough. **Aa** on a card changes just that card, on top of the style for all cards. You see the change as you make it; **Save** keeps it for everyone and in exports. Exports use the closest standard font: Helvetica, Times or Courier.
+  - **Move several cards at once:** hold **Shift** and drag across empty space to draw a box around them, or Shift+click cards one by one. Then drag any of them; the group moves together and stays where you let go. A group move never changes who reports to whom. Click empty space to clear the selection.
+  - Cards never overlap: if a card you placed would end up on top of another (for example after collapsing a branch), it is moved just beside it.
   - **Reset positions** (shown once anything has been placed) puts every card back in the automatic layout. Reporting lines aren't changed.
   - While you drag, the box under the pointer shows a **green ring** if you can drop there, or a **red ring** if you can't. You can't drop a position onto itself or anyone who reports to it.
 

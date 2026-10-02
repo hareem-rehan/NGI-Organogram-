@@ -67,3 +67,59 @@ export function departmentOrderAfterDrop(
   next.splice(to, 0, draggedId);
   return next;
 }
+
+/**
+ * Cards never overlap (user request, 2026-10-02). A hand-placed card keeps an
+ * offset from its automatic spot, so when the automatic layout changes (a
+ * branch is collapsed or expanded, a card is added) it can land on another
+ * card. Each placed card that overlaps another is nudged sideways to the
+ * nearer free spot beside it — and, if that keeps colliding, down a row.
+ * Cards without an offset never move (the automatic layout has no overlaps).
+ */
+export function resolveOverlaps(
+  positions: ReadonlyMap<string, { x: number; y: number }>,
+  movableIds: readonly string[],
+  size: { width: number; height: number },
+  gap: number
+): Map<string, { x: number; y: number }> {
+  const out = new Map(positions);
+  const overlaps = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    a.x < b.x + size.width + gap / 2 &&
+    b.x < a.x + size.width + gap / 2 &&
+    a.y < b.y + size.height + gap / 2 &&
+    b.y < a.y + size.height + gap / 2;
+  const blocker = (id: string, p: { x: number; y: number }) => {
+    for (const [other, q] of out) if (other !== id && overlaps(p, q)) return q;
+    return null;
+  };
+
+  for (const id of movableIds) {
+    let p = out.get(id);
+    if (!p) continue;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const hit = blocker(id, p);
+      if (!hit) break;
+      if (attempt < 30) {
+        const left = hit.x - size.width - gap;
+        const right = hit.x + size.width + gap;
+        p = { x: Math.abs(left - p.x) <= Math.abs(right - p.x) ? left : right, y: p.y };
+      } else {
+        p = { x: p.x, y: hit.y + size.height + gap };
+      }
+    }
+    out.set(id, p);
+  }
+  return out;
+}
+
+/** Automatic positions + saved offsets, with no two cards overlapping. */
+export function placeCards(
+  positions: ReadonlyMap<string, { x: number; y: number }>,
+  offsets: Readonly<Record<string, CardOffset>>,
+  size: { width: number; height: number },
+  gap: number
+): Map<string, { x: number; y: number }> {
+  const placed = applyCardOffsets(positions, offsets);
+  const moved = [...positions.keys()].filter((id) => offsets[id]);
+  return resolveOverlaps(placed, moved, size, gap);
+}

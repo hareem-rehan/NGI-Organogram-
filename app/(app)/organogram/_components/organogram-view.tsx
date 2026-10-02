@@ -963,7 +963,8 @@ export function OrganogramView({
           it). Let go with the pointer over another card to change who it reports to, or over a
           department heading to move it into that department; its whole branch moves with it. The
           card under the pointer is outlined before you let go. Drop a department box onto another
-          department box to swap their order. Use{" "}
+          department box to swap their order. Hold Shift and drag across empty space (or
+          Shift+click) to select several cards, then drag one of them to move the group. Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
           the trash icon to delete, and click a card to edit it.
         </p>

@@ -18,6 +18,7 @@ import {
 
 import {
   computeElkLayout,
+  NODE_GAP,
   NODE_HEIGHT,
   NODE_WIDTH,
   type LayoutPosition,
@@ -25,7 +26,7 @@ import {
 import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import { effectiveTextStyle, type TextStyle } from "@/lib/domain/organogram-text-style";
 import {
-  applyCardOffsets,
+  placeCards,
   departmentOrderAfterDrop,
   type CardOffset,
 } from "@/lib/domain/organogram-card-offsets";
@@ -171,9 +172,10 @@ function CanvasInner({
   onRequestDelete,
 }: OrganogramCanvasProps) {
   const [positions, setPositions] = useState<Map<string, LayoutPosition>>(new Map());
-  // Where each card is drawn: its automatic spot plus any HR-saved offset (D38).
+  // Where each card is drawn: its automatic spot plus any HR-saved offset
+  // (D38), nudged so no two cards ever overlap (e.g. after a collapse).
   const placedPositions = useMemo(
-    () => applyCardOffsets(positions, cardOffsets),
+    () => placeCards(positions, cardOffsets, { width: NODE_WIDTH, height: NODE_HEIGHT }, NODE_GAP),
     [positions, cardOffsets]
   );
   // Where a card is while it is being dragged (transient). Saved placements
@@ -298,6 +300,14 @@ function CanvasInner({
     setManualPositions((current) => (current.size === 0 ? current : new Map()));
   }, [nodeIdsKey, edgesKey, arrangeMode]);
 
+  // Cards picked for a group move (Arrange mode): Shift+drag on empty space
+  // draws a selection box, Shift+click adds or removes one card.
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!arrangeMode) setSelectedIds((current) => (current.size === 0 ? current : new Set()));
+  }, [arrangeMode]);
+
   // Drag bookkeeping (arrange mode only). Position changes stream in during a
   // drag; we mirror them into `manualPositions` so the card follows the
   // cursor. Only the dragged card moves (D38) — what the drop means is
@@ -305,6 +315,18 @@ function CanvasInner({
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       if (!arrangeMode) return;
+      const selections = changes.filter((c) => c.type === "select");
+      if (selections.length > 0) {
+        setSelectedIds((current) => {
+          const next = new Set(current);
+          for (const change of selections) {
+            if (change.type !== "select") continue;
+            if (change.selected) next.add(change.id);
+            else next.delete(change.id);
+          }
+          return next;
+        });
+      }
       setManualPositions((current) => {
         let next = current;
         for (const change of changes) {
@@ -392,7 +414,12 @@ function CanvasInner({
   );
 
   const onNodeDrag = useCallback(
-    (event: unknown, node: Node) => {
+    (event: unknown, node: Node, nodes?: Node[]) => {
+      // A group only ever moves (never re-attaches), so it has no drop target.
+      if (nodes && nodes.length > 1) {
+        setDropHint(null);
+        return;
+      }
       const judged = judgeDropFor(event, node);
       const next = judged ? { targetId: judged.targetId, valid: judged.verdict.valid } : null;
       setDropHint((current) =>
@@ -403,9 +430,23 @@ function CanvasInner({
   );
 
   const onNodeDragStop = useCallback(
-    (event: unknown, node: Node) => {
+    (event: unknown, node: Node, nodes?: Node[]) => {
       setDropHint(null);
       if (!arrangeMode) return;
+
+      // A selected group is only ever placed, wherever it is let go: reporting
+      // lines never change from a group drag.
+      if (nodes && nodes.length > 1) {
+        for (const moved of nodes) {
+          const auto = positions.get(moved.id);
+          if (auto) {
+            onPlaceCard?.(moved.id, moved.position.x - auto.x, moved.position.y - auto.y);
+          }
+          releaseDrag(moved.id);
+        }
+        return;
+      }
+
       const dragged = nodeById.get(node.id);
 
       // Placing a card: it stays exactly where it was let go, saved as an
@@ -510,6 +551,7 @@ function CanvasInner({
             width: NODE_WIDTH,
             height: NODE_HEIGHT,
             draggable: arrangeMode,
+            selected: arrangeMode && selectedIds.has(node.positionId),
             data: {
               node,
               isCollapsed: collapsedIds.has(node.positionId),
@@ -523,6 +565,8 @@ function CanvasInner({
               onEdit: onEditCard,
               onAddChild,
               onEditStyle,
+              groupSelected:
+                arrangeMode && selectedIds.size > 1 && selectedIds.has(node.positionId),
               textStyle: effectiveTextStyle(textStyles?.chart, textStyles?.cards[node.positionId]),
               // The root is never deletable from here — deleting it would take
               // the whole company with it. `undefined` hides the control.
@@ -553,6 +597,7 @@ function CanvasInner({
       onAddChild,
       onEditStyle,
       textStyles,
+      selectedIds,
       onRequestDelete,
       dropHint,
     ]
@@ -603,7 +648,11 @@ function CanvasInner({
       onNodeDrag={arrangeMode ? onNodeDrag : undefined}
       onNodeDragStop={arrangeMode ? onNodeDragStop : undefined}
       nodesConnectable={false}
-      elementsSelectable={false}
+      // Arrange mode: Shift+drag on empty space draws a selection box (plain
+      // drag still pans); Shift/Cmd/Ctrl+click adds or removes one card.
+      elementsSelectable={arrangeMode}
+      selectionKeyCode="Shift"
+      multiSelectionKeyCode={["Shift", "Meta", "Control"]}
       edgesFocusable={false}
       panOnScroll
       zoomOnScroll
