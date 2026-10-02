@@ -8,6 +8,7 @@ An internal web application that lets non-technical HR users independently manag
 
 Source documents (read before any phase):
 
+- [docs/HANDOFF.md](docs/HANDOFF.md) — **start here when resuming work**: open PRs, pending tasks, and how changes are tested, merged and migrated.
 - [docs/source/Dynamic_Organogram_Solution_Proposal.docx](docs/source/Dynamic_Organogram_Solution_Proposal.docx) — original business proposal. **Status inside the document is "For discussion and requirements confirmation" — it is a discovery draft, not a signed-off spec.** Do not treat it as fully approved; cross-check against [docs/DECISIONS.md](docs/DECISIONS.md).
 - [docs/PROJECT_SPEC.md](docs/PROJECT_SPEC.md) — the working product specification derived from the proposal.
 - [docs/DECISIONS.md](docs/DECISIONS.md) — the single source of truth for what is confirmed vs. still open. **Check this before assuming any business rule.**
