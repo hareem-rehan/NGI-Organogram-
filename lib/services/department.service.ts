@@ -372,7 +372,8 @@ export async function reactivateDepartment(
 
 /**
  * Hard delete. Only ever possible for a department nothing references —
- * no positions, no child departments — which is the business rule "a
+ * no positions, child departments or sub-divisions (its own unused levels
+ * are removed with it) — which is the business rule "a
  * Department cannot be hard-deleted while any Position references it".
  * Archiving remains the normal way to retire a department that is still
  * in use, and the rejections below say so.
@@ -414,6 +415,41 @@ export async function deleteDepartment(
     if (childCount > 0) {
       throw new UnsafeMutationError(
         `${department.name} still has ${childCount} sub-department${childCount === 1 ? "" : "s"} under it, so it cannot be deleted. Move or delete those first, or deactivate this department instead.`
+      );
+    }
+
+    const subDivisions = await tx.jobFamily.findMany({
+      where: { departmentId: id, companyId },
+      select: { name: true },
+      orderBy: { name: "asc" },
+    });
+    if (subDivisions.length > 0) {
+      throw new UnsafeMutationError(
+        `${department.name} still has ${subDivisions.length === 1 ? "the sub-division" : `${subDivisions.length} sub-divisions:`} ${subDivisions.map((f) => f.name).join(", ")}, so it cannot be deleted. Delete or move those first, or deactivate this department instead.`
+      );
+    }
+
+    // Levels that belong only to this department are created automatically
+    // when a position is added at a level (ensureJobGradeByCode) and stay
+    // behind after its positions are moved or deleted. Unused ones mean
+    // nothing without the department, so they go with it; one still in use
+    // blocks the delete with its code named, never a vague database error.
+    await tx.jobGrade.deleteMany({
+      where: {
+        departmentId: id,
+        companyId,
+        positions: { none: {} },
+        levelMappingEntries: { none: {} },
+      },
+    });
+    const levelsInUse = await tx.jobGrade.findMany({
+      where: { departmentId: id, companyId },
+      select: { code: true },
+      orderBy: { code: "asc" },
+    });
+    if (levelsInUse.length > 0) {
+      throw new UnsafeMutationError(
+        `${department.name}'s level${levelsInUse.length === 1 ? "" : "s"} ${levelsInUse.map((g) => g.code).join(", ")} ${levelsInUse.length === 1 ? "is" : "are"} still used by positions or the career framework, so it cannot be deleted. Deactivate this department instead.`
       );
     }
 
