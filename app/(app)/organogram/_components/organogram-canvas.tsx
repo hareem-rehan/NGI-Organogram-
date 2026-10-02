@@ -50,13 +50,19 @@ import {
 import type { OrganogramEdge, OrganogramNode } from "@/lib/domain/organogram";
 import type { FamilyColor } from "@/lib/domain/organogram-family-colors";
 
-/** Display tiers framed on first open: root, departments, their leaders. */
-const READABLE_OPEN_TIERS = 3;
 /**
- * Automatic framing never goes smaller than this. Below it the framing shows
- * the TOP of the chart instead of shrinking the whole company further.
+ * Display tiers framed on first open: the root and the department row, so
+ * both are readable straight away (user request, 2026-10-02).
  */
-const READABLE_MIN_ZOOM = 0.35;
+const READABLE_OPEN_TIERS = 2;
+/**
+ * Automatic framing never goes smaller than this (75%). Below it the framing
+ * centres on the root and department row at this size, and the rest of the
+ * chart is a pan away — rather than shrinking everything unreadably.
+ */
+const READABLE_MIN_ZOOM = 0.75;
+/** Zoom levels offered in the zoom menu. */
+const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 /** Screen-space margin around the automatically framed area. */
 const FRAME_PADDING = 32;
 
@@ -608,6 +614,9 @@ function CanvasInner({
     >
       <Background />
       <Controls showInteractive={false} />
+      <Panel position="top-left">
+        <ZoomMenu onFit={() => fitView({ padding: 0.1, duration: 200 })} />
+      </Panel>
       <Panel position="top-right">
         <div className="text-muted-foreground bg-background/90 rounded-md border px-2 py-1 text-xs shadow-sm">
           {/* Counted apart, because a department heading is not a
@@ -639,5 +648,41 @@ export function OrganogramCanvas(props: OrganogramCanvasProps) {
         <CanvasInner {...props} />
       </ReactFlowProvider>
     </div>
+  );
+}
+
+/**
+ * The zoom menu (user request, 2026-10-02): shows the current zoom as a
+ * percentage and jumps to a chosen level, or fits the whole chart. Stays in
+ * sync when zooming with the mouse wheel or the +/- buttons.
+ */
+function ZoomMenu({ onFit }: { onFit: () => void }) {
+  const { zoomTo } = useReactFlow();
+  const zoom = useStore((state) => state.transform[2]);
+  const percent = Math.round(zoom * 100);
+  const isStep = ZOOM_STEPS.some((step) => Math.round(step * 100) === percent);
+  return (
+    <label className="bg-background/90 flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs shadow-sm">
+      <span className="text-muted-foreground">Zoom</span>
+      <select
+        aria-label="Zoom level"
+        value={isStep ? String(percent) : "current"}
+        onChange={(event) => {
+          if (event.target.value === "fit") onFit();
+          else if (event.target.value !== "current") {
+            zoomTo(Number(event.target.value) / 100, { duration: 200 });
+          }
+        }}
+        className="bg-transparent text-xs font-semibold outline-none"
+      >
+        {isStep ? null : <option value="current">{percent}%</option>}
+        {ZOOM_STEPS.map((step) => (
+          <option key={step} value={String(Math.round(step * 100))}>
+            {Math.round(step * 100)}%
+          </option>
+        ))}
+        <option value="fit">Fit whole chart</option>
+      </select>
+    </label>
   );
 }

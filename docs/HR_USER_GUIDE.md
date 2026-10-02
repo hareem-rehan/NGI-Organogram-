@@ -181,6 +181,7 @@ Open **Organogram** from the menu — this is the automatically-generated chart.
 - **Each box** shows the position title (bold), the person in it, their level, and at the bottom how many roles sit under it in total (e.g. "48 roles under"). Click the count to expand or collapse that branch.
 - **Opening view:** the chart opens at a readable size. If the whole company doesn't fit, it shows the top (the CEO, departments and their leaders); scroll or zoom from there, or click **Fit to View** to see everything.
 - **Colour by:** **Department** colours every box by its department. **Sub-division** colours only sub-divisions and the roles in them; everything else turns neutral grey.
+- **Zoom** (top-left of the chart): pick a zoom level (25%–200%) or **Fit whole chart**; it shows the current %. The chart opens with the CEO and departments readable. Departments on the left grow their branches to the left and those on the right grow to the right, so the middle stays clear.
 - **Arrange** (HR_EDITOR/ADMIN): turn it on to reorganise by drag and drop.
   - Drag a box onto another box to make that position its new head.
   - Drag a box onto a **department heading** to move it into that department: it reports to the department's top position, and its level carries over.
