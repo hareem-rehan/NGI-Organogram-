@@ -28,10 +28,11 @@ None open. The latest work, D45–D47 (export spacing, deleting empty department
    - **Lesson for any script run against staging from a laptop:** a round trip to the Sydney database takes about 3 seconds. Give the script its own `PrismaClient` with `transactionOptions: { timeout: 120_000 }` and pass it to the services, as this script does. Prisma's default 5-second transaction timeout otherwise rolls every write back.
    - Supabase's connection string contains a literal `[YOUR-PASSWORD]`. Fill in the real password, URL-encoded.
 
+1a. **Engineering on staging: done 2026-10-02** (`scripts/add-engineering-org.ts`). - **Structure:** CEO → CTO → VP → Director → Asst. Director → five Associate Directors over QA / QAA, UI/UX, DevOps, Backend + DE, and Mobile. Each sub-division has an IC line and a manager line that meet (two heads) at its first "Sr. … Engineer" role. - **Size:** 93 positions, 11 people seated. Engineering was reactivated. - **Still to do in the app:** - set levels; - fill the shared Backend boxes (Principal Software Engineer II: M. Fawad, Irfan Mumtaz; Principal Software Engineer: Ghulam Nabi, Waqas Ansari, Zeeshan Rasheed, Owais Hassan Zaidi, Haris Ali; Tech Lead: Maha Dev, Affan Younus). Add one position per extra person if each needs a seat.
+
 2. **Now possible (#50 is live):** delete the old separate **IT** department (the
    sub-division replaces it).
-3. **Engineering** is hidden because it is marked Inactive. Reactivate it on
-   the Departments page if it should show.
+3. ~~Engineering is inactive~~ — reactivated with the Engineering branch (1a).
 4. **Security housekeeping:**
    - rotate the Supabase database password and update it in Vercel;
    - delete the old local `.env.staging` (it holds a Vercel token).
