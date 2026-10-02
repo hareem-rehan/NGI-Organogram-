@@ -71,6 +71,12 @@ const READABLE_MIN_ZOOM = 0.75;
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 /** Screen-space margin around the automatically framed area. */
 const FRAME_PADDING = 32;
+/**
+ * Space kept above the top card when framing: the zoom menu and the
+ * "N positions shown" counter sit over the canvas's top edge, and must never
+ * cover the root card.
+ */
+const FRAME_TOP = 64;
 
 interface DepartmentLegendEntry {
   id: string;
@@ -259,7 +265,7 @@ function CanvasInner({
       const maxY = Math.max(...boxes.map((p) => p.y + p.height));
       const fitZoom = Math.min(
         (paneWidth - 2 * FRAME_PADDING) / (maxX - minX),
-        (paneHeight - 2 * FRAME_PADDING) / (maxY - minY)
+        (paneHeight - FRAME_TOP - FRAME_PADDING) / (maxY - minY)
       );
       return { minX, maxX, minY, fitZoom };
     };
@@ -300,7 +306,7 @@ function CanvasInner({
       setViewport(
         {
           x: paneWidth / 2 - ((target.minX + target.maxX) / 2) * zoom,
-          y: FRAME_PADDING - target.minY * zoom,
+          y: FRAME_TOP - target.minY * zoom,
           zoom,
         },
         { duration: 200 }
