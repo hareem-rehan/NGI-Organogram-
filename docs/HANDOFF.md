@@ -22,19 +22,11 @@ None open. The latest work, D45–D47 (export spacing, deleting empty department
 
 ## Still to do
 
-1. **Delivery Org / Administration on staging.** Done locally only. Run
-   `scripts/add-delivery-org-subdivisions.ts` against staging. It is dry-run by
-   default and safe to re-run (nothing is duplicated). It creates the COO
-   (under the CEO), the sub-divisions Admin and IT with their 7-role chains, and
-   seats Hammad Hussain, Junaid Hassan, Rana Faraz and Faraz Khurram:
-
-   ```bash
-   npx dotenv -e .env.staging.local -- npx tsx --conditions=react-server scripts/add-delivery-org-subdivisions.ts
-   APPLY=1 npx dotenv -e .env.staging.local -- npx tsx --conditions=react-server scripts/add-delivery-org-subdivisions.ts
-   ```
-
-   `.env.staging.local` holds the staging `DATABASE_URL`. The person who owns
-   the password enters it themselves, never in chat. Delete the file afterwards.
+1. ~~**Delivery Org / Administration on staging.**~~ **Done 2026-10-02.**
+   - Created: the COO (under the CEO), sub-divisions Admin and IT with their 7-role chains, and seats for Hammad Hussain, Junaid Hassan, Rana Faraz and Faraz Khurram. Levels are not set yet; set them on the Positions page.
+   - The script is kept for reference.
+   - **Lesson for any script run against staging from a laptop:** a round trip to the Sydney database takes about 3 seconds. Give the script its own `PrismaClient` with `transactionOptions: { timeout: 120_000 }` and pass it to the services, as this script does. Prisma's default 5-second transaction timeout otherwise rolls every write back.
+   - Supabase's connection string contains a literal `[YOUR-PASSWORD]`. Fill in the real password, URL-encoded.
 
 2. **Now possible (#50 is live):** delete the old separate **IT** department (the
    sub-division replaces it).

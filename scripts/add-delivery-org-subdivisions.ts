@@ -22,7 +22,9 @@
  */
 import { randomBytes } from "node:crypto";
 
-import { prisma } from "@/lib/db/prisma";
+import { PrismaClient } from "@prisma/client";
+
+import { runtimeDatabaseUrl } from "@/lib/db/runtime-database-url";
 import { createAssignment } from "@/lib/services/assignment.service";
 import { createJobFamily } from "@/lib/services/career-framework.service";
 import { createPosition } from "@/lib/services/hierarchy.service";
@@ -60,6 +62,15 @@ const BRANCHES: { subDivision: string; code: string; chain: [string, string?][] 
 ];
 
 const apply = process.env.APPLY === "1";
+
+// Its own client with generous transaction limits: run from a laptop, each
+// round trip to a far-away database can take seconds, and Prisma's default
+// 5s interactive-transaction timeout would expire mid-write (rolled back,
+// nothing saved). Same URL handling as the app (lib/db/prisma.ts).
+const prisma = new PrismaClient({
+  datasourceUrl: runtimeDatabaseUrl(process.env.DATABASE_URL).url,
+  transactionOptions: { maxWait: 30_000, timeout: 120_000 },
+});
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 async function main() {
@@ -92,14 +103,17 @@ async function main() {
     if (!root) throw new Error("The company has no root position; nothing created.");
     console.log(`Head: ${HEAD_TITLE} — create (reports to ${root.title})`);
     head = apply
-      ? await createPosition({
-          companyId,
-          actor: "SYSTEM",
-          departmentId: department.id,
-          title: HEAD_TITLE,
-          positionCode: `POS-${randomBytes(4).toString("hex").toUpperCase().slice(0, 6)}`,
-          primaryReportsToPositionId: root.id,
-        })
+      ? await createPosition(
+          {
+            companyId,
+            actor: "SYSTEM",
+            departmentId: department.id,
+            title: HEAD_TITLE,
+            positionCode: `POS-${randomBytes(4).toString("hex").toUpperCase().slice(0, 6)}`,
+            primaryReportsToPositionId: root.id,
+          },
+          prisma
+        )
       : ({ ...root, id: "dry-COO", title: HEAD_TITLE } as typeof root);
   }
 
@@ -130,13 +144,16 @@ async function main() {
         : branch.code;
       console.log(`\nSub-division "${branch.subDivision}" (${code}) — create`);
       if (apply) {
-        family = await createJobFamily({
-          companyId,
-          departmentId: department.id,
-          name: branch.subDivision,
-          code,
-          actor: "SYSTEM",
-        });
+        family = await createJobFamily(
+          {
+            companyId,
+            departmentId: department.id,
+            name: branch.subDivision,
+            code,
+            actor: "SYSTEM",
+          },
+          prisma
+        );
       }
     }
 
@@ -154,15 +171,18 @@ async function main() {
         if (!apply) {
           positionId = `dry-${title}`;
         } else {
-          const created = await createPosition({
-            companyId,
-            actor: "SYSTEM",
-            departmentId: department.id,
-            jobFamilyId: family!.id,
-            title,
-            positionCode: `POS-${randomBytes(4).toString("hex").toUpperCase().slice(0, 6)}`,
-            primaryReportsToPositionId: managerId,
-          });
+          const created = await createPosition(
+            {
+              companyId,
+              actor: "SYSTEM",
+              departmentId: department.id,
+              jobFamilyId: family!.id,
+              title,
+              positionCode: `POS-${randomBytes(4).toString("hex").toUpperCase().slice(0, 6)}`,
+              primaryReportsToPositionId: managerId,
+            },
+            prisma
+          );
           positionId = created.id;
           byTitle.set(norm(title), created);
         }
@@ -183,13 +203,16 @@ async function main() {
         } else {
           console.log(`    assign ${occupant}`);
           if (apply && !positionId.startsWith("dry-")) {
-            await createAssignment({
-              companyId,
-              actor: "SYSTEM",
-              employeeId: person.id,
-              positionId,
-              startDate: new Date(),
-            });
+            await createAssignment(
+              {
+                companyId,
+                actor: "SYSTEM",
+                employeeId: person.id,
+                positionId,
+                startDate: new Date(),
+              },
+              prisma
+            );
           }
         }
       }
