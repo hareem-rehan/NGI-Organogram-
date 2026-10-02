@@ -2,14 +2,10 @@ import "server-only";
 import type { ExportJob, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
-import {
-  computeElkLayout,
-  NODE_GAP,
-  NODE_HEIGHT,
-  NODE_WIDTH,
-} from "@/app/(app)/organogram/_lib/elk-layout";
+import { computeElkLayout, NODE_GAP } from "@/app/(app)/organogram/_lib/elk-layout";
 import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import { placeCards } from "@/lib/domain/organogram-card-offsets";
+import { sizeLookup } from "@/lib/domain/organogram-card-size";
 import { effectiveTextStyle } from "@/lib/domain/organogram-text-style";
 import { DomainValidationError, NotFoundError, UnsafeMutationError } from "@/lib/domain/errors";
 import {
@@ -21,7 +17,9 @@ import {
 } from "@/lib/domain/export/types";
 import { buildExportSubgraph } from "@/lib/domain/export/subgraph";
 import {
+  exportCardSizes,
   renderOrganogramSvg,
+  type SvgRenderNode,
   type SvgLegendDepartment,
   type SvgLegendFamily,
 } from "@/lib/domain/export/svg-renderer";
@@ -195,14 +193,41 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
   // Same department segregation as the interactive chart, so an export
   // never shows one department's cards drifting under another's.
   // HR-placed cards (D38) sit where they were dragged, on paper as on screen.
+  const renderNodes: SvgRenderNode[] = subgraph.nodes.map((n) => ({
+    positionId: n.positionId,
+    kind: n.kind,
+    title: n.title,
+    positionCode: n.positionCode,
+    departmentName: n.departmentName,
+    departmentColor: n.departmentColor,
+    organizationalLevel: n.organizationalLevel,
+    jobGradeName: n.jobGradeName,
+    jobGradeCode: n.jobGradeCode,
+    jobFamilyId: n.jobFamilyId,
+    jobFamilyName: n.jobFamilyName,
+    occupancyStatus: n.occupancyStatus,
+    occupantDisplayName: n.occupantDisplayName,
+    positionStatus: n.positionStatus,
+    matchState: n.matchState,
+  }));
+  const textStyleByNodeId = new Map(
+    subgraph.nodes.map((n) => [
+      n.positionId,
+      effectiveTextStyle(organogram.textStyles.chart, organogram.textStyles.cards[n.positionId]),
+    ])
+  );
+  // Content-sized cards, exactly as on screen (D47).
+  const cardSizes = exportCardSizes(renderNodes, subgraph.edges, textStyleByNodeId);
+  const sizeOf = sizeLookup(cardSizes);
   const positions = placeCards(
     await computeElkLayout(
       subgraph.nodes.map((n) => n.positionId),
       subgraph.edges,
-      computeLayoutClusters(subgraph.nodes)
+      computeLayoutClusters(subgraph.nodes),
+      sizeOf
     ),
     organogram.cardOffsets,
-    { width: NODE_WIDTH, height: NODE_HEIGHT },
+    sizeOf,
     NODE_GAP
   );
 
@@ -252,23 +277,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
   }));
 
   const svgResult = renderOrganogramSvg(
-    subgraph.nodes.map((n) => ({
-      positionId: n.positionId,
-      kind: n.kind,
-      title: n.title,
-      positionCode: n.positionCode,
-      departmentName: n.departmentName,
-      departmentColor: n.departmentColor,
-      organizationalLevel: n.organizationalLevel,
-      jobGradeName: n.jobGradeName,
-      jobGradeCode: n.jobGradeCode,
-      jobFamilyId: n.jobFamilyId,
-      jobFamilyName: n.jobFamilyName,
-      occupancyStatus: n.occupancyStatus,
-      occupantDisplayName: n.occupantDisplayName,
-      positionStatus: n.positionStatus,
-      matchState: n.matchState,
-    })),
+    renderNodes,
     subgraph.edges,
     positions,
     {
@@ -288,15 +297,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
       includeConfidentialityLabel: resolved.includeConfidentialityLabel,
       departments: [...departmentsById.values()],
       colorMode: resolved.colorMode,
-      textStyleByNodeId: new Map(
-        subgraph.nodes.map((n) => [
-          n.positionId,
-          effectiveTextStyle(
-            organogram.textStyles.chart,
-            organogram.textStyles.cards[n.positionId]
-          ),
-        ])
-      ),
+      textStyleByNodeId,
       departmentColorByName,
       familyColorById,
       families: familyLegendEntries,

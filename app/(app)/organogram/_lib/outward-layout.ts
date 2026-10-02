@@ -30,6 +30,13 @@ export function growDirectionFor(index: number, count: number): GrowDirection {
   return "balanced";
 }
 
+/** A fixed card width, or each card's own width (content-sized cards, D47). */
+export type CardWidth = number | ((id: string) => number);
+
+function widthFn(width: CardWidth): (id: string) => number {
+  return typeof width === "number" ? () => width : width;
+}
+
 interface Edge {
   sourcePositionId: string;
   targetPositionId: string;
@@ -44,9 +51,10 @@ export function layoutBranch(
   positions: ReadonlyMap<string, Point>,
   edges: readonly Edge[],
   direction: GrowDirection,
-  nodeWidth: number,
+  nodeWidth: CardWidth,
   gap: number
 ): { placed: Map<string, Point>; width: number } {
+  const widthOf = widthFn(nodeWidth);
   const members = new Set(memberIds);
   const xOf = (id: string) => positions.get(id)?.x ?? 0;
   const yOf = (id: string) => positions.get(id)?.y ?? 0;
@@ -75,14 +83,14 @@ export function layoutBranch(
   const span = new Map<string, number>();
   const spanOf = (id: string, seen = new Set<string>()): number => {
     if (span.has(id)) return span.get(id)!;
-    if (seen.has(id)) return nodeWidth; // defensive: never loop
+    if (seen.has(id)) return widthOf(id); // defensive: never loop
     seen.add(id);
     const kids = children.get(id) ?? [];
     const width =
       kids.length === 0
-        ? nodeWidth
+        ? widthOf(id)
         : Math.max(
-            nodeWidth,
+            widthOf(id),
             kids.reduce((sum, k) => sum + spanOf(k, seen), 0) + gap * (kids.length - 1)
           );
     span.set(id, width);
@@ -102,26 +110,30 @@ export function layoutBranch(
         : direction === "right"
           ? left
           : left + (width - childrenWidth) / 2;
-    const childXs: number[] = [];
     for (const kid of kids) {
       place(kid, cursor);
-      childXs.push(placed.get(kid)!.x);
       cursor += spanOf(kid) + gap;
     }
+    const own = widthOf(id);
     let x: number;
-    if (childXs.length === 0) {
+    if (kids.length === 0) {
       x =
         direction === "left"
-          ? left + width - nodeWidth
+          ? left + width - own
           : direction === "right"
             ? left
-            : left + (width - nodeWidth) / 2;
-    } else if (direction === "left") {
-      x = childXs[childXs.length - 1]!; // above its innermost (right-most) report
-    } else if (direction === "right") {
-      x = childXs[0]!; // above its innermost (left-most) report
+            : left + (width - own) / 2;
     } else {
-      x = (childXs[0]! + childXs[childXs.length - 1]!) / 2;
+      const first = placed.get(kids[0]!)!.x;
+      const lastKid = kids[kids.length - 1]!;
+      const lastRight = placed.get(lastKid)!.x + widthOf(lastKid);
+      if (direction === "left") {
+        x = lastRight - own; // above its innermost (right-most) report, right edges aligned
+      } else if (direction === "right") {
+        x = first; // above its innermost (left-most) report, left edges aligned
+      } else {
+        x = (first + lastRight) / 2 - own / 2;
+      }
     }
     placed.set(id, { x, y: yOf(id) });
   };
@@ -143,7 +155,7 @@ export function arrangeBranchesOutward(
   positions: ReadonlyMap<string, Point>,
   clusters: readonly (readonly string[])[],
   edges: readonly Edge[],
-  nodeWidth: number,
+  nodeWidth: CardWidth,
   gap: number,
   branchGap: number
 ): Map<string, Point> {

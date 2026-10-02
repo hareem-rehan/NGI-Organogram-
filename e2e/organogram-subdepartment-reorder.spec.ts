@@ -197,15 +197,18 @@ test.describe("Organogram — sub-department reorder", () => {
     await expect(project).toHaveClass(/selected/);
 
     // Drag one of them: both move by the same amount, and both are saved.
+    // Sideways into the empty space right of the chart: straight down would
+    // land on their own managers' row, and the no-overlap rule (D43) would
+    // then rightly nudge a card aside.
     const gapBefore = b.x - a.x;
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
     await page.mouse.down();
-    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 120, { steps: 15 });
+    await page.mouse.move(a.x + a.width / 2 + 400, a.y + a.height / 2, { steps: 15 });
     await page.mouse.up();
     await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([productKey, projectKey].sort());
     const a2 = (await product.boundingBox())!;
     const b2 = (await project.boundingBox())!;
-    expect(a2.y - a.y).toBeGreaterThan(40);
+    expect(Math.abs(a2.x - a.x)).toBeGreaterThan(40);
     expect(Math.abs(b2.y - a2.y - (b.y - a.y))).toBeLessThan(2);
     expect(Math.abs(b2.x - a2.x - gapBefore)).toBeLessThan(2);
     // A group move never changes the order (no reporting change either).

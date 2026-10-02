@@ -19,11 +19,16 @@ import {
 import {
   computeElkLayout,
   NODE_GAP,
-  NODE_HEIGHT,
-  NODE_WIDTH,
   type LayoutPosition,
 } from "@/app/(app)/organogram/_lib/elk-layout";
 import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
+import { organogramCardSize } from "@/app/(app)/organogram/_lib/card-size";
+import {
+  equalizeRowHeights,
+  DEFAULT_CARD_SIZE,
+  sizeLookup,
+  type CardSize,
+} from "@/lib/domain/organogram-card-size";
 import { effectiveTextStyle, type TextStyle } from "@/lib/domain/organogram-text-style";
 import {
   placeCards,
@@ -172,11 +177,40 @@ function CanvasInner({
   onRequestDelete,
 }: OrganogramCanvasProps) {
   const [positions, setPositions] = useState<Map<string, LayoutPosition>>(new Map());
+  // Each card's own size for its content and text style (D47): only as tall
+  // as its text, wider only when the text needs it.
+  const naturalSizes = useMemo(
+    () =>
+      new Map<string, CardSize>(
+        visibleNodes.map((node) => [
+          node.positionId,
+          organogramCardSize(
+            node,
+            effectiveTextStyle(textStyles?.chart, textStyles?.cards[node.positionId])
+          ),
+        ])
+      ),
+    [visibleNodes, textStyles]
+  );
+  // Cards on one row share the row's tallest height, so rows stay aligned.
+  const cardSizes = useMemo(
+    () => equalizeRowHeights(positions, naturalSizes),
+    [positions, naturalSizes]
+  );
+  const sizeOf = useMemo(() => sizeLookup(cardSizes), [cardSizes]);
+  const sizesKey = useMemo(
+    () => [...naturalSizes].map(([id, s]) => `${id}:${s.width}x${s.height}`).join(","),
+    [naturalSizes]
+  );
+  const naturalSizesRef = useRef(naturalSizes);
+  useEffect(() => {
+    naturalSizesRef.current = naturalSizes;
+  });
   // Where each card is drawn: its automatic spot plus any HR-saved offset
   // (D38), nudged so no two cards ever overlap (e.g. after a collapse).
   const placedPositions = useMemo(
-    () => placeCards(positions, cardOffsets, { width: NODE_WIDTH, height: NODE_HEIGHT }, NODE_GAP),
-    [positions, cardOffsets]
+    () => placeCards(positions, cardOffsets, sizeOf, NODE_GAP),
+    [positions, cardOffsets, sizeOf]
   );
   // Where a card is while it is being dragged (transient). Saved placements
   // live in `cardOffsets` (D38). Cleared whenever the visible set changes (a
@@ -206,17 +240,23 @@ function CanvasInner({
     const computed = pendingFrameRef.current;
     if (!computed || paneWidth <= 0 || paneHeight <= 0) return;
     pendingFrameRef.current = null;
-    const all = [...computed.values()];
+    const boxOf = (id: string) => {
+      const p = computed.get(id);
+      const size = naturalSizesRef.current.get(id) ?? DEFAULT_CARD_SIZE;
+      return p ? { ...p, width: size.width, height: size.height } : undefined;
+    };
+    type Box = LayoutPosition & { width: number; height: number };
+    const all = [...computed.keys()].map(boxOf).filter((b): b is Box => b !== undefined);
     if (all.length === 0) return;
     const top = visibleNodes
       .filter((n) => (n.displayDepth ?? n.organizationalLevel) <= READABLE_OPEN_TIERS)
-      .map((n) => computed.get(n.positionId))
-      .filter((p): p is LayoutPosition => p !== undefined);
-    const frame = (boxes: LayoutPosition[]) => {
+      .map((n) => boxOf(n.positionId))
+      .filter((b): b is Box => b !== undefined);
+    const frame = (boxes: Box[]) => {
       const minX = Math.min(...boxes.map((p) => p.x));
-      const maxX = Math.max(...boxes.map((p) => p.x + NODE_WIDTH));
+      const maxX = Math.max(...boxes.map((p) => p.x + p.width));
       const minY = Math.min(...boxes.map((p) => p.y));
-      const maxY = Math.max(...boxes.map((p) => p.y + NODE_HEIGHT));
+      const maxY = Math.max(...boxes.map((p) => p.y + p.height));
       const fitZoom = Math.min(
         (paneWidth - 2 * FRAME_PADDING) / (maxX - minX),
         (paneHeight - 2 * FRAME_PADDING) / (maxY - minY)
@@ -262,7 +302,8 @@ function CanvasInner({
     void computeElkLayout(
       visibleNodes.map((n) => n.positionId),
       visibleEdges,
-      computeLayoutClusters(visibleNodes)
+      computeLayoutClusters(visibleNodes),
+      (id) => naturalSizesRef.current.get(id) ?? DEFAULT_CARD_SIZE
     )
       .then((computed) => {
         if (cancelled || requestId !== layoutRequestId.current) return;
@@ -271,7 +312,8 @@ function CanvasInner({
         const centerPos = centerId ? computed.get(centerId) : undefined;
         requestAnimationFrame(() => {
           if (centerPos) {
-            setCenter(centerPos.x + NODE_WIDTH / 2, centerPos.y + NODE_HEIGHT / 2, {
+            const size = naturalSizesRef.current.get(centerId!) ?? DEFAULT_CARD_SIZE;
+            setCenter(centerPos.x + size.width / 2, centerPos.y + size.height / 2, {
               zoom: 1,
               duration: 300,
             });
@@ -291,7 +333,7 @@ function CanvasInner({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, edgesKey]);
+  }, [nodeIdsKey, edgesKey, sizesKey]);
 
   // A re-layout (visible set changed) or leaving arrange mode discards any
   // transient drag offsets, so the auto-generated layout always reasserts.
@@ -375,13 +417,13 @@ function CanvasInner({
         id: n.id,
         x: n.position.x,
         y: n.position.y,
-        width: n.measured?.width ?? n.width ?? NODE_WIDTH,
-        height: n.measured?.height ?? n.height ?? NODE_HEIGHT,
+        width: n.measured?.width ?? n.width ?? sizeOf(n.id).width,
+        height: n.measured?.height ?? n.height ?? sizeOf(n.id).height,
       }));
       const targetId = pickDropTargetAtPoint(point, rects, dragged.id);
       return targetId ? (nodeById.get(targetId) ?? null) : null;
     },
-    [getNodes, screenToFlowPosition, nodeById]
+    [getNodes, screenToFlowPosition, nodeById, sizeOf]
   );
 
   /**
@@ -548,8 +590,8 @@ function CanvasInner({
             id: node.positionId,
             type: "positionNode",
             position: manualPositions.get(node.positionId) ?? placedPositions.get(node.positionId)!,
-            width: NODE_WIDTH,
-            height: NODE_HEIGHT,
+            width: sizeOf(node.positionId).width,
+            height: sizeOf(node.positionId).height,
             draggable: arrangeMode,
             selected: arrangeMode && selectedIds.has(node.positionId),
             data: {
@@ -568,6 +610,7 @@ function CanvasInner({
               groupSelected:
                 arrangeMode && selectedIds.size > 1 && selectedIds.has(node.positionId),
               textStyle: effectiveTextStyle(textStyles?.chart, textStyles?.cards[node.positionId]),
+              size: cardSizes.get(node.positionId),
               // The root is never deletable from here — deleting it would take
               // the whole company with it. `undefined` hides the control.
               onRequestDelete: isRoot ? undefined : onRequestDelete,
@@ -597,6 +640,8 @@ function CanvasInner({
       onAddChild,
       onEditStyle,
       textStyles,
+      cardSizes,
+      sizeOf,
       selectedIds,
       onRequestDelete,
       dropHint,

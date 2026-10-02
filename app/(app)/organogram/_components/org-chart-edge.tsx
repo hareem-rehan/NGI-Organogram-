@@ -13,7 +13,14 @@ import { ORG_EDGE_BUS_OFFSET } from "@/app/(app)/organogram/_lib/elk-layout";
  * its own, which is what made connectors look tangled).
  */
 export function OrgChartEdge({ id, sourceX, sourceY, targetX, targetY, style }: EdgeProps) {
-  const busY = Math.min(sourceY + ORG_EDGE_BUS_OFFSET, targetY);
+  // The shared bar sits halfway down the gap ABOVE the target row (D47): rows
+  // are top-aligned, so every bar into one row lines up even when the cards
+  // above have different heights. A card moved above its head falls back to
+  // the midpoint.
+  const busY =
+    targetY - ORG_EDGE_BUS_OFFSET > sourceY
+      ? targetY - ORG_EDGE_BUS_OFFSET
+      : (sourceY + targetY) / 2;
   const path = `M ${sourceX},${sourceY} V ${busY} H ${targetX} V ${targetY}`;
   return <BaseEdge id={id} path={path} style={style} />;
 }

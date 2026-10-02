@@ -76,20 +76,36 @@ export function departmentOrderAfterDrop(
  * nearer free spot beside it — and, if that keeps colliding, down a row.
  * Cards without an offset never move (the automatic layout has no overlaps).
  */
+/** One size for every card, or each card's own size (content-sized cards, D47). */
+export type CardSizeSource =
+  { width: number; height: number } | ((id: string) => { width: number; height: number });
+
 export function resolveOverlaps(
   positions: ReadonlyMap<string, { x: number; y: number }>,
   movableIds: readonly string[],
-  size: { width: number; height: number },
+  size: CardSizeSource,
   gap: number
 ): Map<string, { x: number; y: number }> {
   const out = new Map(positions);
-  const overlaps = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-    a.x < b.x + size.width + gap / 2 &&
-    b.x < a.x + size.width + gap / 2 &&
-    a.y < b.y + size.height + gap / 2 &&
-    b.y < a.y + size.height + gap / 2;
+  const sizeOf = typeof size === "function" ? size : () => size;
+  const overlaps = (
+    aId: string,
+    a: { x: number; y: number },
+    bId: string,
+    b: { x: number; y: number }
+  ) => {
+    const sa = sizeOf(aId);
+    const sb = sizeOf(bId);
+    return (
+      a.x < b.x + sb.width + gap / 2 &&
+      b.x < a.x + sa.width + gap / 2 &&
+      a.y < b.y + sb.height + gap / 2 &&
+      b.y < a.y + sa.height + gap / 2
+    );
+  };
   const blocker = (id: string, p: { x: number; y: number }) => {
-    for (const [other, q] of out) if (other !== id && overlaps(p, q)) return q;
+    for (const [other, q] of out)
+      if (other !== id && overlaps(id, p, other, q)) return { id: other, p: q };
     return null;
   };
 
@@ -97,14 +113,15 @@ export function resolveOverlaps(
     let p = out.get(id);
     if (!p) continue;
     for (let attempt = 0; attempt < 60; attempt++) {
-      const hit = blocker(id, p);
-      if (!hit) break;
+      const found = blocker(id, p);
+      if (!found) break;
+      const hit = found.p;
       if (attempt < 30) {
-        const left = hit.x - size.width - gap;
-        const right = hit.x + size.width + gap;
+        const left = hit.x - sizeOf(id).width - gap;
+        const right = hit.x + sizeOf(found.id).width + gap;
         p = { x: Math.abs(left - p.x) <= Math.abs(right - p.x) ? left : right, y: p.y };
       } else {
-        p = { x: p.x, y: hit.y + size.height + gap };
+        p = { x: p.x, y: hit.y + sizeOf(found.id).height + gap };
       }
     }
     out.set(id, p);
@@ -116,7 +133,7 @@ export function resolveOverlaps(
 export function placeCards(
   positions: ReadonlyMap<string, { x: number; y: number }>,
   offsets: Readonly<Record<string, CardOffset>>,
-  size: { width: number; height: number },
+  size: CardSizeSource,
   gap: number
 ): Map<string, { x: number; y: number }> {
   const placed = applyCardOffsets(positions, offsets);
