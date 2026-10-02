@@ -1,3 +1,4 @@
+import { arrangeBranchesOutward } from "./outward-layout";
 import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
 
 /**
@@ -159,7 +160,7 @@ export async function computeElkLayout(
   };
 
   const result = await elk.layout(graph);
-  const positions = new Map<string, LayoutPosition>();
+  let positions = new Map<string, LayoutPosition>();
   for (const child of result.children ?? []) {
     if (child.id.startsWith("cluster:")) {
       const ox = child.x ?? 0;
@@ -170,6 +171,20 @@ export async function computeElkLayout(
     } else {
       positions.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
     }
+  }
+
+  // Department branches grow AWAY from the centre: left-half departments to
+  // the left, right-half ones to the right (outward-layout.ts). Rows and
+  // department order are ELK's; only horizontal placement changes.
+  if (clustered) {
+    positions = arrangeBranchesOutward(
+      positions,
+      clusterIds.map((cluster) => membersByCluster.get(cluster)!),
+      edges,
+      NODE_WIDTH,
+      NODE_GAP,
+      2 * DEPARTMENT_SIDE_PADDING + NODE_GAP
+    );
   }
 
   // With clusters, ELK places a loose card (the root) next to whichever

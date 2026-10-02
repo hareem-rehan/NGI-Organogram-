@@ -201,7 +201,8 @@ test.describe("Accessibility smoke checks", () => {
     // the "type more characters" empty state a 1-character query would
     // have shown instead.
     await page.getByRole("combobox", { name: /search the organization chart/i }).fill("e2e");
-    await expect(page.getByRole("option").first()).toBeVisible();
+    // Scoped to the search results — the zoom menu's own <option>s also exist.
+    await expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
 
     const blocking = results.violations.filter(
