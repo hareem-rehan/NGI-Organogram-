@@ -12,8 +12,10 @@ import {
   FONT_FAMILIES,
   MAX_FONT_SIZE,
   MIN_FONT_SIZE,
+  readableTextColor,
   type TextStyle,
 } from "@/lib/domain/organogram-text-style";
+import { CARD_TEXT_COLOR, cardTextColor } from "@/lib/domain/organogram-family-colors";
 import { cn } from "@/lib/utils";
 
 interface TextStylePanelProps {
@@ -26,6 +28,12 @@ interface TextStylePanelProps {
   saved: TextStyle;
   /** What the target inherits when a field is left at its default (the chart style, for a card). */
   inherited: TextStyle;
+  /**
+   * The card's own fill colour (one card only). Lets the panel show the text
+   * colour the card ACTUALLY uses: a chosen colour that would be hard to read
+   * on this fill is swapped for a readable one, exactly as on the chart.
+   */
+  cardFill?: string | null;
   /** Called on every change, so the chart previews the style live. */
   onPreview: (style: TextStyle) => void;
   /** Saves; resolves to an error message, or null on success. */
@@ -52,6 +60,7 @@ export function TextStylePanel({
   isChart,
   saved,
   inherited,
+  cardFill,
   onPreview,
   onSave,
   onReset,
@@ -70,6 +79,24 @@ export function TextStylePanel({
   // A toggle shows the EFFECTIVE value (own setting, else inherited); turning
   // it off when it is inherited as on stores an explicit "off".
   const effective = { ...compactTextStyle(inherited), ...style };
+
+  // The text colour as the card really shows it (D50): on one card, a chosen
+  // colour that isn't readable on its fill is swapped, just like the chart.
+  const chosenColour = style.color ?? inherited.color ?? null;
+  const fill = cardFill ?? null;
+  const colourShown = fill
+    ? readableTextColor(chosenColour, fill, cardTextColor(fill))
+    : (chosenColour ?? CARD_TEXT_COLOR);
+  const swapped = !!fill && !!chosenColour && colourShown !== chosenColour;
+  const colourLabel = swapped
+    ? `${colourShown} on this card`
+    : style.color
+      ? style.color
+      : chosenColour
+        ? `${chosenColour} (same as all cards)`
+        : fill
+          ? `${colourShown} (automatic)`
+          : "Automatic";
   const toggle = (field: "italic" | "underline" | "strikethrough") => {
     const on = effective[field] === true;
     update({ [field]: on ? (inherited[field] ? false : null) : true });
@@ -150,21 +177,24 @@ export function TextStylePanel({
 
           <Field
             label="Text colour"
-            hint="Default keeps text readable on the card colour automatically."
+            hint={
+              swapped
+                ? `${chosenColour} is hard to read on this card's colour, so ${colourShown} is used instead. Pick a darker or lighter colour to change it.`
+                : isChart
+                  ? "On any card where this colour would be hard to read, a readable colour is used instead."
+                  : "Default keeps text readable on the card colour automatically."
+            }
           >
             {(fieldProps) => (
               <div className="flex items-center gap-2">
                 <input
                   {...fieldProps}
                   type="color"
-                  value={style.color ?? inherited.color ?? "#2d2d2d"}
+                  value={colourShown}
                   onChange={(event) => update({ color: event.target.value })}
                   className="border-input h-9 w-12 cursor-pointer rounded border bg-transparent p-1"
                 />
-                <span className="text-muted-foreground font-mono text-sm">
-                  {style.color ??
-                    (inherited.color ? `${inherited.color} (inherited)` : "Automatic")}
-                </span>
+                <span className="text-muted-foreground font-mono text-sm">{colourLabel}</span>
                 {style.color ? (
                   <Button
                     type="button"

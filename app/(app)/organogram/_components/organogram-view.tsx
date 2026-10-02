@@ -56,6 +56,7 @@ import type {
 import {
   buildSubdivisionShadeMap,
   departmentColorFromHex,
+  chartCardColor,
   type FamilyColor,
 } from "@/lib/domain/organogram-family-colors";
 import {
@@ -1459,6 +1460,17 @@ export function OrganogramView({
               : (data.textStyles.cards[styleTarget] ?? {})
           }
           inherited={styleTarget === CHART_STYLE_KEY ? {} : data.textStyles.chart}
+          cardFill={
+            styleTarget === CHART_STYLE_KEY
+              ? null
+              : (() => {
+                  const node = data.nodes.find((n) => n.positionId === styleTarget);
+                  return node
+                    ? (chartCardColor(node, colorMode, departmentColorById, familyColorById)
+                        ?.fill ?? "#ffffff")
+                    : null;
+                })()
+          }
           onPreview={setStyleDraft}
           onSave={saveStyle}
           onReset={resetStyle}
