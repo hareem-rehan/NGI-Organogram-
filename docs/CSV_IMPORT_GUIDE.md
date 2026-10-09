@@ -6,12 +6,12 @@ Authoritative reference for Phase 10's bulk CSV import feature. If the app's act
 
 Four import types, each its own CSV file — you cannot mix entity types in one file.
 
-| Type                | Creates/updates                                                            | Matching key                       |
-| ------------------- | -------------------------------------------------------------------------- | ---------------------------------- |
-| Department          | `Department`                                                               | company + `departmentCode`         |
-| Position            | `Position`                                                                 | company + `positionCode`           |
-| Employee            | `Employee`                                                                 | company + `employeeCode`           |
-| Position Assignment | `PositionAssignment` (via `ASSIGN`/`TRANSFER`/`END_ASSIGNMENT` operations) | employee + position, per operation |
+| Type                | Creates/updates                                                            | Matching key                          |
+| ------------------- | -------------------------------------------------------------------------- | ------------------------------------- |
+| Department          | `Department`                                                               | company + `departmentName` (any case) |
+| Position            | `Position`                                                                 | company + `positionCode`              |
+| Employee            | `Employee`                                                                 | company + `employeeCode`              |
+| Position Assignment | `PositionAssignment` (via `ASSIGN`/`TRANSFER`/`END_ASSIGNMENT` operations) | employee + position, per operation    |
 
 ## 2. Permissions
 
@@ -32,14 +32,17 @@ Download a template from the Imports page for any import type — a header row p
 
 ### Department (`department-import-template.csv`)
 
-| Column                 | Required | Notes                                                                                      |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `departmentCode`       | yes      | 2–30 chars, matching key                                                                   |
-| `departmentName`       | yes      | 1–150 chars                                                                                |
-| `description`          | no       | 0–500 chars; blank = no change (UPSERT) / empty (CREATE); `__CLEAR__` explicitly clears it |
-| `parentDepartmentCode` | no       | blank = no change / top-level; `__NONE__` explicitly makes it top-level                    |
-| `color`                | no       | hex, e.g. `#16a34a`; `__CLEAR__` clears it                                                 |
-| `status`               | no       | `ACTIVE` or `INACTIVE`                                                                     |
+Departments are identified by **name** (D52); there are no codes in this file. A row whose name matches an existing department (ignoring capitals and extra spaces) updates it; any other row creates a new department, and the app generates its internal code.
+
+| Column                 | Required | Notes                                                                                                  |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `departmentName`       | yes      | 1–150 chars; the matching key — a name can't be changed by import (rename it in the app)               |
+| `description`          | no       | 0–500 chars; blank = no change (UPSERT) / empty (CREATE); `__CLEAR__` explicitly clears it             |
+| `parentDepartmentName` | no       | a department in this file or the company; blank = no change / top-level; `__NONE__` makes it top-level |
+| `color`                | no       | hex, e.g. `#16a34a`; `__CLEAR__` clears it                                                             |
+| `status`               | no       | `ACTIVE` or `INACTIVE`                                                                                 |
+
+Files made before D52 with `departmentCode` / `parentDepartmentCode` columns still import exactly as before. If more than one existing department shares a name, a row naming it is refused until one is renamed.
 
 ### Position (`position-import-template.csv`)
 
@@ -48,7 +51,7 @@ Download a template from the Imports page for any import type — a header row p
 | `positionCode`               | yes                         | 2–30 chars, matching key                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `positionTitle`              | yes                         | 1–150 chars                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `description`                | no                          | 0–500 chars; `__CLEAR__` clears it                                                                                                                                                                                                                                                                                                                                                                                            |
-| `departmentCode`             | yes                         | must already exist — Position import never creates departments                                                                                                                                                                                                                                                                                                                                                                |
+| `departmentName`             | yes                         | the department's name (any case); must already exist — Position import never creates departments. Older files may give `departmentCode` instead                                                                                                                                                                                                                                                                               |
 | `jobGradeCode`               | no                          | must already exist; `__NONE__` clears it                                                                                                                                                                                                                                                                                                                                                                                      |
 | `primaryManagerPositionCode` | required for a new position | the manager's code (may appear later in the same file), or `__ROOT__` for the one company root; blank means "no change" and is only valid when updating an existing position                                                                                                                                                                                                                                                  |
 | `coManagerPositionCode`      | optional                    | a SECOND head for positions that report to two heads (docs/DECISIONS.md D27): the code of another position (may appear later in the same file). Blank means "no change" (none for a new position); `__NONE__` or `__CLEAR__` removes the current second head. Must differ from `primaryManagerPositionCode`, can't be set on the root, can't be the position itself, and must not create a reporting loop through either head |

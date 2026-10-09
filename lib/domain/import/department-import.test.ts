@@ -148,7 +148,7 @@ describe("validateDepartmentRows", () => {
     );
     const outcome = validateDepartmentRows(parsed, "UPSERT", [existing({ parentCode: "PARENT" })]);
     expect(outcome.rows[0]!.diffs).toContainEqual({
-      field: "parentDepartmentCode",
+      field: "parentDepartment",
       currentValue: "PARENT",
       proposedValue: null,
     });
@@ -204,5 +204,66 @@ describe("validateDepartmentRows", () => {
     const outcome = validateDepartmentRows(parsed, "UPSERT", []);
     expect(outcome.rows[0]!.action).toBe("CREATE");
     expect(outcome.rows[1]!.action).toBe("ERROR");
+  });
+
+  describe("by name, without codes (D52)", () => {
+    const company = [
+      { ...existing({}), id: "d-hr", code: "HR", name: "Human Resources", parentCode: null },
+      { ...existing({}), id: "d-eng", code: "ENG", name: "Engineering", parentCode: null },
+    ];
+
+    it("matches an existing department by name (any case) and creates new ones with a generated code", () => {
+      const parsed = csv(
+        "departmentName,parentDepartmentName,color\nhuman resources,,#16a34a\nPlatform Team,Engineering,\n"
+      );
+      const outcome = validateDepartmentRows(parsed, "UPSERT", company);
+      expect(outcome.issues.filter((i) => i.severity === "ERROR")).toEqual([]);
+      const [hr, platform] = outcome.rows;
+      expect(hr!.action).toBe("UPDATE");
+      expect(hr!.matchingCode).toBe("HR");
+      expect(hr!.displayLabel).toBe("Human Resources");
+      expect(platform!.action).toBe("CREATE");
+      expect(platform!.matchingCode).toBe("PT");
+      expect(platform!.displayLabel).toBe("Platform Team");
+      expect(platform!.normalized!.parentCode).toEqual({ kind: "value", value: "ENG" });
+    });
+
+    it("resolves a parent named elsewhere in the same file", () => {
+      const parsed = csv(
+        "departmentName,parentDepartmentName\nData Office,\nData Science,Data Office\n"
+      );
+      const outcome = validateDepartmentRows(parsed, "UPSERT", company);
+      expect(outcome.issues.filter((i) => i.severity === "ERROR")).toEqual([]);
+      const [office, science] = outcome.rows;
+      expect(office!.matchingCode).toBe("DO");
+      expect(science!.matchingCode).toBe("DS");
+      expect(science!.normalized!.parentCode).toEqual({ kind: "value", value: "DO" });
+    });
+
+    it("numbers a generated code that is already taken", () => {
+      const parsed = csv("departmentName\nHuman Relations\n");
+      const outcome = validateDepartmentRows(parsed, "UPSERT", company);
+      expect(outcome.rows[0]!.matchingCode).toBe("HR2");
+    });
+
+    it("reports problems by name, never by code", () => {
+      const parsed = csv("departmentName,parentDepartmentName\nOps,Nowhere\nQuality,\nQuality,\n");
+      const outcome = validateDepartmentRows(parsed, "UPSERT", company);
+      const messages = outcome.issues.map((i) => i.safeMessage);
+      expect(messages).toContain(
+        'parentDepartmentName "Nowhere" does not match any department in this file or company.'
+      );
+      expect(messages).toContain('Department "Quality" appears more than once in this file.');
+    });
+
+    it("flags a cycle using department names", () => {
+      const parsed = csv(
+        "departmentName,parentDepartmentName\nEngineering,Human Resources\nHuman Resources,Engineering\n"
+      );
+      const outcome = validateDepartmentRows(parsed, "UPSERT", company);
+      const cycle = outcome.issues.find((i) => i.code === "HIERARCHY_CYCLE");
+      expect(cycle?.safeMessage).toMatch(/Engineering|Human Resources/);
+      expect(cycle?.safeMessage).not.toMatch(/\bENG\b|\bHR\b/);
+    });
   });
 });

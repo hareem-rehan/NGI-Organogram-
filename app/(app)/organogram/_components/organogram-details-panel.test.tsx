@@ -48,7 +48,7 @@ describe("OrganogramDetailsPanel", () => {
     expect(screen.getByRole("heading", { name: "VP Engineering" })).toBeInTheDocument();
     expect(screen.getByText("ACTIVE")).toBeInTheDocument();
     expect(screen.getByText("Vacant")).toBeInTheDocument();
-    expect(screen.getByText(/Engineering \(ENG\)/)).toBeInTheDocument();
+    expect(screen.getByText("Engineering")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("Director")).toBeInTheDocument();
     expect(screen.getByText("POS-1")).toBeInTheDocument();

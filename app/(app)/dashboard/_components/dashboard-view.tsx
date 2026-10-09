@@ -312,7 +312,6 @@ export function DashboardView({ canManage }: DashboardViewProps) {
                         >
                           {dept.name}
                         </Link>{" "}
-                        <span className="text-muted-foreground">({dept.code})</span>
                         {dept.status === "INACTIVE" ? (
                           <Badge variant="muted">Inactive</Badge>
                         ) : null}

@@ -20,36 +20,28 @@ test.describe("Department management (Phase 4)", () => {
     await expect(dialog).toBeHidden();
     const row = page.getByRole("row").filter({ hasText: name });
     await expect(row).toBeVisible();
-    // "E2E Test Department <id>" → initials ETD + first letter of the id (numbered if taken).
-    await expect(row.getByRole("cell").nth(1)).toHaveText(/^ETD[A-Z0-9]\d*$/);
+    // Codes are internal: the list has no Code column (D52).
+    await expect(page.getByRole("columnheader", { name: "Code" })).toHaveCount(0);
   });
 
-  test("two departments with the same initials get different codes", async ({ page }) => {
+  test("a department name can't be used twice (any capitalisation), and the dialog says why", async ({
+    page,
+  }) => {
     await page.goto("/departments");
-    const suffix = Date.now().toString(36).toUpperCase();
-    const names = [`Quality Zone ${suffix}`, `Quick Zone ${suffix}`];
-    for (const name of names) {
-      await page.getByRole("button", { name: /add department/i }).click();
-      const dialog = page.getByRole("dialog");
-      await dialog.getByLabel(/name/i).fill(name);
-      await dialog.getByRole("button", { name: /create department/i }).click();
-      await expect(dialog).toBeHidden();
-    }
-    const codes = await Promise.all(
-      names.map(async (name) =>
-        (
-          await page
-            .getByRole("row")
-            .filter({ hasText: name })
-            .getByRole("cell")
-            .nth(1)
-            .textContent()
-        )?.trim()
-      )
-    );
-    expect(codes[0]).toMatch(/^QZ/);
-    expect(codes[1]).toMatch(/^QZ/);
-    expect(codes[0]).not.toBe(codes[1]);
+    const name = `Unique Name ${Date.now().toString(36).toUpperCase()}`;
+
+    await page.getByRole("button", { name: /add department/i }).click();
+    let dialog = page.getByRole("dialog");
+    await dialog.getByLabel(/name/i).fill(name);
+    await dialog.getByRole("button", { name: /create department/i }).click();
+    await expect(dialog).toBeHidden();
+
+    await page.getByRole("button", { name: /add department/i }).click();
+    dialog = page.getByRole("dialog");
+    await dialog.getByLabel(/name/i).fill(name.toLowerCase());
+    await dialog.getByRole("button", { name: /create department/i }).click();
+    await expect(dialog.getByText(/already exists/i)).toBeVisible();
+    await expect(dialog).toBeVisible();
   });
 
   test("VIEWER can view departments but cannot see any mutation control", async ({

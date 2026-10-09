@@ -22,11 +22,12 @@ test.describe("CSV Import (Phase 10)", () => {
   test("a valid Department CSV validates, previews, confirms, executes, and the department appears in Departments", async ({
     page,
   }) => {
-    const code = `E2E-IMP-${Date.now().toString(36).toUpperCase()}`;
+    const name = `E2E Import Test Department ${Date.now().toString(36).toUpperCase()}`;
 
     await page.goto("/imports");
     const wizard = page.getByRole("region", { name: "New Import" });
-    const csv = `departmentCode,departmentName\n${code},E2E Import Test Department\n`;
+    // Departments are named, never coded, in CSVs (D52).
+    const csv = `departmentName\n${name}\n`;
     await page.locator('input[type="file"]').setInputFiles({
       name: "departments.csv",
       mimeType: "text/csv",
@@ -43,17 +44,19 @@ test.describe("CSV Import (Phase 10)", () => {
     await wizard.getByRole("button", { name: /execute import/i }).click();
     await expect(wizard.getByText(/import complete: 1 created/i)).toBeVisible();
 
+    // The preview names the department rather than showing an internal code.
+    await expect(wizard.getByRole("cell", { name })).toBeVisible();
+
     await page.goto("/departments");
-    await expect(page.getByText(code)).toBeVisible();
-    await expect(page.getByText("E2E Import Test Department")).toBeVisible();
+    await expect(page.getByText(name)).toBeVisible();
   });
 
-  test("an invalid CSV (duplicate code within the file) shows row-level errors and cannot be executed", async ({
+  test("an invalid CSV (the same department twice in the file) shows row-level errors and cannot be executed", async ({
     page,
   }) => {
     await page.goto("/imports");
     const wizard = page.getByRole("region", { name: "New Import" });
-    const csv = "departmentCode,departmentName\nDUPTEST,First\nDUPTEST,Second\n";
+    const csv = "departmentName\nDuplicate Test\nduplicate test\n";
     await page.locator('input[type="file"]').setInputFiles({
       name: "departments.csv",
       mimeType: "text/csv",
@@ -83,9 +86,9 @@ test.describe("CSV Import (Phase 10)", () => {
   });
 
   test("the recent imports list reflects a completed import", async ({ page }) => {
-    const code = `E2E-IMP-LIST-${Date.now().toString(36).toUpperCase()}`;
+    const name = `List Test Department ${Date.now().toString(36).toUpperCase()}`;
     await page.goto("/imports");
-    const csv = `departmentCode,departmentName\n${code},List Test Department\n`;
+    const csv = `departmentName\n${name}\n`;
     await page.locator('input[type="file"]').setInputFiles({
       name: "departments.csv",
       mimeType: "text/csv",

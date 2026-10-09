@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
 import { normalizeCode } from "@/lib/domain/normalize";
 import { departmentCodeFromName, firstFreeCode } from "@/lib/domain/department-code";
+import { departmentNameKey } from "@/lib/domain/import/department-import";
 import { wouldCreateCycle } from "@/lib/domain/hierarchy";
 import {
   ConflictError,
@@ -56,6 +57,7 @@ export async function createDepartment(
   db: DbClient = prisma
 ): Promise<Department> {
   return withTransaction(db, async (tx) => {
+    await assertDepartmentNameFree(input.name, input.companyId, null, tx);
     const code = input.code
       ? normalizeCode(input.code)
       : await generateDepartmentCode(input.name, input.companyId, tx);
@@ -92,7 +94,7 @@ export async function createDepartment(
         category: "DEPARTMENT",
         entityType: "Department",
         entityId: created.id,
-        entityDisplayReference: created.code,
+        entityDisplayReference: created.name,
         after: created,
       },
       tx
@@ -173,7 +175,7 @@ export async function moveDepartment(
         category: "DEPARTMENT",
         entityType: "Department",
         entityId: updated.id,
-        entityDisplayReference: updated.code,
+        entityDisplayReference: updated.name,
         before: department,
         after: updated,
       },
@@ -210,6 +212,9 @@ export async function updateDepartment(
   return withTransaction(db, async (tx) => {
     const existing = await findDepartmentById(input.departmentId, input.companyId, tx);
     if (!existing) throw new NotFoundError("Department", input.departmentId);
+    if (input.name !== undefined) {
+      await assertDepartmentNameFree(input.name, input.companyId, existing.id, tx);
+    }
 
     const code = input.code !== undefined ? normalizeCode(input.code) : undefined;
 
@@ -243,7 +248,7 @@ export async function updateDepartment(
         category: "DEPARTMENT",
         entityType: "Department",
         entityId: updated.id,
-        entityDisplayReference: updated.code,
+        entityDisplayReference: updated.name,
         before: existing,
         after: updated,
       },
@@ -296,7 +301,7 @@ export async function reorderDepartments(
           category: "DEPARTMENT",
           entityType: "Department",
           entityId: departmentId,
-          entityDisplayReference: after.code,
+          entityDisplayReference: after.name,
           before,
           after,
           metadata: { reordered: true },
@@ -330,7 +335,7 @@ export async function archiveDepartment(
         category: "DEPARTMENT",
         entityType: "Department",
         entityId: updated.id,
-        entityDisplayReference: updated.code,
+        entityDisplayReference: updated.name,
         before: department,
         after: updated,
       },
@@ -363,7 +368,7 @@ export async function reactivateDepartment(
         category: "DEPARTMENT",
         entityType: "Department",
         entityId: updated.id,
-        entityDisplayReference: updated.code,
+        entityDisplayReference: updated.name,
         before: department,
         after: updated,
       },
@@ -470,7 +475,7 @@ export async function deleteDepartment(
         category: "DEPARTMENT",
         entityType: "Department",
         entityId: department.id,
-        entityDisplayReference: department.code,
+        entityDisplayReference: department.name,
         before: department,
         // No `after`: the row is gone. The before-snapshot is the only
         // record left of what was removed, which is exactly why it is
@@ -479,6 +484,32 @@ export async function deleteDepartment(
       tx
     );
   });
+}
+
+/**
+ * Department names are unique in a company, ignoring case and extra spaces
+ * (D52): CSV imports identify departments by name, so two with the same name
+ * would be ambiguous. `exceptId` is the department being renamed.
+ */
+async function assertDepartmentNameFree(
+  name: string,
+  companyId: string,
+  exceptId: string | null,
+  tx: Prisma.TransactionClient
+): Promise<void> {
+  const key = departmentNameKey(name);
+  const sameName = await tx.department.findMany({
+    where: {
+      companyId,
+      name: { equals: name.trim(), mode: "insensitive" },
+      ...(exceptId ? { id: { not: exceptId } } : {}),
+    },
+    select: { name: true },
+  });
+  const clash = sameName.find((d) => departmentNameKey(d.name) === key);
+  if (clash) {
+    throw new ConflictError(`A department called "${clash.name}" already exists.`);
+  }
 }
 
 /**

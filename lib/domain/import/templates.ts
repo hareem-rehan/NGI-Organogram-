@@ -20,15 +20,9 @@ function escapeCsvField(value: string): string {
 
 const TEMPLATES: Record<ImportType, { headers: string[]; example: string[]; filename: string }> = {
   DEPARTMENT: {
-    headers: [
-      "departmentCode",
-      "departmentName",
-      "description",
-      "parentDepartmentCode",
-      "color",
-      "status",
-    ],
-    example: ["ENG", "Engineering", "Product engineering", "", "#16a34a", "ACTIVE"],
+    // Departments are named, not coded (D52): codes are generated.
+    headers: ["departmentName", "description", "parentDepartmentName", "color", "status"],
+    example: ["Engineering", "Product engineering", "", "#16a34a", "ACTIVE"],
     filename: "department-import-template.csv",
   },
   POSITION: {
@@ -36,7 +30,7 @@ const TEMPLATES: Record<ImportType, { headers: string[]; example: string[]; file
       "positionCode",
       "positionTitle",
       "description",
-      "departmentCode",
+      "departmentName",
       "jobGradeCode",
       "primaryManagerPositionCode",
       "coManagerPositionCode",
@@ -47,7 +41,7 @@ const TEMPLATES: Record<ImportType, { headers: string[]; example: string[]; file
       "POS-ENGMGR-01",
       "Engineering Manager",
       "",
-      "ENG",
+      "Engineering",
       "L5",
       "__ROOT__",
       "",
