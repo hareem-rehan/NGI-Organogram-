@@ -55,6 +55,8 @@ describe("DepartmentFormDialog", () => {
     );
     expect(screen.getByRole("heading", { name: "Add Department" })).toBeInTheDocument();
     expect(screen.getByLabelText(/name/i)).toHaveValue("");
+    // No Code field: the code is generated from the name (D51).
+    expect(screen.queryByLabelText(/^code/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create department/i })).toBeInTheDocument();
   });
 
@@ -70,7 +72,7 @@ describe("DepartmentFormDialog", () => {
       />
     );
     expect(screen.getByLabelText(/name/i)).toHaveValue("Sales");
-    expect(screen.getByLabelText(/code/i)).toHaveValue("SALES");
+    expect(screen.queryByLabelText(/^code/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save changes/i })).toBeInTheDocument();
   });
 
@@ -86,7 +88,6 @@ describe("DepartmentFormDialog", () => {
       />
     );
 
-    await user.type(screen.getByLabelText(/code/i), "ENG");
     await user.click(screen.getByRole("button", { name: /create department/i }));
 
     expect(await screen.findByText(/name is required/i)).toBeInTheDocument();
@@ -110,17 +111,17 @@ describe("DepartmentFormDialog", () => {
     );
 
     await user.type(screen.getByLabelText(/name/i), "Engineering");
-    await user.type(screen.getByLabelText(/code/i), "ENG");
     await user.click(screen.getByRole("button", { name: /create department/i }));
 
     await waitFor(() => expect(createDepartmentActionMock).toHaveBeenCalled());
-    expect(createDepartmentActionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Engineering", code: "ENG" })
-    );
+    const sent = createDepartmentActionMock.mock.calls[0]![0];
+    expect(sent).toEqual(expect.objectContaining({ name: "Engineering" }));
+    // The form never sends a code; the server makes one from the name.
+    expect(sent.code ?? "").toBe("");
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  it("shows the server's duplicate-code error and does not close the dialog", async () => {
+  it("shows a server error and does not close the dialog", async () => {
     createDepartmentActionMock.mockResolvedValue({
       ok: false,
       error: 'Department code "ENG" is already in use in this company.',
@@ -139,7 +140,6 @@ describe("DepartmentFormDialog", () => {
     );
 
     await user.type(screen.getByLabelText(/name/i), "Engineering");
-    await user.type(screen.getByLabelText(/code/i), "ENG");
     await user.click(screen.getByRole("button", { name: /create department/i }));
 
     expect(await screen.findByText(/already in use/i)).toBeInTheDocument();

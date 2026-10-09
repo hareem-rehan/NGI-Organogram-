@@ -45,7 +45,6 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     await page.getByRole("button", { name: /add department/i }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel(/name/i).fill(`E2E Positions Dept ${suffix}`);
-    await dialog.getByLabel(/code/i).fill(`E2E-POSDEPT-${suffix}`);
     await dialog.getByRole("button", { name: /create department/i }).click();
     await expect(dialog).toBeHidden();
   });

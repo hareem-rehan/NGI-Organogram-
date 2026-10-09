@@ -307,6 +307,27 @@ describe("Department", () => {
     await expect(attempt).rejects.toThrow(/sub-division Admin/);
   });
 
+  it("generates a code from the name when none is given, numbering it if taken (D51)", async () => {
+    const company = await makeCompany();
+    const first = await createDepartment({
+      companyId: company.id,
+      name: "Delivery Org / Administration",
+    });
+    expect(first.code).toBe("DOA");
+    const second = await createDepartment({
+      companyId: company.id,
+      name: "Data Operations Analytics",
+    });
+    expect(second.code).toBe("DOA2");
+    // A code given explicitly (CSV import) is still used as-is.
+    const imported = await createDepartment({
+      companyId: company.id,
+      name: "Imported",
+      code: "imp",
+    });
+    expect(imported.code).toBe("IMP");
+  });
+
   it("refuses to delete a department belonging to another company", async () => {
     const companyA = await makeCompany();
     const companyB = await makeCompany();

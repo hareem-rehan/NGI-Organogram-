@@ -32,7 +32,6 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     await page.getByRole("button", { name: /add department/i }).click();
     let dialog = page.getByRole("dialog");
     await dialog.getByLabel(/name/i).fill(deptName);
-    await dialog.getByLabel(/code/i).fill(`E2E-EMPDEPT-${suffix}`);
     await dialog.getByRole("button", { name: /create department/i }).click();
     await expect(dialog).toBeHidden();
 

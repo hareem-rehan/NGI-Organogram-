@@ -5,6 +5,7 @@ import { Prisma as PrismaNamespace } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
 import { normalizeCode } from "@/lib/domain/normalize";
+import { departmentCodeFromName, firstFreeCode } from "@/lib/domain/department-code";
 import { wouldCreateCycle } from "@/lib/domain/hierarchy";
 import {
   ConflictError,
@@ -30,7 +31,8 @@ export interface CreateDepartmentInput {
   companyId: string;
   actor?: AuditActor;
   name: string;
-  code: string;
+  /** Omitted → generated from the name, unique in the company (D51). */
+  code?: string;
   description?: string | null;
   color?: string | null;
   hasIcLadder?: boolean;
@@ -53,9 +55,10 @@ export async function createDepartment(
   input: CreateDepartmentInput,
   db: DbClient = prisma
 ): Promise<Department> {
-  const code = normalizeCode(input.code);
-
   return withTransaction(db, async (tx) => {
+    const code = input.code
+      ? normalizeCode(input.code)
+      : await generateDepartmentCode(input.name, input.companyId, tx);
     if (input.parentDepartmentId) {
       await assertValidParentDepartment(input.companyId, input.parentDepartmentId, tx);
     }
@@ -476,6 +479,25 @@ export async function deleteDepartment(
       tx
     );
   });
+}
+
+/**
+ * A code for a new department built from its name (D51): its initials, or the
+ * first free numbered variant ("HR", "HR2", …) in this company. A rare race
+ * between two creates is still caught by the unique constraint, and reported
+ * as a friendly conflict.
+ */
+async function generateDepartmentCode(
+  name: string,
+  companyId: string,
+  tx: Prisma.TransactionClient
+): Promise<string> {
+  const base = departmentCodeFromName(name);
+  const existing = await tx.department.findMany({
+    where: { companyId, code: { startsWith: base, mode: "insensitive" } },
+    select: { code: true },
+  });
+  return firstFreeCode(base, new Set(existing.map((d) => d.code.toUpperCase())));
 }
 
 /** Exported for reuse by lib/services/import.service.ts's bulk-create path (Phase 13.1). */

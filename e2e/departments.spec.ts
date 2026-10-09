@@ -11,40 +11,45 @@ test.describe("Department management (Phase 4)", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
 
-    const code = `E2E-${Date.now().toString(36).toUpperCase()}`;
-    await dialog.getByLabel(/name/i).fill("E2E Test Department");
-    await dialog.getByLabel(/code/i).fill(code);
+    // There is no Code field (D51): the code is made from the name.
+    await expect(dialog.getByLabel(/^code/i)).toHaveCount(0);
+    const name = `E2E Test Department ${Date.now().toString(36).toUpperCase()}`;
+    await dialog.getByLabel(/name/i).fill(name);
     await dialog.getByRole("button", { name: /create department/i }).click();
 
     await expect(dialog).toBeHidden();
-    await expect(page.getByText("E2E Test Department")).toBeVisible();
-    await expect(page.getByText(code)).toBeVisible();
+    const row = page.getByRole("row").filter({ hasText: name });
+    await expect(row).toBeVisible();
+    // "E2E Test Department <id>" → initials ETD + first letter of the id (numbered if taken).
+    await expect(row.getByRole("cell").nth(1)).toHaveText(/^ETD[A-Z0-9]\d*$/);
   });
 
-  test("duplicate department code is rejected with a clear error, dialog stays open", async ({
-    page,
-  }) => {
+  test("two departments with the same initials get different codes", async ({ page }) => {
     await page.goto("/departments");
-
-    const code = `E2E-DUP-${Date.now().toString(36).toUpperCase()}`;
-
-    // Create the first one.
-    await page.getByRole("button", { name: /add department/i }).click();
-    let dialog = page.getByRole("dialog");
-    await dialog.getByLabel(/name/i).fill("Original Department");
-    await dialog.getByLabel(/code/i).fill(code);
-    await dialog.getByRole("button", { name: /create department/i }).click();
-    await expect(dialog).toBeHidden();
-
-    // Attempt a duplicate.
-    await page.getByRole("button", { name: /add department/i }).click();
-    dialog = page.getByRole("dialog");
-    await dialog.getByLabel(/name/i).fill("Duplicate Attempt");
-    await dialog.getByLabel(/code/i).fill(code);
-    await dialog.getByRole("button", { name: /create department/i }).click();
-
-    await expect(dialog.getByText(/already in use/i)).toBeVisible();
-    await expect(dialog).toBeVisible();
+    const suffix = Date.now().toString(36).toUpperCase();
+    const names = [`Quality Zone ${suffix}`, `Quick Zone ${suffix}`];
+    for (const name of names) {
+      await page.getByRole("button", { name: /add department/i }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel(/name/i).fill(name);
+      await dialog.getByRole("button", { name: /create department/i }).click();
+      await expect(dialog).toBeHidden();
+    }
+    const codes = await Promise.all(
+      names.map(async (name) =>
+        (
+          await page
+            .getByRole("row")
+            .filter({ hasText: name })
+            .getByRole("cell")
+            .nth(1)
+            .textContent()
+        )?.trim()
+      )
+    );
+    expect(codes[0]).toMatch(/^QZ/);
+    expect(codes[1]).toMatch(/^QZ/);
+    expect(codes[0]).not.toBe(codes[1]);
   });
 
   test("VIEWER can view departments but cannot see any mutation control", async ({
@@ -66,16 +71,14 @@ test.describe("Department management (Phase 4)", () => {
   }) => {
     await page.goto("/departments");
 
-    const code = `E2E-DEL-${Date.now().toString(36).toUpperCase()}`;
-    const name = `E2E Deletable ${code}`;
+    const name = `E2E Deletable ${Date.now().toString(36).toUpperCase()}`;
     await page.getByRole("button", { name: /add department/i }).click();
     const createDialog = page.getByRole("dialog");
     await createDialog.getByLabel(/name/i).fill(name);
-    await createDialog.getByLabel(/code/i).fill(code);
     await createDialog.getByRole("button", { name: /create department/i }).click();
     await expect(createDialog).toBeHidden();
 
-    const row = page.getByRole("row").filter({ hasText: code });
+    const row = page.getByRole("row").filter({ hasText: name });
     await expect(row).toBeVisible();
 
     // Cancelling leaves it alone — a destructive action is never one click.
@@ -87,11 +90,11 @@ test.describe("Department management (Phase 4)", () => {
     await row.getByRole("button", { name: /^delete$/i }).click();
     await page.getByRole("button", { name: "Delete" }).click();
 
-    await expect(page.getByRole("row").filter({ hasText: code })).toHaveCount(0);
+    await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0);
 
     // Gone from the server too, not just from this rendered list.
     await page.reload();
-    await expect(page.getByText(code)).toHaveCount(0);
+    await expect(page.getByText(name)).toHaveCount(0);
   });
 
   test("a department that still has positions cannot be deleted, and is told why", async ({

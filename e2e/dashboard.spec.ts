@@ -99,7 +99,6 @@ test.describe("Dashboard and Company Overview (Phase 7)", () => {
     await page.getByRole("button", { name: /add department/i }).click();
     let dialog = page.getByRole("dialog");
     await dialog.getByLabel(/name/i).fill(deptName);
-    await dialog.getByLabel(/code/i).fill(`E2E-DASH-DEPT-${suffix}`);
     await dialog.getByRole("button", { name: /create department/i }).click();
     await expect(dialog).toBeHidden();
 
