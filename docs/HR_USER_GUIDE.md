@@ -200,6 +200,8 @@ Open **Organogram** from the menu — this is the automatically-generated chart.
 - **Fit to View / Reset View**: re-center and re-fit the chart (Visual View only).
 - **Show planned positions**: a checkbox to include or hide Planned positions.
 - **Search** (top of the page): type a name, title, position code, or department — matches are highlighted and the chart jumps to them.
+- **Mini-map** (bottom-right corner of the chart): a small overview of the whole chart. Drag or click it to move around; scroll on it to zoom.
+- **Zoom to a branch**: hover over a department or sub-division box and click **Zoom** above it — the chart zooms to that branch at a readable size.
 - **Filters** (the drawer/panel next to Search): narrow the chart by Department, Organizational Level, Job Grade, Occupancy (All/Occupied/Vacant), or Position Status.
 - **Focus**: click a position or department in the Details Panel (opened by clicking a card) to switch into **Position Focus** or **Department Focus** — a zoomed-in view of just that branch or department. A focus bar appears with:
   - A depth selector (Position Focus only): Direct Reports Only / Two Levels / Three Levels / All Descendants.

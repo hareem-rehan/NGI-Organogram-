@@ -17,8 +17,8 @@ import {
   type TextStyle,
 } from "@/lib/domain/organogram-text-style";
 
-/** Every card's width (D49): about 24 characters of title per line. */
-export const CARD_WIDTH = 188;
+/** Every card's width (D49, D53): about 21 characters of title per line. */
+export const CARD_WIDTH = 168;
 /** @deprecated Since D49 every card is CARD_WIDTH wide. */
 export const CARD_MIN_WIDTH = CARD_WIDTH;
 /** A title longer than this many lines ends in "…". */
@@ -33,8 +33,8 @@ export const CARD_METRICS = {
   padX: 8,
   /** Inner horizontal padding of a department / sub-division card. */
   headingPadX: 10,
-  padTop: 6,
-  headingPadY: 9,
+  padTop: 5,
+  headingPadY: 7,
   /** Title line height, em. */
   titleLeading: 1.2,
   /** Occupant / roles text size relative to the title, and its line height. */
@@ -44,7 +44,7 @@ export const CARD_METRICS = {
   footerEm: 0.846,
   footerLeading: 1.4,
   /** Space between the content and the footer divider. */
-  footerGap: 6,
+  footerGap: 4,
   footerPadTop: 3,
   footerPadBottom: 4,
   /** Chevron + gap before a heading name / footer count. */
@@ -209,8 +209,8 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
       letterSpacingEm: isDepartment ? 0.025 : 0,
     };
     const chrome = 2 * m.border + 2 * m.headingPadX + (card.hasChildren ? m.headingChevron : 0);
-    const titleLines = linesFor(name, CARD_WIDTH - chrome - WRAP_SLACK, f, nameFont);
-    const width = CARD_WIDTH;
+    const width = widthFor(name, chrome, f, nameFont);
+    const titleLines = linesFor(name, width - chrome - WRAP_SLACK, f, nameFont);
     const height =
       2 * m.border +
       2 * m.headingPadY +
@@ -222,13 +222,13 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
 
   const chrome = 2 * m.border + 2 * m.padX;
   const footerFont = f * m.footerEm;
+  const width = widthFor(card.title, chrome + (card.badgeWidth ?? 0), f, titleFont);
   const titleLines = linesFor(
     card.title,
-    CARD_WIDTH - chrome - (card.badgeWidth ?? 0) - WRAP_SLACK,
+    width - chrome - (card.badgeWidth ?? 0) - WRAP_SLACK,
     f,
     titleFont
   );
-  const width = CARD_WIDTH;
   const height =
     2 * m.border +
     m.padTop +
@@ -252,6 +252,22 @@ const BADGE_HEIGHT = 16;
 
 /** The heading chevron's square box, px (size-4 on screen). */
 export const CHEVRON_BOX = 16;
+
+/**
+ * The card's width: always CARD_WIDTH, unless a single WORD of the title is
+ * too wide to fit on a line of its own (e.g. "ADMINISTRATION" at a large text
+ * size) — then just wide enough for that word, so text is never clipped.
+ */
+function widthFor(text: string, chrome: number, fontSize: number, font: MeasureOptions): number {
+  const longestWord = Math.max(
+    0,
+    ...text
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => measureTextWidth(word, fontSize, font))
+  );
+  return Math.max(CARD_WIDTH, Math.ceil(longestWord + chrome + WRAP_SLACK));
+}
 
 /** How many lines (1 to MAX_TITLE_LINES) a title wraps onto at this width. */
 function linesFor(text: string, width: number, fontSize: number, font: MeasureOptions): number {

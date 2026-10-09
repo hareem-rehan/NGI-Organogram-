@@ -500,10 +500,23 @@ function renderNodeCard(
       fontFamily: family,
     });
     const room = right - rolesX - rolesWidth - 10;
-    const line = wrapToWidth(gradeFamilyLine, room, footerSize, 1, {
-      bold: true,
-      fontFamily: family,
-    })[0];
+    const footerFont = { bold: true, fontFamily: family };
+    // The level code always shows in full (D53); only the sub-division name
+    // is shortened, and dropped when there's no room for it at all.
+    let line = gradeFamilyLine;
+    if (measureTextWidth(gradeFamilyLine, footerSize, footerFont) > room) {
+      const code = node.jobGradeCode ?? "";
+      const prefix = code ? `${code} · ` : "";
+      const familyRoom = room - measureTextWidth(prefix, footerSize, footerFont);
+      const familyPart =
+        node.jobFamilyName && familyRoom >= 2.5 * footerSize
+          ? wrapToWidth(node.jobFamilyName, familyRoom, footerSize, 1, footerFont)[0]
+          : null;
+      line = familyPart ? `${prefix}${familyPart}` : code || (familyPart ?? "");
+      if (!line && node.jobFamilyName) {
+        line = wrapToWidth(node.jobFamilyName, room, footerSize, 1, footerFont)[0] ?? "";
+      }
+    }
     parts.push(
       `<text x="${right}" y="${footerY}" font-size="${round1(footerSize)}" font-weight="700" text-anchor="end" fill="${textColor}">${escapeXmlText(line ?? "")}</text>`
     );

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { CARD_WIDTH } from "@/lib/domain/organogram-card-size";
+
 import { EXPORT_COLORS } from "./colors";
 import {
   applyTextStyleToCardSvg,
@@ -70,8 +72,9 @@ describe("renderOrganogramSvg — colour by sub-division", () => {
     expect(result.svg).toContain('fill="#6fbf3f"');
     // The grade and family share the compact card's footer (D30), shortened
     // to fit; the full sub-division name is in the legend.
-    // Cards keep one width (D49), so a long label ends in "…".
-    expect(result.svg).toContain("L7 · Softwa");
+    // Cards keep one width (D49): the level always shows in full and only
+    // the sub-division name is shortened (D53).
+    expect(result.svg).toMatch(/>L7 · Soft[^<]*…</);
     expect(result.svg).toContain(">Software Engineering<");
     // The legend keys sub-divisions, not departments.
     expect(result.svg).toContain("Sub-divisions");
@@ -778,7 +781,7 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
   it("is only as tall as its text, with no empty band above the footer", () => {
     const svg = render(node({ positionId: "p1", title: "CFO", jobGradeCode: "L18" }));
     const { width, height } = rect(svg);
-    expect(width).toBe(188);
+    expect(width).toBe(CARD_WIDTH);
     expect(height).toBeLessThan(60);
     const [titleY] = textYs(svg, "13");
     // Title, then straight to the divider: no more than one line of air.
@@ -788,7 +791,7 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
   it("keeps one width and wraps a long title, growing taller (D49)", () => {
     const short = render(node({ positionId: "p1", title: "CFO" }));
     const svg = render(node({ positionId: "p1", title: "Head of Internal Audit and Compliance" }));
-    expect(rect(svg).width).toBe(188);
+    expect(rect(svg).width).toBe(CARD_WIDTH);
     expect(textYs(svg, "13")).toHaveLength(2);
     expect(rect(svg).height).toBeGreaterThan(rect(short).height);
   });
@@ -801,7 +804,7 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
           "Associate Director of Strategic Partnerships and Enterprise Client Success Operations",
       })
     );
-    expect(rect(svg).width).toBe(188);
+    expect(rect(svg).width).toBe(CARD_WIDTH);
     expect(textYs(svg, "13")).toHaveLength(3);
     expect(svg).toMatch(/…<\/text>/);
   });

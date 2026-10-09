@@ -38,20 +38,20 @@ const elk = new ELK();
  * spacing — clearly wider than the gap between two cards of the same
  * department, which is what makes the segregation readable.
  */
-export const DEPARTMENT_SIDE_PADDING = 56;
+export const DEPARTMENT_SIDE_PADDING = 28;
 
 /**
- * Vertical gap between one row of cards and the next. Roomy enough that the
- * connector's horizontal bar sits clearly between the rows instead of
- * hugging the cards (user request, 2026-09-29; was 36 in D31).
+ * Vertical gap between one row of cards and the next: room for the
+ * connector's horizontal bar between rows without wasting screen (D53 —
+ * tightened from 64 so more of the chart fits; was 36 in D31).
  */
-export const LAYER_GAP = 64;
+export const LAYER_GAP = 44;
 
 /**
- * Horizontal gap between two cards side by side in the same department, so
- * neighbouring cards (and the lines dropping into them) never look cramped.
+ * Horizontal gap between two cards side by side in the same department (D53 —
+ * tightened from 44 so more of the chart fits on screen).
  */
-export const NODE_GAP = 44;
+export const NODE_GAP = 24;
 
 /**
  * Where a parent's shared horizontal connector bar sits: halfway down the
