@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Scan, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -126,6 +126,8 @@ export interface PositionNodeData extends Record<string, unknown> {
   textStyle?: TextStyle;
   /** The card's size for its content (D47), from the canvas layout. */
   size?: CardSize;
+  /** Zooms the chart to this box's whole branch (department / sub-division boxes, D53). */
+  onZoomToBranch?: (nodeId: string) => void;
   /**
    * Arrange-mode drop feedback while another card is dragged over this one:
    * "valid" (green ring — dropping here is allowed) or "invalid" (red ring —
@@ -195,7 +197,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
     <div
       {...cardText.attrs}
       className={cn(
-        "text-foreground pointer-events-auto relative flex flex-col rounded-lg border shadow-sm",
+        "text-foreground group pointer-events-auto relative flex flex-col rounded-lg border shadow-sm",
         dropHintClass(data.dropHint, data.groupSelected),
         !fill && "bg-muted"
       )}
@@ -213,6 +215,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
       />
       <GroupAddButton data={data} />
+      <ZoomToBranchButton data={data} />
       <button
         type="button"
         onClick={(event) => {
@@ -222,7 +225,7 @@ function DepartmentNodeCard({ data }: { data: PositionNodeData }) {
         }}
         aria-expanded={!isCollapsed}
         aria-label={`${node.departmentName} department, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
-        className="focus-visible:ring-ring flex min-w-0 flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 py-[9px] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex min-w-0 flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 py-[7px] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {node.hasChildren ? (
@@ -298,6 +301,35 @@ function GroupAddButton({ data }: { data: PositionNodeData }) {
   );
 }
 
+/**
+ * Zooms the chart to this department's or sub-division's whole branch (D53),
+ * so a reader doesn't have to zoom in and out by hand. Sits just above the
+ * box's top-left corner; shown on hover or keyboard focus.
+ */
+function ZoomToBranchButton({ data }: { data: PositionNodeData }) {
+  const { node, onZoomToBranch } = data;
+  if (!onZoomToBranch || !node.hasChildren) return null;
+  const label = node.kind === "department" ? node.departmentName : node.title;
+  return (
+    <div className="nodrag absolute -top-7 left-0 z-10 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <button
+        type="button"
+        aria-label={`Zoom to ${label}`}
+        title="Zoom to this branch"
+        onClick={(event) => {
+          event.stopPropagation();
+          onZoomToBranch(node.positionId);
+        }}
+        style={{ fontFamily: "var(--font-sans)", fontStyle: "normal", fontSize: "11px" }}
+        className="border-border bg-background/90 text-muted-foreground hover:text-foreground focus-visible:ring-ring flex h-6 items-center gap-1 rounded border px-1.5 font-semibold shadow-sm outline-none focus-visible:ring-2"
+      >
+        <Scan aria-hidden="true" className="size-3.5" />
+        Zoom
+      </button>
+    </div>
+  );
+}
+
 /** "Aa": opens the text-style panel for one card (D41). */
 function StyleButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
@@ -339,7 +371,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
     <div
       {...cardText.attrs}
       className={cn(
-        "text-foreground pointer-events-auto relative flex flex-col rounded-lg border shadow-sm",
+        "text-foreground group pointer-events-auto relative flex flex-col rounded-lg border shadow-sm",
         dropHintClass(data.dropHint, data.groupSelected),
         !fill && "bg-muted"
       )}
@@ -357,6 +389,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
         className="!size-px !min-h-0 !min-w-0 !border-none !bg-transparent"
       />
       <GroupAddButton data={data} />
+      <ZoomToBranchButton data={data} />
       <button
         type="button"
         onClick={(event) => {
@@ -366,7 +399,7 @@ function SubdivisionNodeCard({ data }: { data: PositionNodeData }) {
         }}
         aria-expanded={!isCollapsed}
         aria-label={`${node.title} sub-division, ${roleCount} role${roleCount === 1 ? "" : "s"}. ${isCollapsed ? "Expand" : "Collapse"}.`}
-        className="focus-visible:ring-ring flex min-w-0 flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 py-[9px] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex min-w-0 flex-1 flex-col justify-center rounded-[calc(0.5rem-2px)] px-2.5 py-[7px] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {node.hasChildren ? (
@@ -581,7 +614,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         // is released without moving — so a click edits and a press-drag
         // re-parents, sharing one surface. The +/Delete/collapse controls stay
         // `nodrag` so they never start a drag.
-        className="focus-visible:ring-ring flex min-h-0 min-w-0 flex-1 flex-col rounded-t-[calc(0.5rem-2px)] px-2 pt-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        className="focus-visible:ring-ring flex min-h-0 min-w-0 flex-1 flex-col rounded-t-[calc(0.5rem-2px)] px-2 pt-[5px] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
         {/* Compact leadership card (Demo 1 feedback): role, then the
             person in it, then the level. Deliberately NOT shown — the
@@ -626,7 +659,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           left, the level (and sub-division) on the right — one row, so the
           card stays compact (docs/DECISIONS.md D30). */}
       <div
-        className="border-foreground/15 mx-2 mt-1.5 flex min-w-0 items-center justify-between gap-2 border-t pt-[3px] pb-1 leading-[1.4]"
+        className="border-foreground/15 mx-2 mt-1 flex min-w-0 items-center justify-between gap-2 border-t pt-[3px] pb-1 leading-[1.4]"
         style={{ borderTopColor: dividerColorOf(cardColor) }}
       >
         {node.hasChildren ? (
@@ -677,15 +710,23 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           </p>
         )}
         {node.jobGradeCode || node.jobFamilyName ? (
+          // The level code always shows in full (D53); only the sub-division
+          // name shortens with "…" when the footer is tight.
           <p
             className={cn(
               secondaryTextClass(cardBackground),
-              "min-w-0 truncate text-right text-[0.846em] font-semibold"
+              "flex min-w-0 justify-end text-[0.846em] font-semibold whitespace-nowrap"
             )}
           >
-            {node.jobGradeCode ? <span className="font-extrabold">{node.jobGradeCode}</span> : null}
-            {node.jobGradeCode && node.jobFamilyName ? " · " : null}
-            {node.jobFamilyName ?? null}
+            {node.jobGradeCode ? (
+              <span className="shrink-0 font-extrabold">{node.jobGradeCode}</span>
+            ) : null}
+            {node.jobFamilyName ? (
+              <span className="min-w-0 truncate">
+                {node.jobGradeCode ? "\u00a0· " : null}
+                {node.jobFamilyName}
+              </span>
+            ) : null}
           </p>
         ) : null}
       </div>

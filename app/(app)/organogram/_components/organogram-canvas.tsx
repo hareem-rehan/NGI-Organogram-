@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
+  MiniMap,
   Panel,
   ReactFlow,
   ReactFlowProvider,
@@ -67,6 +68,11 @@ const READABLE_OPEN_TIERS = 2;
  * chart is a pan away — rather than shrinking everything unreadably.
  */
 const READABLE_MIN_ZOOM = 0.75;
+/** "Zoom to branch" never zooms out further than this, so cards stay readable (D53). */
+const READABLE_BRANCH_ZOOM = 0.6;
+/** …nor in further than this, for a small branch. */
+const BRANCH_MAX_ZOOM = 1.25;
+
 /** Zoom levels offered in the zoom menu. */
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 /** Screen-space margin around the automatically framed area. */
@@ -616,6 +622,66 @@ function CanvasInner({
   // effect above); selection/collapse state is derived here on every
   // render instead of a second effect, so toggling a node never re-runs
   // ELK and never needs to synchronize two pieces of state.
+  // Zoom to a department's or sub-division's whole visible branch (D53).
+  const zoomToBranch = useCallback(
+    (nodeId: string) => {
+      const childrenOf = new Map<string, string[]>();
+      for (const edge of visibleEdges) {
+        const list = childrenOf.get(edge.sourcePositionId) ?? [];
+        list.push(edge.targetPositionId);
+        childrenOf.set(edge.sourcePositionId, list);
+      }
+      const branch = new Set<string>([nodeId]);
+      const queue = [nodeId];
+      while (queue.length > 0) {
+        for (const child of childrenOf.get(queue.shift()!) ?? []) {
+          if (!branch.has(child)) {
+            branch.add(child);
+            queue.push(child);
+          }
+        }
+      }
+      // Fit the branch, but never below a readable zoom: a tall branch is
+      // shown from its top at that zoom (scroll down for the rest).
+      const boxes = [...branch]
+        .map((id) => {
+          const p = placedPositions.get(id);
+          return p ? { ...p, ...sizeOf(id) } : null;
+        })
+        .filter((b): b is { x: number; y: number; width: number; height: number } => b !== null);
+      if (boxes.length === 0 || paneWidth <= 0 || paneHeight <= 0) return;
+      const minX = Math.min(...boxes.map((b) => b.x));
+      const maxX = Math.max(...boxes.map((b) => b.x + b.width));
+      const minY = Math.min(...boxes.map((b) => b.y));
+      const maxY = Math.max(...boxes.map((b) => b.y + b.height));
+      const fit = Math.min(
+        (paneWidth - 2 * FRAME_PADDING) / (maxX - minX),
+        (paneHeight - FRAME_TOP - FRAME_PADDING) / (maxY - minY)
+      );
+      const zoom = Math.min(BRANCH_MAX_ZOOM, Math.max(READABLE_BRANCH_ZOOM, fit));
+      if (fit >= READABLE_BRANCH_ZOOM) {
+        // The whole branch fits readably: centre it.
+        void setViewport(
+          {
+            x: paneWidth / 2 - ((minX + maxX) / 2) * zoom,
+            y: paneHeight / 2 - ((minY + maxY) / 2) * zoom,
+            zoom,
+          },
+          { duration: 300 }
+        );
+        return;
+      }
+      // Too big to fit readably: the clicked box at the top centre, its
+      // branch below it (scroll to see the rest).
+      const head = boxes[0]!;
+      void setViewport(
+        { x: paneWidth / 2 - (head.x + head.width / 2) * zoom, y: FRAME_TOP - head.y * zoom, zoom },
+        { duration: 300 }
+      );
+    },
+    [visibleEdges, placedPositions, sizeOf, paneWidth, paneHeight, setViewport]
+  );
+
   const flowNodes = useMemo<Node<PositionNodeData>[]>(
     () =>
       visibleNodes
@@ -649,6 +715,7 @@ function CanvasInner({
                 arrangeMode && selectedIds.size > 1 && selectedIds.has(node.positionId),
               textStyle: effectiveTextStyle(textStyles?.chart, textStyles?.cards[node.positionId]),
               size: cardSizes.get(node.positionId),
+              onZoomToBranch: zoomToBranch,
               // The root is never deletable from here — deleting it would take
               // the whole company with it. `undefined` hides the control.
               onRequestDelete: isRoot ? undefined : onRequestDelete,
@@ -680,6 +747,7 @@ function CanvasInner({
       textStyles,
       cardSizes,
       sizeOf,
+      zoomToBranch,
       selectedIds,
       onRequestDelete,
       dropHint,
@@ -746,6 +814,23 @@ function CanvasInner({
     >
       <Background />
       <Controls showInteractive={false} />
+      {/* Overview of the whole chart (D53): drag or click it to move around,
+          scroll on it to zoom — no more zooming out to find your place. */}
+      {paneWidth > 0 && paneHeight > 0 ? (
+        <MiniMap
+          position="bottom-right"
+          pannable
+          zoomable
+          ariaLabel="Chart overview"
+          className="!hidden rounded-md border shadow-sm md:!block"
+          style={{ width: 150, height: 96 }}
+          nodeColor={(node) =>
+            (node.data as PositionNodeData | undefined)?.cardColor?.fill ?? "#d4d4d8"
+          }
+          nodeStrokeWidth={0}
+          maskColor="rgba(240, 240, 240, 0.6)"
+        />
+      ) : null}
       <Panel position="top-left">
         <ZoomMenu onFit={() => fitView({ padding: 0.1, duration: 200 })} />
       </Panel>
