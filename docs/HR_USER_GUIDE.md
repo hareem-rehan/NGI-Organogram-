@@ -65,7 +65,7 @@ Departments group positions for reporting and for the organogram's color-coding.
 - **Search**: the box labeled "Search by name or code…" filters the list as you type.
 - **Add Department** (HR_EDITOR/ADMIN): opens a form with:
   - **Name** (required)
-  - **Code** (required — a short unique identifier; it's automatically compared without regard to upper/lower case, so "ENG" and "eng" are treated as the same code)
+  - There is no Code field: the app gives every new department a short code made from its name's initials ("Human Resources" → HR, "Delivery Org / Administration" → DOA; a one-word name uses its first three letters, "Engineering" → ENG). If that code is taken it adds a number (HR2). The code appears in the list and is what CSV imports use.
   - **Description** (optional)
   - **Color** (optional — used for the department's color coding on the organogram). Click one of the quick-pick circles (the first seven are the reference chart's colours), or **Custom colour…** to choose any colour from a full palette, or type a hex code. Pick one that's visually distinct from other departments; the chart automatically keeps the text on it readable.
   - **Parent department** (optional — pick this to make the new department a sub-department of an existing one, e.g. "Platform Engineering" under "Engineering")

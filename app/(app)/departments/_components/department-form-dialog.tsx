@@ -53,7 +53,6 @@ export function DepartmentFormDialog({
     resolver: zodResolver(createDepartmentSchema),
     defaultValues: {
       name: "",
-      code: "",
       description: null,
       color: null,
       hasIcLadder: true,
@@ -67,7 +66,6 @@ export function DepartmentFormDialog({
     setFormError(null);
     reset({
       name: department?.name ?? "",
-      code: department?.code ?? "",
       description: department?.description ?? null,
       color: department?.color ?? null,
       hasIcLadder: department?.hasIcLadder ?? true,
@@ -107,7 +105,6 @@ export function DepartmentFormDialog({
         ? await updateDepartmentAction({
             departmentId: department.id,
             name: values.name,
-            code: values.code,
             description: values.description,
             color: values.color,
             hasIcLadder: values.hasIcLadder,
@@ -160,15 +157,6 @@ export function DepartmentFormDialog({
 
           <Field label="Name" required error={errors.name?.message}>
             {(fieldProps) => <Input {...fieldProps} {...register("name")} autoFocus />}
-          </Field>
-
-          <Field
-            label="Code"
-            required
-            error={errors.code?.message}
-            hint="Trimmed and uppercased automatically."
-          >
-            {(fieldProps) => <Input {...fieldProps} {...register("code")} />}
           </Field>
 
           <Field label="Description" error={errors.description?.message}>

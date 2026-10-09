@@ -71,9 +71,6 @@ test.describe("Organogram search, filters, and focus (Phase 9)", () => {
       await page.getByRole("button", { name: /add department/i }).click();
       const dialog = page.getByRole("dialog");
       await dialog.getByLabel(/name/i).fill(name);
-      await dialog
-        .getByLabel(/code/i)
-        .fill(`E2E-SEARCHDEPT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
       await dialog.getByRole("button", { name: /create department/i }).click();
       await expect(dialog).toBeHidden();
     }

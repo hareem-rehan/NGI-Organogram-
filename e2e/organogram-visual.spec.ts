@@ -50,14 +50,12 @@ test.describe("Organogram visual regression", () => {
     await page.getByRole("button", { name: /add department/i }).click();
     let deptDialog = page.getByRole("dialog");
     await deptDialog.getByLabel(/name/i).fill("VR Dept");
-    await deptDialog.getByLabel(/code/i).fill("VR-DEPT-FIXED");
     await deptDialog.getByRole("button", { name: /create department/i }).click();
     await expect(deptDialog).toBeHidden();
 
     await page.getByRole("button", { name: /add department/i }).click();
     deptDialog = page.getByRole("dialog");
     await deptDialog.getByLabel(/name/i).fill("VR Dept Sales");
-    await deptDialog.getByLabel(/code/i).fill("VR-DEPT-SALES-FIXED");
     await deptDialog.getByRole("button", { name: /create department/i }).click();
     await expect(deptDialog).toBeHidden();
 

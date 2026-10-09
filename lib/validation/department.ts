@@ -40,7 +40,9 @@ const colorSchema = z
 export const createDepartmentSchema = z
   .object({
     name: nameSchema,
-    code: codeSchema,
+    // Optional since D51: the form no longer asks for it; the service
+    // generates one from the name. Imports still pass their own codes.
+    code: codeSchema.optional(),
     description: descriptionSchema,
     color: colorSchema,
     // Career ladders the department runs. Both true = IC + Manager; one true =
