@@ -58,16 +58,11 @@ import type { OrganogramEdge, OrganogramNode } from "@/lib/domain/organogram";
 import { chartCardColor, type FamilyColor } from "@/lib/domain/organogram-family-colors";
 
 /**
- * Display tiers framed on first open: the root and the department row, so
- * both are readable straight away (user request, 2026-10-02).
+ * The chart opens as an overview at this zoom (30%, user request 2026-10-09,
+ * D54): the whole top of the chart in view, centred, from the top down. A
+ * chart small enough to fit at a larger zoom opens fitted instead (up to 100%).
  */
-const READABLE_OPEN_TIERS = 2;
-/**
- * Automatic framing never goes smaller than this (75%). Below it the framing
- * centres on the root and department row at this size, and the rest of the
- * chart is a pan away — rather than shrinking everything unreadably.
- */
-const READABLE_MIN_ZOOM = 0.75;
+const OPEN_ZOOM = 0.3;
 /** "Zoom to branch" never zooms out further than this, so cards stay readable (D53). */
 const READABLE_BRANCH_ZOOM = 0.6;
 /** …nor in further than this, for a small branch. */
@@ -267,10 +262,6 @@ function CanvasInner({
     type Box = LayoutPosition & { width: number; height: number };
     const all = [...computed.keys()].map(boxOf).filter((b): b is Box => b !== undefined);
     if (all.length === 0) return;
-    const top = visibleNodes
-      .filter((n) => (n.displayDepth ?? n.organizationalLevel) <= READABLE_OPEN_TIERS)
-      .map((n) => boxOf(n.positionId))
-      .filter((b): b is Box => b !== undefined);
     const frame = (boxes: Box[]) => {
       const minX = Math.min(...boxes.map((p) => p.x));
       const maxX = Math.max(...boxes.map((p) => p.x + p.width));
@@ -282,39 +273,19 @@ function CanvasInner({
       );
       return { minX, maxX, minY, fitZoom };
     };
+    // The whole chart, fitted when it fits at 30% or more (never above 100%);
+    // otherwise at 30%, shown from the top and centred on the root and the
+    // department row, so every department is in view when that row fits.
     const whole = frame(all);
-    // The whole chart when it fits at a readable zoom; otherwise the top tiers
-    // (root, departments, their leaders) as large as they fit. If even those
-    // are too wide (since D48 each box is centred over its own branch, so a
-    // wide department sits far out), the root plus as many of the NEAREST
-    // department boxes as fit readably, so the chart never opens on empty space.
-    const nearestFit = (): Box[] => {
-      const roots = visibleNodes
-        .filter((n) => (n.displayDepth ?? n.organizationalLevel) <= 1)
-        .map((n) => boxOf(n.positionId))
-        .filter((b): b is Box => b !== undefined);
-      if (roots.length === 0) return top;
-      const rootCentre = roots.reduce((sum, b) => sum + b.x + b.width / 2, 0) / roots.length;
-      const rest = top
-        .filter((b) => !roots.includes(b))
-        .sort(
-          (a, b) =>
-            Math.abs(a.x + a.width / 2 - rootCentre) - Math.abs(b.x + b.width / 2 - rootCentre)
-        );
-      const chosen = [...roots];
-      for (const box of rest) {
-        if (frame([...chosen, box]).fitZoom < READABLE_MIN_ZOOM) break;
-        chosen.push(box);
-      }
-      return chosen;
-    };
+    const zoom = Math.min(1, Math.max(OPEN_ZOOM, whole.fitZoom));
+    const departmentRow = visibleNodes
+      .filter((n) => (n.displayDepth ?? n.organizationalLevel) <= 2)
+      .map((n) => boxOf(n.positionId))
+      .filter((b): b is Box => b !== undefined);
     const target =
-      whole.fitZoom >= READABLE_MIN_ZOOM || top.length === 0
+      whole.fitZoom >= OPEN_ZOOM || departmentRow.length === 0
         ? whole
-        : frame(top).fitZoom >= READABLE_MIN_ZOOM
-          ? frame(top)
-          : frame(nearestFit());
-    const zoom = Math.min(1, Math.max(READABLE_MIN_ZOOM, target.fitZoom));
+        : { ...frame(departmentRow), minY: whole.minY };
     requestAnimationFrame(() =>
       setViewport(
         {
