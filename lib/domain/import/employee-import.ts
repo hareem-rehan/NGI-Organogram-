@@ -38,6 +38,7 @@ export const EMPLOYEE_ALLOWED_COLUMNS = [
 export const EMPLOYEE_DENYLISTED_COLUMNS = [
   ...BASE_DENYLISTED_COLUMNS,
   "departmentCode",
+  "departmentName",
   "managerCode",
   "managerPositionCode",
   "jobGradeCode",

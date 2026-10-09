@@ -23,18 +23,14 @@ test.describe("Audit Log (Phase 12)", () => {
     await createDialog.getByLabel(/name/i).fill(name);
     await createDialog.getByRole("button", { name: /create department/i }).click();
     await expect(createDialog).toBeHidden();
-    // The code is generated from the name (D51); read it from the list.
-    const code = (
-      await page.getByRole("row").filter({ hasText: name }).getByRole("cell").nth(1).textContent()
-    )?.trim();
-    expect(code).toBeTruthy();
 
     await page.goto("/audit-log");
     await expect(page.getByRole("heading", { level: 1, name: "Audit Log" })).toBeVisible();
 
     await page.getByLabel("Category").selectOption("DEPARTMENT");
     await page.getByLabel("Entity type").fill("Department");
-    const row = page.getByRole("row", { name: new RegExp(`\\b${code}\\b`) }).first();
+    // Department events are labelled with the department's name (D52).
+    const row = page.getByRole("row", { name: new RegExp(name) }).first();
     await expect(row).toBeVisible();
 
     await row.getByRole("button", { name: "View Details" }).click();

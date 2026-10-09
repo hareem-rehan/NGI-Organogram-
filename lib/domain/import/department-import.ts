@@ -1,5 +1,6 @@
 import { findCycleInGraph } from "@/lib/domain/hierarchy";
 import { normalizeCode } from "@/lib/domain/normalize";
+import { departmentCodeFromName, firstFreeCode } from "@/lib/domain/department-code";
 
 import type { ParsedCsvFile } from "./csv";
 import { interpretFieldValue, isFormulaInjectionRisk } from "./csv";
@@ -15,15 +16,27 @@ import {
   type ValidationOutcome,
 } from "./types";
 
-export const DEPARTMENT_REQUIRED_COLUMNS = ["departmentCode", "departmentName"] as const;
+/**
+ * Departments are identified by NAME in CSVs (D52): codes are internal and
+ * generated. `departmentCode` / `parentDepartmentCode` are still accepted so
+ * files made before D52 keep working, but the template no longer has them.
+ */
+export const DEPARTMENT_REQUIRED_COLUMNS = ["departmentName"] as const;
 export const DEPARTMENT_ALLOWED_COLUMNS = [
-  "departmentCode",
   "departmentName",
   "description",
-  "parentDepartmentCode",
+  "parentDepartmentName",
   "color",
   "status",
+  // Legacy (before D52):
+  "departmentCode",
+  "parentDepartmentCode",
 ] as const;
+
+/** Case- and space-insensitive key for matching departments by name. */
+export function departmentNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toUpperCase();
+}
 
 const DEPARTMENT_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
@@ -109,20 +122,85 @@ export function validateDepartmentRows(
 ): ValidationOutcome<NormalizedDepartmentRow> {
   const issues: RowIssue[] = [...checkColumns(parsed.headers, DEPARTMENT_ALLOWED_COLUMNS)];
   const existingByCode = new Map(existing.map((d) => [d.code, d]));
+  const existingByName = new Map(existing.map((d) => [departmentNameKey(d.name), d]));
+  // Names that more than one existing department shares (allowed before
+  // D52): a CSV naming one of them would be ambiguous, so it is refused.
+  const nameCounts = new Map<string, number>();
+  for (const d of existing) {
+    const key = departmentNameKey(d.name);
+    nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+  }
+  const ambiguous = (name: string) => (nameCounts.get(departmentNameKey(name)) ?? 0) > 1;
+  const ambiguousIssue = (rowNumber: number, field: string, name: string) =>
+    issue(
+      rowNumber,
+      field,
+      "ERROR",
+      IMPORT_ERROR_CODES.UNKNOWN_REFERENCE,
+      `More than one department is called "${name.trim()}". Rename one in the app, then import again.`
+    );
   const drafts: RowDraft[] = [];
   const codeOccurrences = new Map<string, number[]>();
 
+  // Pre-pass (D52): every row's department code. A legacy file gives it; a
+  // name-based file gets the existing department's code when the name is
+  // already in use, or a new code generated from the name (unique across the
+  // company and this file; the same new name always gets the same code).
+  const taken = new Set(existing.map((d) => d.code.toUpperCase()));
+  const newCodeByName = new Map<string, string>();
+  const rowCode = new Map<number, string>();
+  const fileCodeByName = new Map<string, string>();
+  for (const row of parsed.rows) {
+    const legacy = (row.values.departmentCode ?? "").trim();
+    const name = (row.values.departmentName ?? "").trim();
+    let code: string | null = null;
+    if (legacy) code = normalizeCode(legacy);
+    else if (name) {
+      const key = departmentNameKey(name);
+      const found = existingByName.get(key);
+      if (found) code = found.code;
+      else {
+        code = newCodeByName.get(key) ?? firstFreeCode(departmentCodeFromName(name), taken);
+        newCodeByName.set(key, code);
+        taken.add(code.toUpperCase());
+      }
+    }
+    if (code) {
+      rowCode.set(row.rowNumber, code);
+      if (name && !fileCodeByName.has(departmentNameKey(name))) {
+        fileCodeByName.set(departmentNameKey(name), code);
+      }
+    }
+  }
+  // A department's name for messages and the preview (codes stay internal).
+  const nameOfCode = new Map<string, string>(existing.map((d) => [d.code, d.name]));
+  for (const row of parsed.rows) {
+    const code = rowCode.get(row.rowNumber);
+    const name = (row.values.departmentName ?? "").trim();
+    if (code && name && !existingByCode.has(code)) nameOfCode.set(code, name);
+  }
+  const labelOf = (code: string) => nameOfCode.get(code) ?? code;
+  const usesNames = !parsed.headers.includes("departmentCode");
+  const keyField = usesNames ? "departmentName" : "departmentCode";
+  const parentField = parsed.headers.includes("parentDepartmentName")
+    ? "parentDepartmentName"
+    : "parentDepartmentCode";
+
   for (const row of parsed.rows) {
     const rowIssues: RowIssue[] = [];
-    const codeRaw = row.values.departmentCode ?? "";
+    const codeRaw = rowCode.get(row.rowNumber) ?? "";
     const nameRaw = row.values.departmentName ?? "";
 
-    if (codeRaw.trim() === "") rowIssues.push(requiredFieldIssue(row.rowNumber, "departmentCode"));
+    if (!usesNames && (row.values.departmentCode ?? "").trim() === "")
+      rowIssues.push(requiredFieldIssue(row.rowNumber, "departmentCode"));
     if (nameRaw.trim() === "") rowIssues.push(requiredFieldIssue(row.rowNumber, "departmentName"));
+    if (usesNames && nameRaw.trim() !== "" && ambiguous(nameRaw))
+      rowIssues.push(ambiguousIssue(row.rowNumber, "departmentName", nameRaw));
 
     for (const [field, raw] of Object.entries({
       departmentName: nameRaw,
       description: row.values.description ?? "",
+      parentDepartmentName: row.values.parentDepartmentName ?? "",
       parentDepartmentCode: row.values.parentDepartmentCode ?? "",
       color: row.values.color ?? "",
     })) {
@@ -214,20 +292,45 @@ export function validateDepartmentRows(
       );
     }
 
-    const parentIntentRaw = interpretFieldValue(row.values.parentDepartmentCode ?? "");
+    const parentByName = parentField === "parentDepartmentName";
+    const parentIntentRaw = interpretFieldValue(row.values[parentField] ?? "");
     let parentIntent: ResolvedField<string> = { kind: "keep" };
     if (parentIntentRaw.kind === "clear" || parentIntentRaw.kind === "none") {
       parentIntent = { kind: "clear" };
     } else if (parentIntentRaw.kind === "value") {
-      parentIntent = { kind: "value", value: normalizeCode(parentIntentRaw.value) };
+      if (
+        parentByName &&
+        ambiguous(parentIntentRaw.value) &&
+        !fileCodeByName.has(departmentNameKey(parentIntentRaw.value))
+      ) {
+        rowIssues.push(ambiguousIssue(row.rowNumber, parentField, parentIntentRaw.value));
+      } else if (parentByName) {
+        // A parent named in this file or already in the company.
+        const key = departmentNameKey(parentIntentRaw.value);
+        const parentCode = fileCodeByName.get(key) ?? existingByName.get(key)?.code ?? null;
+        if (parentCode) parentIntent = { kind: "value", value: parentCode };
+        else {
+          rowIssues.push(
+            issue(
+              row.rowNumber,
+              parentField,
+              "ERROR",
+              IMPORT_ERROR_CODES.UNKNOWN_REFERENCE,
+              `${parentField} "${parentIntentRaw.value}" does not match any department in this file or company.`
+            )
+          );
+        }
+      } else {
+        parentIntent = { kind: "value", value: normalizeCode(parentIntentRaw.value) };
+      }
     } else if (parentIntentRaw.kind === "root") {
       rowIssues.push(
         issue(
           row.rowNumber,
-          "parentDepartmentCode",
+          parentField,
           "ERROR",
           IMPORT_ERROR_CODES.INVALID_FORMAT,
-          "parentDepartmentCode does not support __ROOT__ — use __NONE__ for a top-level department."
+          `${parentField} does not support __ROOT__ — use __NONE__ for a top-level department.`
         )
       );
     }
@@ -258,7 +361,7 @@ export function validateDepartmentRows(
       rowIssues.push(
         issue(
           row.rowNumber,
-          "parentDepartmentCode",
+          parentField,
           "ERROR",
           IMPORT_ERROR_CODES.SELF_REFERENCE,
           "A department cannot be its own parent."
@@ -283,7 +386,9 @@ export function validateDepartmentRows(
         : {
             code,
             existingId: existingByCode.get(code)?.id ?? null,
-            name: nameRaw.trim(),
+            // Matched by name: the name is the key, so keep its existing
+            // spelling rather than renaming to the file's capitalisation.
+            name: usesNames ? (existingByCode.get(code)?.name ?? nameRaw.trim()) : nameRaw.trim(),
             description: descriptionIntent,
             color: colorIntent,
             parentCode: parentIntent,
@@ -299,10 +404,12 @@ export function validateDepartmentRows(
       issues.push(
         issue(
           rowNumber,
-          "departmentCode",
+          keyField,
           "ERROR",
           IMPORT_ERROR_CODES.DUPLICATE_IN_FILE,
-          `departmentCode "${code}" appears more than once in this file.`
+          usesNames
+            ? `Department "${labelOf(code)}" appears more than once in this file.`
+            : `departmentCode "${code}" appears more than once in this file.`
         )
       );
       const draft = drafts.find((d) => d.rowNumber === rowNumber);
@@ -325,10 +432,10 @@ export function validateDepartmentRows(
         issues.push(
           issue(
             draft.rowNumber,
-            "parentDepartmentCode",
+            parentField,
             "ERROR",
             IMPORT_ERROR_CODES.UNKNOWN_REFERENCE,
-            `parentDepartmentCode "${parentCode.value}" does not match any department in this file or company.`
+            `${parentField} "${labelOf(parentCode.value)}" does not match any department in this file or company.`
           )
         );
         draft.hasError = true;
@@ -340,10 +447,12 @@ export function validateDepartmentRows(
       issues.push(
         issue(
           draft.rowNumber,
-          "departmentCode",
+          keyField,
           "ERROR",
           IMPORT_ERROR_CODES.CREATE_ONLY_CONFLICT,
-          `departmentCode "${draft.code}" already exists — CREATE_ONLY mode cannot update it.`
+          usesNames
+            ? `Department "${labelOf(draft.code)}" already exists — CREATE_ONLY mode cannot update it.`
+            : `departmentCode "${draft.code}" already exists — CREATE_ONLY mode cannot update it.`
         )
       );
       draft.hasError = true;
@@ -369,10 +478,12 @@ export function validateDepartmentRows(
       issues.push(
         issue(
           draft.rowNumber,
-          "parentDepartmentCode",
+          parentField,
           "ERROR",
           IMPORT_ERROR_CODES.HIERARCHY_CYCLE,
-          `This department is part of a parent-department cycle: ${cycle.join(" -> ")} -> ${cycle[0]}.`
+          `This department is part of a parent-department cycle: ${[...cycle, cycle[0]!]
+            .map(labelOf)
+            .join(" -> ")}.`
         )
       );
       draft.hasError = true;
@@ -386,6 +497,7 @@ export function validateDepartmentRows(
       return {
         rowNumber: draft.rowNumber,
         matchingCode: draft.code,
+        displayLabel: labelOf(draft.code),
         action: "ERROR",
         diffs: [],
         normalized: null,
@@ -396,6 +508,7 @@ export function validateDepartmentRows(
       return {
         rowNumber: draft.rowNumber,
         matchingCode: draft.code,
+        displayLabel: labelOf(draft.code),
         action: "CREATE",
         diffs: [],
         normalized: draft.normalized,
@@ -417,7 +530,11 @@ export function validateDepartmentRows(
       { field: "name", from: existingRow.name, to: proposedName },
       { field: "description", from: existingRow.description, to: proposedDescription },
       { field: "color", from: existingRow.color, to: proposedColor },
-      { field: "parentDepartmentCode", from: existingRow.parentCode, to: proposedParent },
+      {
+        field: "parentDepartment",
+        from: existingRow.parentCode === null ? null : labelOf(existingRow.parentCode),
+        to: proposedParent === null ? null : labelOf(proposedParent),
+      },
       { field: "status", from: existingRow.status, to: proposedStatus },
     ]
       .filter((d) => d.from !== d.to)
@@ -426,6 +543,7 @@ export function validateDepartmentRows(
     return {
       rowNumber: draft.rowNumber,
       matchingCode: draft.code,
+      displayLabel: labelOf(draft.code),
       action: diffs.length === 0 ? "UNCHANGED" : "UPDATE",
       diffs,
       normalized: draft.normalized,

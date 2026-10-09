@@ -94,9 +94,7 @@ export function OrganogramDetailsPanel({
           )}
         </dd>
         <dt className="text-muted-foreground">Department</dt>
-        <dd>
-          {node.departmentName} ({node.departmentCode})
-        </dd>
+        <dd>{node.departmentName}</dd>
         <dt className="text-muted-foreground">Organizational level</dt>
         <dd>{node.organizationalLevel}</dd>
         <dt className="text-muted-foreground">Sub-division</dt>

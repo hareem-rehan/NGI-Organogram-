@@ -211,7 +211,7 @@ describe("Department", () => {
     });
     expect(events).toHaveLength(1);
     expect(events[0]?.entityId).toBe(dept.id);
-    expect(events[0]?.entityDisplayReference).toBe("TEMP");
+    expect(events[0]?.entityDisplayReference).toBe("Temporary Team");
     expect(JSON.stringify(events[0]?.beforeData)).toContain("Temporary Team");
     expect(events[0]?.afterData).toBeNull();
   });
@@ -326,6 +326,22 @@ describe("Department", () => {
       code: "imp",
     });
     expect(imported.code).toBe("IMP");
+  });
+
+  it("refuses a department name already in use, ignoring case (D52)", async () => {
+    const company = await makeCompany();
+    await createDepartment({ companyId: company.id, name: "Human Resources" });
+    await expect(
+      createDepartment({ companyId: company.id, name: "human resources" })
+    ).rejects.toThrow('A department called "Human Resources" already exists.');
+    const other = await createDepartment({ companyId: company.id, name: "Finance" });
+    await expect(
+      updateDepartment({ companyId: company.id, departmentId: other.id, name: "HUMAN RESOURCES" })
+    ).rejects.toThrow(/already exists/);
+    // Renaming a department to its own name (or its own name in other case) is fine.
+    await expect(
+      updateDepartment({ companyId: company.id, departmentId: other.id, name: "finance" })
+    ).resolves.toMatchObject({ name: "finance" });
   });
 
   it("refuses to delete a department belonging to another company", async () => {

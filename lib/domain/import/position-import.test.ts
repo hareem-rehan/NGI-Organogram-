@@ -387,4 +387,70 @@ describe("validatePositionRows — coManagerPositionCode (second head, D27)", ()
     );
     expect(errorsOf(outcome)).toEqual([]);
   });
+
+  describe("department by name (D52)", () => {
+    const NAMED = [
+      { code: "EXEC", name: "Executive" },
+      { code: "ENG", name: "Engineering" },
+    ];
+
+    it("finds the department by its name, in any case", () => {
+      const parsed = csv(
+        "positionCode,positionTitle,departmentName,primaryManagerPositionCode\nP-1,CTO,engineering,__ROOT__\n"
+      );
+      const outcome = validatePositionRows(parsed, "UPSERT", [], NAMED, GRADES);
+      expect(outcome.issues.filter((i) => i.severity === "ERROR")).toEqual([]);
+      expect(outcome.rows[0]!.normalized!.departmentCode).toBe("ENG");
+    });
+
+    it("says plainly when a department name doesn't exist", () => {
+      const parsed = csv(
+        "positionCode,positionTitle,departmentName,primaryManagerPositionCode\nP-1,CTO,Nowhere,__ROOT__\n"
+      );
+      const outcome = validatePositionRows(parsed, "UPSERT", [], NAMED, GRADES);
+      expect(outcome.issues.map((i) => i.safeMessage)).toContain(
+        'departmentName "Nowhere" does not exist in this company.'
+      );
+    });
+
+    it("requires a department name (or a legacy code) on every row", () => {
+      const parsed = csv("positionCode,positionTitle,departmentName\nP-1,CTO,\n");
+      const outcome = validatePositionRows(parsed, "UPSERT", [], NAMED, GRADES);
+      expect(
+        outcome.issues.some((i) => i.field === "departmentName" && i.severity === "ERROR")
+      ).toBe(true);
+    });
+
+    it("shows a department change by name in the preview", () => {
+      const parsed = csv("positionCode,positionTitle,departmentName\nPOS-1,Title,Executive\n");
+      const outcome = validatePositionRows(
+        parsed,
+        "UPSERT",
+        [existing({ code: "POS-1", title: "Title", departmentCode: "ENG" })],
+        NAMED,
+        GRADES
+      );
+      expect(outcome.rows[0]!.diffs).toContainEqual({
+        field: "department",
+        currentValue: "Engineering",
+        proposedValue: "Executive",
+      });
+    });
+
+    it("refuses a department name two departments share", () => {
+      const parsed = csv(
+        "positionCode,positionTitle,departmentName,primaryManagerPositionCode\nP-1,CTO,Engineering,__ROOT__\n"
+      );
+      const outcome = validatePositionRows(
+        parsed,
+        "UPSERT",
+        [],
+        [...NAMED, { code: "ENG2", name: "engineering" }],
+        GRADES
+      );
+      expect(outcome.issues.map((i) => i.safeMessage)).toContain(
+        'More than one department is called "Engineering". Rename one in the app, then import again.'
+      );
+    });
+  });
 });

@@ -96,6 +96,66 @@ describe("CSV import service — end-to-end against a real database", () => {
     expect(executedUnchanged.job.unchangedCount).toBe(1);
   });
 
+  it("Department and Position imports by NAME, with no codes in the files (D52)", async () => {
+    const company = await makeCompany();
+    const user = await makeUser(company.id);
+
+    const departments = await runFullImport({
+      companyId: company.id,
+      userId: user.id,
+      importType: "DEPARTMENT",
+      importMode: "UPSERT",
+      csv: "departmentName,parentDepartmentName\nDelivery Org,\nPlatform Team,Delivery Org\n",
+    });
+    expect(departments.validated.status).toBe("VALIDATED");
+    await confirmImportJob(departments.validated.id, company.id, false);
+    expect((await executeImportJob(departments.validated.id, company.id)).job.status).toBe(
+      "COMPLETED"
+    );
+    const delivery = await testPrisma.department.findFirstOrThrow({
+      where: { companyId: company.id, name: "Delivery Org" },
+    });
+    const platform = await testPrisma.department.findFirstOrThrow({
+      where: { companyId: company.id, name: "Platform Team" },
+    });
+    expect(delivery.code).toBe("DO");
+    expect(platform.code).toBe("PT");
+    expect(platform.parentDepartmentId).toBe(delivery.id);
+
+    // A second file naming the same department (any case) updates it.
+    const update = await runFullImport({
+      companyId: company.id,
+      userId: user.id,
+      importType: "DEPARTMENT",
+      importMode: "UPSERT",
+      csv: "departmentName,color\nplatform team,#16a34a\n",
+    });
+    expect(update.validated.updateCount).toBe(1);
+    await confirmImportJob(update.validated.id, company.id, false);
+    await executeImportJob(update.validated.id, company.id);
+    const recoloured = await testPrisma.department.findUniqueOrThrow({
+      where: { id: platform.id },
+    });
+    expect(recoloured.color).toBe("#16a34a");
+    expect(recoloured.name).toBe("Platform Team");
+
+    // Positions name their department too.
+    const positions = await runFullImport({
+      companyId: company.id,
+      userId: user.id,
+      importType: "POSITION",
+      importMode: "UPSERT",
+      csv: "positionCode,positionTitle,departmentName,primaryManagerPositionCode\nP-ROOT,COO,Delivery Org,__ROOT__\n",
+    });
+    expect(positions.validated.status).toBe("VALIDATED");
+    await confirmImportJob(positions.validated.id, company.id, false);
+    await executeImportJob(positions.validated.id, company.id);
+    const coo = await testPrisma.position.findFirstOrThrow({
+      where: { companyId: company.id, positionCode: "P-ROOT" },
+    });
+    expect(coo.departmentId).toBe(delivery.id);
+  });
+
   it("a full import records IMPORT_VALIDATED then IMPORT_EXECUTED audit events, correlated by the job id, attributed to the requesting user, and never storing raw CSV content", async () => {
     const company = await makeCompany();
     const user = await makeUser(company.id);

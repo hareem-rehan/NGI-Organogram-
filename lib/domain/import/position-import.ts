@@ -1,5 +1,6 @@
 import { findCycleInHeadGraph } from "@/lib/domain/hierarchy";
 import { normalizeCode } from "@/lib/domain/normalize";
+import { departmentNameKey } from "./department-import";
 
 import type { ParsedCsvFile } from "./csv";
 import { interpretFieldValue, isFormulaInjectionRisk } from "./csv";
@@ -15,15 +16,17 @@ import {
   type ValidationOutcome,
 } from "./types";
 
-export const POSITION_REQUIRED_COLUMNS = [
-  "positionCode",
-  "positionTitle",
-  "departmentCode",
-] as const;
+/**
+ * The department is given by NAME (D52); a file made before D52 may still
+ * give `departmentCode` instead. One of the two is required per row.
+ */
+export const POSITION_REQUIRED_COLUMNS = ["positionCode", "positionTitle"] as const;
 export const POSITION_ALLOWED_COLUMNS = [
   "positionCode",
   "positionTitle",
   "description",
+  "departmentName",
+  // Legacy (before D52):
   "departmentCode",
   "jobGradeCode",
   "primaryManagerPositionCode",
@@ -71,6 +74,8 @@ export interface ExistingPositionSnapshot {
 
 export interface ExistingDepartmentCodeLookup {
   code: string;
+  /** For matching by name (D52) and naming the department in the preview. */
+  name?: string;
 }
 export interface ExistingJobGradeCodeLookup {
   code: string;
@@ -131,6 +136,15 @@ export function validatePositionRows(
   const issues: RowIssue[] = [...checkColumns(parsed.headers, POSITION_ALLOWED_COLUMNS)];
   const existingByCode = new Map(existing.map((p) => [p.code, p]));
   const departmentCodes = new Set(existingDepartments.map((d) => d.code));
+  const departmentByName = new Map<string, string | null>();
+  for (const d of existingDepartments) {
+    if (!d.name) continue;
+    const key = departmentNameKey(d.name);
+    // null marks a name more than one department shares (ambiguous).
+    departmentByName.set(key, departmentByName.has(key) ? null : d.code);
+  }
+  const departmentLabel = (code: string | null) =>
+    code === null ? null : (existingDepartments.find((d) => d.code === code)?.name ?? code);
   const jobGradeCodes = new Set(existingJobGrades.map((g) => g.code));
   const drafts: RowDraft[] = [];
   const codeOccurrences = new Map<string, number[]>();
@@ -139,18 +153,46 @@ export function validatePositionRows(
     const rowIssues: RowIssue[] = [];
     const codeRaw = row.values.positionCode ?? "";
     const titleRaw = row.values.positionTitle ?? "";
-    const departmentCodeRaw = row.values.departmentCode ?? "";
+    const departmentNameRaw = row.values.departmentName ?? "";
+    const legacyDepartmentCode = row.values.departmentCode ?? "";
+    const byName = departmentNameRaw.trim() !== "" || legacyDepartmentCode.trim() === "";
+    // The department as its internal code: from its name (D52), or as given by a legacy file.
+    const nameMatch = byName
+      ? departmentByName.get(departmentNameKey(departmentNameRaw))
+      : undefined;
+    const departmentCodeRaw = byName ? (nameMatch ?? "") : legacyDepartmentCode;
 
     if (codeRaw.trim() === "") rowIssues.push(requiredFieldIssue(row.rowNumber, "positionCode"));
     if (titleRaw.trim() === "") rowIssues.push(requiredFieldIssue(row.rowNumber, "positionTitle"));
-    if (departmentCodeRaw.trim() === "")
-      rowIssues.push(requiredFieldIssue(row.rowNumber, "departmentCode"));
+    if (departmentNameRaw.trim() === "" && legacyDepartmentCode.trim() === "")
+      rowIssues.push(requiredFieldIssue(row.rowNumber, "departmentName"));
+    else if (byName && nameMatch === null)
+      rowIssues.push(
+        issue(
+          row.rowNumber,
+          "departmentName",
+          "ERROR",
+          IMPORT_ERROR_CODES.UNKNOWN_REFERENCE,
+          `More than one department is called "${departmentNameRaw.trim()}". Rename one in the app, then import again.`
+        )
+      );
+    else if (byName && departmentCodeRaw === "")
+      rowIssues.push(
+        issue(
+          row.rowNumber,
+          "departmentName",
+          "ERROR",
+          IMPORT_ERROR_CODES.UNKNOWN_REFERENCE,
+          `departmentName "${departmentNameRaw.trim()}" does not exist in this company.`
+        )
+      );
 
     for (const [field, raw] of Object.entries({
       positionTitle: titleRaw,
       description: row.values.description ?? "",
       location: row.values.location ?? "",
-      departmentCode: departmentCodeRaw,
+      departmentName: departmentNameRaw,
+      departmentCode: legacyDepartmentCode,
       jobGradeCode: row.values.jobGradeCode ?? "",
       primaryManagerPositionCode: row.values.primaryManagerPositionCode ?? "",
       coManagerPositionCode: row.values.coManagerPositionCode ?? "",
@@ -679,7 +721,11 @@ export function validatePositionRows(
       { field: "title", from: existingRow.title, to: proposedTitle },
       { field: "description", from: existingRow.description, to: proposedDescription },
       { field: "location", from: existingRow.location, to: proposedLocation },
-      { field: "departmentCode", from: existingRow.departmentCode, to: proposedDepartment },
+      {
+        field: "department",
+        from: departmentLabel(existingRow.departmentCode),
+        to: departmentLabel(proposedDepartment),
+      },
       { field: "jobGradeCode", from: existingRow.jobGradeCode, to: proposedJobGrade },
       {
         field: "primaryManagerPositionCode",

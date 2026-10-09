@@ -208,7 +208,7 @@ async function fetchPositionSnapshots(
   db: DbClient
 ): Promise<{
   positions: ExistingPositionSnapshotForImport[];
-  departmentCodes: { code: string }[];
+  departmentCodes: { code: string; name: string }[];
   jobGradeCodes: { code: string }[];
 }> {
   const [positions, departments, jobGrades] = await Promise.all([
@@ -237,7 +237,7 @@ async function fetchPositionSnapshots(
         : null,
       status: p.status === "PLANNED" ? "ACTIVE" : p.status,
     })),
-    departmentCodes: departments.map((d) => ({ code: normalizeCode(d.code) })),
+    departmentCodes: departments.map((d) => ({ code: normalizeCode(d.code), name: d.name })),
     jobGradeCodes: jobGrades.map((g) => ({ code: normalizeCode(g.code) })),
   };
 }
@@ -895,7 +895,7 @@ async function applyDepartmentCreatesBulk(
           category: "DEPARTMENT",
           entityType: "Department",
           entityId: department.id,
-          entityDisplayReference: department.code,
+          entityDisplayReference: department.name,
           after: department,
         });
       }

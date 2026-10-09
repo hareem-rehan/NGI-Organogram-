@@ -67,7 +67,8 @@ describe("DepartmentsView", () => {
     render(<DepartmentsView canManage={false} />);
 
     expect(await screen.findByText("Engineering")).toBeInTheDocument();
-    expect(screen.getByText("ENG")).toBeInTheDocument();
+    // Codes are internal and never shown (D52).
+    expect(screen.queryByText("ENG")).not.toBeInTheDocument();
   });
 
   it("shows the empty state when there are no departments", async () => {

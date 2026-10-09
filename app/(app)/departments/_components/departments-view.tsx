@@ -171,7 +171,7 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
                 setPage(1);
                 setSearch(event.target.value);
               }}
-              placeholder="Search by name or code…"
+              placeholder="Search by name…"
               className="sm:w-64"
             />
           </div>
@@ -230,9 +230,6 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
                   Name
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
-                  Code
-                </th>
-                <th scope="col" className="px-4 py-2 text-left font-medium">
                   Parent
                 </th>
                 <th scope="col" className="px-4 py-2 text-left font-medium">
@@ -260,7 +257,6 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
                       <span className="font-medium">{department.name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-2">{department.code}</td>
                   <td className="px-4 py-2">
                     {allDepartments.find(
                       (candidate) => candidate.id === department.parentDepartmentId
@@ -353,7 +349,7 @@ export function DepartmentsView({ canManage }: DepartmentsViewProps) {
           open={deleteDialog.open}
           onOpenChange={deleteDialog.setOpen}
           title="Delete department?"
-          description={`${deleteTarget.name} (${deleteTarget.code}) will be permanently removed. This cannot be undone. A department can only be deleted while it is empty — if it still has positions, sub-departments or sub-divisions, deactivate it instead.`}
+          description={`${deleteTarget.name} will be permanently removed. This cannot be undone. A department can only be deleted while it is empty — if it still has positions, sub-departments or sub-divisions, deactivate it instead.`}
           confirmLabel="Delete"
           destructive
           pending={deletePending}

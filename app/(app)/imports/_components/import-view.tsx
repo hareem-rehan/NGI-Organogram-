@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { cn } from "@/lib/utils";
 import type { ImportJob, ImportRowIssue } from "@prisma/client";
 import { AlertTriangle, CheckCircle2, Download, Upload } from "lucide-react";
 
@@ -33,6 +34,7 @@ const IMPORT_TYPE_OPTIONS: { value: ImportType; label: string }[] = [
 interface DisplayRowPlanEntry {
   rowNumber: number;
   matchingCode: string;
+  displayLabel?: string;
   action: "CREATE" | "UPDATE" | "UNCHANGED" | "ERROR";
   diffs: { field: string; currentValue: string | null; proposedValue: string | null }[];
 }
@@ -421,7 +423,7 @@ export function ImportView() {
                         Row
                       </th>
                       <th scope="col" className="px-3 py-2 text-left font-medium">
-                        Code
+                        Item
                       </th>
                       <th scope="col" className="px-3 py-2 text-left font-medium">
                         Action
@@ -437,7 +439,14 @@ export function ImportView() {
                       return (
                         <tr key={row.rowNumber} className="border-border border-t align-top">
                           <td className="px-3 py-2">{row.rowNumber}</td>
-                          <td className="px-3 py-2 font-mono text-xs">{row.matchingCode}</td>
+                          <td
+                            className={cn(
+                              "px-3 py-2",
+                              row.displayLabel ? "text-sm" : "font-mono text-xs"
+                            )}
+                          >
+                            {row.displayLabel ?? row.matchingCode}
+                          </td>
                           <td className="px-3 py-2">
                             <Badge
                               variant={

@@ -34,6 +34,8 @@ export interface FieldDiff {
 export interface RowPlanEntry<T> {
   rowNumber: number;
   matchingCode: string;
+  /** What the preview shows for this row when the key is internal (a department's name, D52). */
+  displayLabel?: string;
   action: RowAction;
   diffs: FieldDiff[];
   normalized: T | null;
