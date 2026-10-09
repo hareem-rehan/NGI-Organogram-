@@ -77,8 +77,8 @@ describe("cardSizeFor", () => {
   });
 
   it("grows with a larger text size", () => {
-    const base = cardSizeFor({ ...position, title: "VP Startup and Ventures" });
-    const big = cardSizeFor({ ...position, title: "VP Startup and Ventures" }, { fontSize: 20 });
+    const base = cardSizeFor({ ...position, title: "Head of Ventures" });
+    const big = cardSizeFor({ ...position, title: "Head of Ventures" }, { fontSize: 20 });
     expect(big.height).toBeGreaterThan(base.height);
     expect(big.width).toBe(base.width); // wraps rather than widening
     expect(big.titleLines).toBeGreaterThan(base.titleLines);
@@ -113,5 +113,29 @@ describe("equalizeRowHeights", () => {
     expect(out.get("a")).toEqual({ width: 188, height: 71, titleLines: 1 });
     expect(out.get("b")!.height).toBe(71);
     expect(out.get("c")!.height).toBe(53);
+  });
+});
+
+describe("a word too wide for the card (D53)", () => {
+  it("widens the card just enough for the word instead of clipping it", () => {
+    const heading = cardSizeFor(
+      {
+        kind: "department",
+        title: "",
+        departmentName: "Delivery Org / Administration",
+        roleCount: 3,
+        hasChildren: true,
+      },
+      { fontSize: 15 }
+    );
+    expect(heading.width).toBeGreaterThan(CARD_WIDTH);
+    const normal = cardSizeFor({
+      kind: "department",
+      title: "",
+      departmentName: "Human Resources",
+      roleCount: 3,
+      hasChildren: true,
+    });
+    expect(normal.width).toBe(CARD_WIDTH);
   });
 });

@@ -187,7 +187,8 @@ test.describe("Organogram — sub-department reorder", () => {
     // Start again with exactly these two: click empty space to clear, then
     // Shift+click each box (the box above may also catch a card between them).
     const pane = (await page.locator(".react-flow").boundingBox())!;
-    await page.mouse.click(pane.x + pane.width - 40, pane.y + pane.height - 40);
+    // Empty canvas on the right, clear of the mini-map in the bottom corner.
+    await page.mouse.click(pane.x + pane.width - 30, pane.y + pane.height / 2);
     await expect(product).not.toHaveClass(/selected/);
     await page.keyboard.down("Shift");
     await product.click({ position: { x: 20, y: a.height - 10 } });

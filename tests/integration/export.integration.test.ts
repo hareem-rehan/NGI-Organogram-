@@ -235,7 +235,9 @@ describe("export.service", () => {
       departmentId: wideDept.id,
       parentPositionId: wideRoot.id,
       parentLevel: 1,
-      count: 300,
+      // Wide enough to exceed the tile-page limit even with the compact
+      // layout (D53: 168px cards, 24px gaps).
+      count: 400,
       jobGradeId: wideGrade.id,
     });
 
@@ -360,7 +362,9 @@ describe("export.service", () => {
       departmentId: wideDept.id,
       parentPositionId: wideRoot.id,
       parentLevel: 1,
-      count: 300,
+      // Wide enough to exceed the tile-page limit even with the compact
+      // layout (D53: 168px cards, 24px gaps).
+      count: 400,
       jobGradeId: auditGrade.id,
     });
 

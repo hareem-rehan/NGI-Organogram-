@@ -68,8 +68,9 @@ test.describe("Organogram — department segregation", () => {
     bands.sort((a, b) => a.left - b.left);
     for (let i = 1; i < bands.length; i++) {
       const gap = bands[i]!.left - bands[i - 1]!.right;
-      // Clearly wider than the 24px gap between two cards of one department.
-      expect(gap, `${bands[i - 1]!.name} → ${bands[i]!.name}`).toBeGreaterThanOrEqual(100);
+      // Clearly wider (over three times) than the 24px gap between two cards
+      // of one department (D53: 2 × 28px department padding + 24px).
+      expect(gap, `${bands[i - 1]!.name} → ${bands[i]!.name}`).toBeGreaterThanOrEqual(72);
     }
 
     await page.getByRole("button", { name: /fit to view/i }).click();
