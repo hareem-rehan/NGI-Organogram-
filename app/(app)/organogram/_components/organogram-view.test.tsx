@@ -41,6 +41,9 @@ vi.mock("@/app/(app)/positions/actions", () => ({
 vi.mock("@/app/(app)/departments/actions", () => ({
   reorderDepartmentsAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
 }));
+vi.mock("@/app/(app)/career-framework/actions", () => ({
+  reorderJobFamiliesAction: vi.fn().mockResolvedValue({ ok: true, data: null }),
+}));
 vi.mock("@/app/(app)/organogram/export-actions", () => ({
   requestExportAction: vi.fn(),
   getExportJobAction: vi.fn(),

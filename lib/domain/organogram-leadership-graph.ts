@@ -174,7 +174,10 @@ function makeDepartmentNode(args: {
  * family the position already belongs to (the sub-division continues rather
  * than begins), are left directly under the position.
  */
-function insertSubdivisionTier(baseNodes: readonly OrganogramNode[]): OrganogramNode[] {
+function insertSubdivisionTier(
+  baseNodes: readonly OrganogramNode[],
+  subdivisionRank: ReadonlyMap<string, number>
+): OrganogramNode[] {
   // Direct children of each node (in the already-parented base tree).
   const childrenByParent = new Map<string, OrganogramNode[]>();
   for (const node of baseNodes) {
@@ -239,8 +242,14 @@ function insertSubdivisionTier(baseNodes: readonly OrganogramNode[]): Organogram
     // (Refines D25, which only grouped when reports spanned 2+ sub-divisions.)
     const familyEntries = [...byFamily.entries()]
       .filter(([familyId]) => familyId !== parent.jobFamilyId)
-      // Deterministic order: by sub-division name, then id.
-      .sort((a, b) => a[1].name.localeCompare(b[1].name) || a[0].localeCompare(b[0]));
+      // Deterministic order: the saved sub-division order (D55), then name, then id.
+      .sort(
+        (a, b) =>
+          (subdivisionRank.get(a[0]) ?? Number.MAX_SAFE_INTEGER) -
+            (subdivisionRank.get(b[0]) ?? Number.MAX_SAFE_INTEGER) ||
+          a[1].name.localeCompare(b[1].name) ||
+          a[0].localeCompare(b[0])
+      );
     if (familyEntries.length === 0) continue;
     for (const [familyId, bucket] of familyEntries) {
       const groupId = subdivisionGroupId(parent.positionId, familyId);
@@ -298,7 +307,9 @@ export function projectLeadershipGraph(
     parentDepartmentId?: string | null;
     /** Saved left-to-right order (D33). */
     displayOrder?: number | null;
-  }[] = []
+  }[] = [],
+  /** Sub-division (job family) ids in their saved left-to-right order (D55); unlisted ones go last, by name. */
+  subdivisionOrder: readonly string[] = []
 ): LeadershipGraph {
   const view = buildLeadershipView(nodes, options, allDepartments);
 
@@ -378,7 +389,8 @@ export function projectLeadershipGraph(
   // when that head is itself on this chart and isn't already the node's
   // displayed parent — never a dangling or duplicate line.
   const onChart = new Set(baseNodes.map((node) => node.positionId));
-  const allNodes = insertSubdivisionTier(baseNodes).map((node) => {
+  const subdivisionRank = new Map(subdivisionOrder.map((id, index) => [id, index]));
+  const allNodes = insertSubdivisionTier(baseNodes, subdivisionRank).map((node) => {
     const co = node.coReportsToPositionId ?? null;
     const keep = co !== null && onChart.has(co) && co !== node.primaryReportsToPositionId;
     return keep ? node : { ...node, coReportsToPositionId: null };
@@ -422,6 +434,11 @@ export function projectLeadershipGraph(
     }
   }
 
+  const subdivisionRankOf = (node: OrganogramNode): number =>
+    node.kind === "subdivision" && node.jobFamilyId
+      ? (subdivisionRank.get(node.jobFamilyId) ?? Number.MAX_SAFE_INTEGER)
+      : Number.MAX_SAFE_INTEGER;
+
   const projectedNodes = allNodes
     .map((node): OrganogramNode => {
       const displayChildCount =
@@ -443,6 +460,8 @@ export function projectLeadershipGraph(
         // Department boxes keep the saved left-to-right order (D33).
         (departmentRank.get(a.positionId) ?? Number.MAX_SAFE_INTEGER) -
           (departmentRank.get(b.positionId) ?? Number.MAX_SAFE_INTEGER) ||
+        // Sub-division boxes keep the saved left-to-right order too (D55).
+        subdivisionRankOf(a) - subdivisionRankOf(b) ||
         a.title.localeCompare(b.title) ||
         a.positionCode.localeCompare(b.positionCode)
     );

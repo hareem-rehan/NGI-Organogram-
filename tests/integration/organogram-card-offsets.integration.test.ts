@@ -40,21 +40,30 @@ describe("organogram card offsets", () => {
     expect(await listCardOffsets(company.id)).toEqual({});
   });
 
-  it("accepts department and sub-division boxes of this company", async () => {
+  it("refuses to place department and sub-division boxes, and ignores old placements (D55)", async () => {
     const { company, dept, root } = await chart();
     const family = await testPrisma.jobFamily.create({
       data: { companyId: company.id, departmentId: dept.id, code: "QA", name: "QA" },
     });
-    await saveCardOffset({ companyId: company.id, nodeKey: `dept:${dept.id}`, dx: 10, dy: 0 });
-    await saveCardOffset({
-      companyId: company.id,
-      nodeKey: `subdiv:${root.id}:${family.id}`,
-      dx: 0,
-      dy: 40,
+    const deptKey = `dept:${dept.id}`;
+    const subdivKey = `subdiv:${root.id}:${family.id}`;
+    await expect(
+      saveCardOffset({ companyId: company.id, nodeKey: deptKey, dx: 10, dy: 0 })
+    ).rejects.toBeInstanceOf(DomainValidationError);
+    await expect(
+      saveCardOffset({ companyId: company.id, nodeKey: subdivKey, dx: 0, dy: 40 })
+    ).rejects.toBeInstanceOf(DomainValidationError);
+
+    // Placements saved before D55 are skipped, so those boxes sit in the
+    // automatic layout on screen and in exports.
+    await testPrisma.organogramCardOffset.createMany({
+      data: [
+        { companyId: company.id, nodeKey: deptKey, dx: 10, dy: 0 },
+        { companyId: company.id, nodeKey: subdivKey, dx: 0, dy: 40 },
+      ],
     });
-    expect(Object.keys(await listCardOffsets(company.id)).sort()).toEqual(
-      [`dept:${dept.id}`, `subdiv:${root.id}:${family.id}`].sort()
-    );
+    await saveCardOffset({ companyId: company.id, nodeKey: root.id, dx: 5, dy: 5 });
+    expect(await listCardOffsets(company.id)).toEqual({ [root.id]: { dx: 5, dy: 5 } });
   });
 
   it("refuses a card from another company, and malformed keys", async () => {
@@ -70,7 +79,8 @@ describe("organogram card offsets", () => {
         dx: 1,
         dy: 1,
       })
-    ).rejects.toBeInstanceOf(CrossCompanyError);
+      // Box keys are refused outright now (D55), whoever's box it is.
+    ).rejects.toBeInstanceOf(DomainValidationError);
     await expect(
       saveCardOffset({ companyId: mine.company.id, nodeKey: "not-a-card", dx: 1, dy: 1 })
     ).rejects.toBeInstanceOf(DomainValidationError);

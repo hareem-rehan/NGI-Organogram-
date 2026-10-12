@@ -60,7 +60,7 @@ Also done on staging (data, not code), with scripts kept in `scripts/`:
      - Tech Lead: Maha Dev, Affan Younus.
 
      Add one position per extra person if each needs their own seat.
-2. **Tidy hand-placed cards on staging.** Cards dragged before D48/D49/D53 keep their old offsets, which no longer line up with the new automatic layout, so their lines bend. In Arrange mode, **Reset positions** fixes it, and **Undo** can bring them back.
+2. **Tidy hand-placed cards on staging.** Position cards dragged before D48/D49/D53 keep their old offsets, which no longer line up with the new automatic layout, so their lines bend. In Arrange mode, **Reset positions** fixes it, and **Undo** can bring them back. (Department and sub-division boxes no longer need this: since D55 their old placements are ignored automatically.)
 3. **Check department names on staging.** Since D52 names are unique. Older data may have two departments with the same name; an import naming one of them is refused until one is renamed.
 4. **Old separate IT department** (if still there): delete it. The IT sub-division under Delivery Org replaces it, and #49 made empty departments deletable.
 5. **Security housekeeping:**

@@ -66,6 +66,21 @@ export const deleteJobFamilySchema = z.object({ jobFamilyId: z.string().uuid() }
 
 // ── Career track ──────────────────────────────────────────────────────
 
+/**
+ * The organogram's drag-to-reorder for sub-division boxes (docs/DECISIONS.md
+ * D55): the sibling sub-divisions under one position, in their new
+ * left-to-right order. Unique ids, capped.
+ */
+export const reorderJobFamiliesSchema = z
+  .object({
+    orderedJobFamilyIds: z
+      .array(z.string().uuid())
+      .min(1)
+      .max(500)
+      .refine((ids) => new Set(ids).size === ids.length, "Each sub-division may appear only once."),
+  })
+  .strict();
+
 export const createCareerTrackSchema = z
   .object({
     jobFamilyId: z.string().uuid(),

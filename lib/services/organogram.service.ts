@@ -3,6 +3,7 @@ import "server-only";
 import { findCompanyById } from "@/lib/repositories/company.repository";
 import { getOrganogramRawData } from "@/lib/repositories/organogram.repository";
 import { listDepartmentsForCompany } from "@/lib/repositories/department.repository";
+import { listJobFamiliesForCompany } from "@/lib/repositories/career-framework.repository";
 import {
   analyzeOrganogramSafety,
   buildOrganogramGraph,
@@ -176,10 +177,14 @@ export async function getOrganogramChartData(
       displayOrder: d.displayOrder,
     }));
 
+  // Sub-divisions come back in their saved order (D55), then by name.
+  const subdivisionOrder = (await listJobFamiliesForCompany(input.companyId)).map((f) => f.id);
+
   const { nodes, edges, summary } = projectLeadershipGraph(
     full.nodes,
     DEFAULT_LEADERSHIP_VIEW_OPTIONS,
-    activeDepartments
+    activeDepartments,
+    subdivisionOrder
   );
   const [cardOffsets, textStyles] = await Promise.all([
     listCardOffsets(input.companyId),

@@ -3,7 +3,6 @@ import { test, expect, type Page } from "@playwright/test";
 import { seedAuthenticatedSession } from "./support/seed-session";
 import {
   readCardOffsetKeys,
-  readDepartmentId,
   readDepartmentOrder,
   seedSubDepartmentChart,
 } from "./support/department-layout-fixtures";
@@ -81,10 +80,13 @@ test.describe("Organogram — sub-department reorder", () => {
     expect((await project.boundingBox())!.x).toBeLessThan((await product.boundingBox())!.x);
   });
 
-  test("a box dropped on empty space stays there for everyone, alone; Reset positions puts it back", async ({
+  test("a box let go in empty space takes that slot; its branch moves with it; Undo puts it back (D55)", async ({
     page,
   }) => {
-    const productKey = `dept:${await readDepartmentId(companyId, `Product ${suffix}`)}`;
+    const order = async () =>
+      (await readDepartmentOrder(companyId)).filter(
+        (n) => n === `Product ${suffix}` || n === `Project ${suffix}`
+      );
     await page.goto("/organogram");
     await page.getByRole("button", { name: /arrange/i }).click();
     const product = box(page, `Product ${suffix}`);
@@ -92,48 +94,49 @@ test.describe("Organogram — sub-department reorder", () => {
     const manager = box(page, `Product Manager ${suffix}`);
     await expect(manager).toBeVisible();
     await settle(page);
+    expect(await order()).toEqual([`Project ${suffix}`, `Product ${suffix}`]);
 
+    // Straight up, off the row: no new slot, so nothing changes and the box
+    // snaps back — it is never placed on its own.
     const start = (await product.boundingBox())!;
-    // Measured against Project (which is not dragged), so the "Reset positions"
-    // button appearing above the chart and shifting the canvas doesn't count.
-    const managerFromProject = async () =>
-      (await manager.boundingBox())!.y - (await project.boundingBox())!.y;
-    const managerStart = await managerFromProject();
-    const productFromProject = async () =>
-      (await product.boundingBox())!.y - (await project.boundingBox())!.y;
-    // Straight down, well clear of every other card: an empty-space drop.
     await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
     await page.mouse.down();
     await page.mouse.move(start.x + start.width / 2, start.y - start.height * 1.5, { steps: 15 });
     await page.mouse.up();
+    await expect
+      .poll(async () => Math.abs((await product.boundingBox())!.y - start.y))
+      .toBeLessThan(2);
+    expect(await readCardOffsetKeys(companyId)).toEqual([]);
 
-    // Only that box moved; its manager card stayed put.
-    await expect.poll(productFromProject).toBeLessThan(-20);
-    expect(Math.abs((await managerFromProject()) - managerStart)).toBeLessThan(2);
-    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([productKey]);
+    // Into the empty space LEFT of Project: Product becomes first.
+    const left = (await project.boundingBox())!;
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(left.x - left.width, start.y + start.height / 2, { steps: 20 });
+    await page.mouse.up();
+    await expect.poll(order).toEqual([`Product ${suffix}`, `Project ${suffix}`]);
+    expect(await readCardOffsetKeys(companyId)).toEqual([]);
 
-    // Saved for everyone: still above its row after a reload. Polled, because
-    // the chart lays itself out a moment after the page loads.
-    await page.reload();
-    await expect(product).toBeVisible();
-    await expect(project).toBeVisible();
+    // The whole branch moved: Product is left of Project, in the same row,
+    // and its manager is centred under it. Polled: the chart lays itself out
+    // again a moment after the order is saved.
     await expect
       .poll(async () => {
-        const [p, q] = [await product.boundingBox(), await project.boundingBox()];
-        return p && q ? q.y - p.y : 0;
+        const p = (await product.boundingBox())!;
+        const q = (await project.boundingBox())!;
+        const m = (await manager.boundingBox())!;
+        return {
+          productFirst: p.x < q.x,
+          sameRow: Math.abs(p.y - q.y) < 2,
+          managerCentred: Math.abs(m.x + m.width / 2 - (p.x + p.width / 2)) < 4,
+        };
       })
-      .toBeGreaterThan(10);
+      .toEqual({ productFirst: true, sameRow: true, managerCentred: true });
+    await page.screenshot({ path: "test-results/d55-after-reorder.png" });
 
-    // Reset positions puts it back in line with Project.
-    await page.getByRole("button", { name: /arrange/i }).click();
-    await page.getByRole("button", { name: "Reset positions" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Reset positions" }).click();
-    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([]);
-    await expect
-      .poll(async () =>
-        Math.abs((await product.boundingBox())!.y - (await project.boundingBox())!.y)
-      )
-      .toBeLessThan(2);
+    // One Undo step puts the order back.
+    await page.getByRole("button", { name: "Undo: Reorder departments" }).click();
+    await expect.poll(order).toEqual([`Project ${suffix}`, `Product ${suffix}`]);
   });
 
   test("+ on a sub-department box opens Add Position for that department, reporting to its manager", async ({
@@ -156,11 +159,9 @@ test.describe("Organogram — sub-department reorder", () => {
     await dialog.getByRole("button", { name: /cancel/i }).click();
   });
 
-  test("Shift+drag selects several boxes, and dragging one moves the whole group (placed only)", async ({
+  test("Shift+drag selects several boxes; a group drag never places department boxes (D55)", async ({
     page,
   }) => {
-    const productKey = `dept:${await readDepartmentId(companyId, `Product ${suffix}`)}`;
-    const projectKey = `dept:${await readDepartmentId(companyId, `Project ${suffix}`)}`;
     await page.goto("/organogram");
     await page.getByRole("button", { name: /arrange/i }).click();
     const product = box(page, `Product ${suffix}`);
@@ -197,22 +198,23 @@ test.describe("Organogram — sub-department reorder", () => {
     await expect(product).toHaveClass(/selected/);
     await expect(project).toHaveClass(/selected/);
 
-    // Drag one of them: both move by the same amount, and both are saved.
-    // Sideways into the empty space right of the chart: straight down would
-    // land on their own managers' row, and the no-overlap rule (D43) would
-    // then rightly nudge a card aside.
-    const gapBefore = b.x - a.x;
+    // Drag one of them: department boxes are never hand-placed (D55), so
+    // both snap back, nothing is saved, and the order is unchanged. Measured
+    // against the CDS head (not selected), since a long drag can pan the view.
+    const head = box(page, `CDS Head ${suffix}`);
+    const fromHead = async (target: typeof product) =>
+      (await target.boundingBox())!.x - (await head.boundingBox())!.x;
+    const productBefore = await fromHead(product);
+    const projectBefore = await fromHead(project);
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
     await page.mouse.down();
     await page.mouse.move(a.x + a.width / 2 + 400, a.y + a.height / 2, { steps: 15 });
     await page.mouse.up();
-    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([productKey, projectKey].sort());
-    const a2 = (await product.boundingBox())!;
-    const b2 = (await project.boundingBox())!;
-    expect(Math.abs(a2.x - a.x)).toBeGreaterThan(40);
-    expect(Math.abs(b2.y - a2.y - (b.y - a.y))).toBeLessThan(2);
-    expect(Math.abs(b2.x - a2.x - gapBefore)).toBeLessThan(2);
-    // A group move never changes the order (no reporting change either).
+    await expect
+      .poll(async () => Math.abs((await fromHead(product)) - productBefore))
+      .toBeLessThan(2);
+    expect(Math.abs((await fromHead(project)) - projectBefore)).toBeLessThan(2);
+    expect(await readCardOffsetKeys(companyId)).toEqual([]);
     expect(
       (await readDepartmentOrder(companyId)).filter(
         (n) => n === `Product ${suffix}` || n === `Project ${suffix}`

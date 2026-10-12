@@ -69,6 +69,7 @@ import type { DropVerdict } from "@/lib/domain/organogram-drag";
 import type { CardOffset } from "@/lib/domain/organogram-card-offsets";
 import { addPositionPrefill } from "@/lib/domain/add-position-prefill";
 import { reorderDepartmentsAction } from "@/app/(app)/departments/actions";
+import { reorderJobFamiliesAction } from "@/app/(app)/career-framework/actions";
 import { isBelowThreshold } from "@/lib/domain/organogram-leadership";
 import { computeFilterMatchIds, isAnyFilterActive } from "@/lib/domain/organogram-filters";
 import {
@@ -576,39 +577,34 @@ export function OrganogramView({
     })();
   }, [data, resetDialog, refreshAfterMutation, restoreOffsets, pushUndo]);
 
-  // Arrange mode: a department box dropped onto a sibling department box
-  // takes its place in the order (D33), then the chart redraws.
-  const handleReorderDepartments = useCallback(
-    (orderedDepartmentIds: string[], draggedNodeKey: string, previousOrderedIds?: string[]) => {
+  // Arrange mode: a department, sub-department or sub-division box dragged to
+  // a new spot in its row takes that place in the order (D33, D55); the chart
+  // is laid out again, so its whole branch moves with it. One Undo step.
+  const handleReorderBoxes = useCallback(
+    (kind: "department" | "subdivision", orderedIds: string[], previousOrderedIds: string[]) => {
       setDropNotice(null);
-      const previousOffset = data?.cardOffsets[draggedNodeKey];
+      const save = (ids: string[]) =>
+        kind === "department"
+          ? reorderDepartmentsAction({ orderedDepartmentIds: ids })
+          : reorderJobFamiliesAction({ orderedJobFamilyIds: ids });
       void (async () => {
-        await clearPlacement(draggedNodeKey);
-        const result = await reorderDepartmentsAction({ orderedDepartmentIds });
+        const result = await save(orderedIds);
         if (!result.ok) {
           setDropNotice(result.error);
           return;
         }
-        if (previousOrderedIds) {
-          pushUndo({
-            label: "Reorder departments",
-            run: async () => {
-              const back = await reorderDepartmentsAction({
-                orderedDepartmentIds: previousOrderedIds,
-              });
-              if (!back.ok) return back.error;
-              const error = previousOffset
-                ? await restoreOffsets({ [draggedNodeKey]: previousOffset })
-                : null;
-              refreshAfterMutation();
-              return error;
-            },
-          });
-        }
+        pushUndo({
+          label: kind === "department" ? "Reorder departments" : "Reorder sub-divisions",
+          run: async () => {
+            const back = await save(previousOrderedIds);
+            refreshAfterMutation();
+            return back.ok ? null : back.error;
+          },
+        });
         refreshAfterMutation();
       })();
     },
-    [data, refreshAfterMutation, clearPlacement, pushUndo, restoreOffsets]
+    [refreshAfterMutation, pushUndo]
   );
 
   const confirmMove = useCallback(() => {
@@ -1148,9 +1144,10 @@ export function OrganogramView({
           Arrange mode — drag any card and let go on empty space to place it there (everyone sees
           it). Let go with the pointer over another card to change who it reports to, or over a
           department heading to move it into that department; its whole branch moves with it. The
-          card under the pointer is outlined before you let go. Drop a department box onto another
-          department box to swap their order. Hold Shift and drag across empty space (or
-          Shift+click) to select several cards, then drag one of them to move the group. Use{" "}
+          card under the pointer is outlined before you let go. Drag a department or sub-division
+          box left or right to change its place in the row; everything under it moves along. Hold
+          Shift and drag across empty space (or Shift+click) to select several cards, then drag one
+          of them to move the group. Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
           the trash icon to delete, and click a card to edit it.
         </p>
@@ -1315,7 +1312,7 @@ export function OrganogramView({
                 arrangeMode={arrangeMode}
                 onReparent={handleReparent}
                 onInvalidDrop={setDropNotice}
-                onReorderDepartments={handleReorderDepartments}
+                onReorderBoxes={handleReorderBoxes}
                 cardOffsets={data.cardOffsets}
                 onPlaceCard={handlePlaceCard}
                 onPlaceCards={handlePlaceCards}

@@ -37,6 +37,16 @@ export function parseCardNodeKey(nodeKey: string): ParsedNodeKey | null {
   return { kind: "position", positionId: nodeKey };
 }
 
+/**
+ * Department, sub-department and sub-division boxes are never hand-placed
+ * (D55): dragging one reorders it among its siblings, its whole branch
+ * moving with it. Offsets saved for them before D55 are ignored.
+ */
+export function isGroupingNodeKey(nodeKey: string): boolean {
+  const parsed = parseCardNodeKey(nodeKey);
+  return parsed !== null && parsed.kind !== "position";
+}
+
 /** Automatic positions with each saved offset added; cards without one are unchanged. */
 export function applyCardOffsets<P extends { x: number; y: number }>(
   positions: ReadonlyMap<string, P>,
@@ -66,6 +76,44 @@ export function departmentOrderAfterDrop(
   const next = orderedIds.filter((id) => id !== draggedId);
   next.splice(to, 0, draggedId);
   return next;
+}
+
+/**
+ * A grouping box (department, sub-department or sub-division) let go anywhere
+ * in its row takes the slot its centre landed in (D55): it goes before the
+ * first sibling whose centre is to the right of the drop, else last. The
+ * siblings are given left to right by their current centre x. Returns ids in
+ * the new order; unchanged if the dragged id is not in the row.
+ */
+export function orderAfterDropAt(
+  row: readonly { id: string; centerX: number }[],
+  draggedId: string,
+  dropCenterX: number
+): string[] {
+  const ids = row.map((r) => r.id);
+  if (!ids.includes(draggedId)) return ids;
+  const others = row.filter((r) => r.id !== draggedId);
+  const index = others.findIndex((r) => r.centerX > dropCenterX);
+  const next = others.map((r) => r.id);
+  next.splice(index === -1 ? next.length : index, 0, draggedId);
+  return next;
+}
+
+/**
+ * Re-sorts some members of a longer list without disturbing the rest (D55):
+ * the reordered ids take over exactly the slots they held, in their new
+ * order. Used for sub-divisions, whose saved order is company-wide while a
+ * drag only reorders the boxes under one position. Ids in `reordered` that
+ * are not in `full` are ignored.
+ */
+export function reorderWithinSlots(
+  full: readonly string[],
+  reordered: readonly string[]
+): string[] {
+  const inFull = new Set(full);
+  const queue = reordered.filter((id) => inFull.has(id));
+  const moving = new Set(queue);
+  return full.map((id) => (moving.has(id) ? queue.shift()! : id));
 }
 
 /**

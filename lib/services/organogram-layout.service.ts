@@ -3,7 +3,11 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
 import { CrossCompanyError, DomainValidationError } from "@/lib/domain/errors";
-import { parseCardNodeKey, type CardOffset } from "@/lib/domain/organogram-card-offsets";
+import {
+  isGroupingNodeKey,
+  parseCardNodeKey,
+  type CardOffset,
+} from "@/lib/domain/organogram-card-offsets";
 import {
   CHART_STYLE_KEY,
   compactTextStyle,
@@ -20,7 +24,11 @@ import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service"
  * an organizational level.
  */
 
-/** Every saved offset for the company, keyed by chart node id. */
+/**
+ * Every saved offset for the company, keyed by chart node id. Offsets left on
+ * department / sub-division boxes from before D55 are skipped: those boxes
+ * always sit where the automatic layout puts them.
+ */
 export async function listCardOffsets(
   companyId: string,
   db: DbClient = prisma
@@ -29,7 +37,11 @@ export async function listCardOffsets(
     where: { companyId },
     select: { nodeKey: true, dx: true, dy: true },
   });
-  return Object.fromEntries(rows.map((r) => [r.nodeKey, { dx: r.dx, dy: r.dy }]));
+  return Object.fromEntries(
+    rows
+      .filter((r) => !isGroupingNodeKey(r.nodeKey))
+      .map((r) => [r.nodeKey, { dx: r.dx, dy: r.dy }])
+  );
 }
 
 /** The node key must name a card that really exists in this company. */
@@ -56,6 +68,11 @@ export async function saveCardOffset(
   input: { companyId: string; nodeKey: string; dx: number; dy: number },
   db: DbClient = prisma
 ): Promise<void> {
+  if (isGroupingNodeKey(input.nodeKey)) {
+    throw new DomainValidationError(
+      "Department and sub-division boxes can't be placed by hand; drag one to reorder it instead."
+    );
+  }
   await assertNodeKeyInCompany(input.nodeKey, input.companyId, db);
   const dx = Math.round(input.dx);
   const dy = Math.round(input.dy);
