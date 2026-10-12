@@ -62,8 +62,22 @@ describe("organogram card offsets", () => {
         { companyId: company.id, nodeKey: subdivKey, dx: 0, dy: 40 },
       ],
     });
-    await saveCardOffset({ companyId: company.id, nodeKey: root.id, dx: 5, dy: 5 });
-    expect(await listCardOffsets(company.id)).toEqual({ [root.id]: { dx: 5, dy: 5 } });
+    await saveCardOffset({ companyId: company.id, nodeKey: root.id, dx: 200, dy: 50 });
+    expect(await listCardOffsets(company.id)).toEqual({ [root.id]: { dx: 200, dy: 50 } });
+  });
+
+  it("also skips position cards that were group-dragged with a box (D55)", async () => {
+    const { company, dept, root, child } = await chart();
+    await testPrisma.organogramCardOffset.createMany({
+      data: [
+        // Box and the card dragged with it: the same shift, give or take a nudge.
+        { companyId: company.id, nodeKey: `dept:${dept.id}`, dx: -900, dy: -1 },
+        { companyId: company.id, nodeKey: child.id, dx: -902, dy: 4 },
+        // A card placed on its own keeps its spot.
+        { companyId: company.id, nodeKey: root.id, dx: 120, dy: 0 },
+      ],
+    });
+    expect(await listCardOffsets(company.id)).toEqual({ [root.id]: { dx: 120, dy: 0 } });
   });
 
   it("refuses a card from another company, and malformed keys", async () => {

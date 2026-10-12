@@ -27,7 +27,10 @@ import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service"
 /**
  * Every saved offset for the company, keyed by chart node id. Offsets left on
  * department / sub-division boxes from before D55 are skipped: those boxes
- * always sit where the automatic layout puts them.
+ * always sit where the automatic layout puts them. So are position cards that
+ * were group-dragged together with such a box (their saved shift matches the
+ * box's): otherwise they would be left stranded beside the box that snapped
+ * back.
  */
 export async function listCardOffsets(
   companyId: string,
@@ -37,12 +40,31 @@ export async function listCardOffsets(
     where: { companyId },
     select: { nodeKey: true, dx: true, dy: true },
   });
+  // Only a real move can be told apart from a coincidence.
+  const boxShifts = rows.filter(
+    (r) =>
+      isGroupingNodeKey(r.nodeKey) &&
+      Math.max(Math.abs(r.dx), Math.abs(r.dy)) > 2 * GROUP_SHIFT_TOLERANCE
+  );
+  const movedWithABox = (r: { dx: number; dy: number }) =>
+    boxShifts.some(
+      (b) =>
+        Math.abs(b.dx - r.dx) <= GROUP_SHIFT_TOLERANCE &&
+        Math.abs(b.dy - r.dy) <= GROUP_SHIFT_TOLERANCE
+    );
   return Object.fromEntries(
     rows
-      .filter((r) => !isGroupingNodeKey(r.nodeKey))
+      .filter((r) => !isGroupingNodeKey(r.nodeKey) && !movedWithABox(r))
       .map((r) => [r.nodeKey, { dx: r.dx, dy: r.dy }])
   );
 }
+
+/**
+ * How close (px) a card's saved shift must be to an ignored box's for the two
+ * to count as one group drag. A group drag saves the same shift for every
+ * card, give or take the few pixels the no-overlap nudge (D43) adds.
+ */
+const GROUP_SHIFT_TOLERANCE = 8;
 
 /** The node key must name a card that really exists in this company. */
 async function assertNodeKeyInCompany(nodeKey: string, companyId: string, db: DbClient) {
