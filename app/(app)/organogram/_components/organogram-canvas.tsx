@@ -34,6 +34,8 @@ import { effectiveTextStyle, type TextStyle } from "@/lib/domain/organogram-text
 import {
   placeCards,
   departmentOrderAfterDrop,
+  isGroupingNodeKey,
+  orderAfterDropAt,
   type CardOffset,
 } from "@/lib/domain/organogram-card-offsets";
 import {
@@ -132,13 +134,14 @@ interface OrganogramCanvasProps {
   /** A refused drop (onto itself, a subordinate, or a sub-division box), with the reason. */
   onInvalidDrop?: (reason: string) => void;
   /**
-   * A department box was dropped onto a sibling department box (D33, D38):
-   * the department ids of that row in their new order, and the dragged box.
+   * A department, sub-department or sub-division box was dragged to a new
+   * spot in its row (D33, D55): the department (or sub-division) ids of that
+   * row in their new order, and the order before.
    */
-  onReorderDepartments?: (
-    orderedDepartmentIds: string[],
-    draggedNodeKey: string,
-    previousOrderedIds?: string[]
+  onReorderBoxes?: (
+    kind: "department" | "subdivision",
+    orderedIds: string[],
+    previousOrderedIds: string[]
   ) => void;
   /**
    * Saved card offsets from the automatic layout, keyed by node id (D38).
@@ -180,7 +183,7 @@ function CanvasInner({
   arrangeMode = false,
   onReparent,
   onInvalidDrop,
-  onReorderDepartments,
+  onReorderBoxes,
   cardOffsets = NO_OFFSETS,
   onPlaceCard,
   onPlaceCards,
@@ -495,12 +498,13 @@ function CanvasInner({
       if (!arrangeMode) return;
 
       // A selected group is only ever placed, wherever it is let go: reporting
-      // lines never change from a group drag.
+      // lines never change from a group drag. Department and sub-division
+      // boxes in the group snap back — they are never hand-placed (D55).
       if (nodes && nodes.length > 1) {
         const moves: { nodeKey: string; dx: number; dy: number }[] = [];
         for (const moved of nodes) {
           const auto = positions.get(moved.id);
-          if (auto) {
+          if (auto && !isGroupingNodeKey(moved.id)) {
             moves.push({
               nodeKey: moved.id,
               dx: moved.position.x - auto.x,
@@ -524,30 +528,35 @@ function CanvasInner({
         releaseDrag(node.id);
       };
 
-      // A department box dropped ONTO a sibling department box takes its
-      // place in the order (D33), the whole department moving with it.
-      if (dragged?.kind === "department") {
+      // A department, sub-department or sub-division box is never placed by
+      // hand (D55): wherever it is let go in its row, it takes that slot
+      // among its siblings — dropped ONTO a sibling box it takes that box's
+      // place (D33) — and the chart is laid out again, so its whole branch
+      // moves with it and it hangs from the one shared line.
+      if (dragged?.kind === "department" || dragged?.kind === "subdivision") {
+        releaseDrag(node.id);
+        const kind = dragged.kind;
+        const groupIdOf = (n: OrganogramNode) =>
+          kind === "department" ? n.departmentId : (n.jobFamilyId ?? "");
+        const siblings = visibleNodes
+          .filter(
+            (n) =>
+              n.kind === kind && n.primaryReportsToPositionId === dragged.primaryReportsToPositionId
+          )
+          .map((n) => {
+            const at = placedPositions.get(n.positionId) ?? { x: 0, y: 0 };
+            return { id: groupIdOf(n), centerX: at.x + sizeOf(n.positionId).width / 2 };
+          })
+          .sort((a, b) => a.centerX - b.centerX);
+        const row = siblings.map((s) => s.id);
+        const draggedId = groupIdOf(dragged);
         const target = targetUnderPointer(event, node);
-        if (
-          target?.kind === "department" &&
+        const next =
+          target?.kind === kind &&
           target.primaryReportsToPositionId === dragged.primaryReportsToPositionId
-        ) {
-          const row = visibleNodes
-            .filter(
-              (n) =>
-                n.kind === "department" &&
-                n.primaryReportsToPositionId === dragged.primaryReportsToPositionId
-            )
-            .map((n) => n.departmentId);
-          onReorderDepartments?.(
-            departmentOrderAfterDrop(row, dragged.departmentId, target.departmentId),
-            node.id,
-            row
-          );
-          releaseDrag(node.id);
-          return;
-        }
-        place();
+            ? departmentOrderAfterDrop(row, draggedId, groupIdOf(target))
+            : orderAfterDropAt(siblings, draggedId, node.position.x + sizeOf(node.id).width / 2);
+        if (next.some((id, i) => id !== row[i])) onReorderBoxes?.(kind, next, row);
         return;
       }
 
@@ -567,7 +576,7 @@ function CanvasInner({
       arrangeMode,
       onReparent,
       onInvalidDrop,
-      onReorderDepartments,
+      onReorderBoxes,
       onPlaceCard,
       onPlaceCards,
       releaseDrag,
@@ -576,6 +585,8 @@ function CanvasInner({
       nodeById,
       visibleNodes,
       positions,
+      placedPositions,
+      sizeOf,
     ]
   );
 

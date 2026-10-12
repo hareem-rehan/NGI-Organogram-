@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   applyCardOffsets,
   departmentOrderAfterDrop,
+  isGroupingNodeKey,
+  orderAfterDropAt,
   parseCardNodeKey,
   placeCards,
+  reorderWithinSlots,
 } from "./organogram-card-offsets";
 
 const A = "11111111-1111-4111-8111-111111111111";
@@ -102,5 +105,52 @@ describe("placeCards / resolveOverlaps (cards never overlap)", () => {
     const ps = [...out.values()];
     for (let i = 0; i < ps.length; i++)
       for (let j = i + 1; j < ps.length; j++) expect(overlapping(ps[i]!, ps[j]!)).toBe(false);
+  });
+});
+
+describe("orderAfterDropAt (D55)", () => {
+  const row = [
+    { id: "cds", centerX: 100 },
+    { id: "hr", centerX: 300 },
+    { id: "fin", centerX: 500 },
+    { id: "mkt", centerX: 700 },
+  ];
+  it("puts the box before the first sibling to the right of the drop", () => {
+    // Client Delivery Services let go between Finance and Marketing → third.
+    expect(orderAfterDropAt(row, "cds", 600)).toEqual(["hr", "fin", "cds", "mkt"]);
+  });
+  it("moves a box to the very front or the very end", () => {
+    expect(orderAfterDropAt(row, "fin", 0)).toEqual(["fin", "cds", "hr", "mkt"]);
+    expect(orderAfterDropAt(row, "cds", 5000)).toEqual(["hr", "fin", "mkt", "cds"]);
+  });
+  it("keeps the order when the box is let go near where it was", () => {
+    expect(orderAfterDropAt(row, "hr", 320)).toEqual(["cds", "hr", "fin", "mkt"]);
+  });
+  it("leaves the row alone for an id that is not in it", () => {
+    expect(orderAfterDropAt(row, "it", 0)).toEqual(["cds", "hr", "fin", "mkt"]);
+  });
+});
+
+describe("reorderWithinSlots (D55)", () => {
+  it("swaps only the given ids among the slots they held", () => {
+    expect(reorderWithinSlots(["a", "b", "c", "d", "e"], ["d", "b"])).toEqual([
+      "a",
+      "d",
+      "c",
+      "b",
+      "e",
+    ]);
+  });
+  it("ignores ids outside the list and keeps everything else in place", () => {
+    expect(reorderWithinSlots(["a", "b", "c"], ["x", "c", "a"])).toEqual(["c", "b", "a"]);
+  });
+});
+
+describe("isGroupingNodeKey (D55)", () => {
+  it("is true for department and sub-division boxes only", () => {
+    expect(isGroupingNodeKey(`dept:${A}`)).toBe(true);
+    expect(isGroupingNodeKey(`subdiv:${A}:${B}`)).toBe(true);
+    expect(isGroupingNodeKey(A)).toBe(false);
+    expect(isGroupingNodeKey("not-a-key")).toBe(false);
   });
 });

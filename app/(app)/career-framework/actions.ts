@@ -13,6 +13,7 @@ import {
   deleteCareerTrack,
   deleteJobFamily,
   deleteLevelMappingEntry,
+  reorderJobFamilies,
   updateJobFamily,
 } from "@/lib/services/career-framework.service";
 import {
@@ -29,6 +30,7 @@ import {
   deleteCareerTrackSchema,
   deleteJobFamilySchema,
   deleteLevelMappingEntrySchema,
+  reorderJobFamiliesSchema,
   updateJobFamilySchema,
 } from "@/lib/validation/career-framework";
 
@@ -69,6 +71,23 @@ export async function updateJobFamilyAction(input: unknown): Promise<ActionResul
     const user = await requirePermission("career:manage");
     const values = updateJobFamilySchema.parse(input);
     return updateJobFamily({ companyId: user.companyId, actor: toAuditActor(user), ...values });
+  });
+}
+
+/**
+ * Saves a new left-to-right order for sibling sub-division boxes, from the
+ * organogram's Arrange mode (docs/DECISIONS.md D55).
+ */
+export async function reorderJobFamiliesAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("career:manage");
+    const { orderedJobFamilyIds } = reorderJobFamiliesSchema.parse(input);
+    await reorderJobFamilies({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      orderedJobFamilyIds,
+    });
+    return null;
   });
 }
 

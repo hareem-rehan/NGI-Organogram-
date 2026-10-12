@@ -5,6 +5,7 @@ import { Prisma as PrismaNamespace } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
 import { normalizeCode } from "@/lib/domain/normalize";
+import { reorderWithinSlots } from "@/lib/domain/organogram-card-offsets";
 import { ConflictError, CrossCompanyError, NotFoundError } from "@/lib/domain/errors";
 import { findDepartmentById } from "@/lib/repositories/department.repository";
 import { findJobGradeById } from "@/lib/repositories/job-grade.repository";
@@ -150,6 +151,58 @@ export async function updateJobFamily(
       tx
     );
     return updated;
+  });
+}
+
+/**
+ * Saves a new left-to-right order for some sub-divisions (docs/DECISIONS.md
+ * D55) — the boxes under one position on the organogram. The company-wide
+ * order is kept for everything else: the given sub-divisions swap among the
+ * slots they already held, then every sub-division is numbered 1..n so the
+ * order is fully explicit from then on. Only changed rows are written and
+ * audit-logged.
+ */
+export async function reorderJobFamilies(
+  input: { companyId: string; actor?: AuditActor; orderedJobFamilyIds: readonly string[] },
+  db: DbClient = prisma
+): Promise<void> {
+  await withTransaction(db, async (tx) => {
+    const all = await tx.jobFamily.findMany({
+      where: { companyId: input.companyId },
+      orderBy: [{ displayOrder: "asc" }, { name: "asc" }, { id: "asc" }],
+    });
+    const byId = new Map(all.map((f) => [f.id, f]));
+    if (input.orderedJobFamilyIds.some((id) => !byId.has(id))) {
+      throw new NotFoundError("JobFamily", "one or more of the reordered sub-divisions");
+    }
+    const next = reorderWithinSlots(
+      all.map((f) => f.id),
+      input.orderedJobFamilyIds
+    );
+    for (const [index, jobFamilyId] of next.entries()) {
+      const before = byId.get(jobFamilyId)!;
+      const displayOrder = index + 1;
+      if (before.displayOrder === displayOrder) continue;
+      const after = await tx.jobFamily.update({
+        where: { id: jobFamilyId },
+        data: { displayOrder },
+      });
+      await recordAuditEvent(
+        {
+          companyId: input.companyId,
+          actor: input.actor ?? "SYSTEM",
+          action: "UPDATED",
+          category: "CAREER_FRAMEWORK",
+          entityType: "JobFamily",
+          entityId: jobFamilyId,
+          entityDisplayReference: after.code,
+          before,
+          after,
+          metadata: { reordered: true },
+        },
+        tx
+      );
+    }
   });
 }
 

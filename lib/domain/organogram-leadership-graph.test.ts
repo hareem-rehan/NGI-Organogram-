@@ -511,6 +511,18 @@ describe("projectLeadershipGraph — sub-division tier", () => {
     expect(qa.departmentMemberCount).toBe(1);
   });
 
+  it("orders sibling sub-division boxes by the saved order, then by name (D55)", () => {
+    const subdivisionOrder = (result: ReturnType<typeof projectLeadershipGraph>) =>
+      result.nodes.filter((n) => n.kind === "subdivision").map((n) => n.jobFamilyId);
+    const nodes = withHeadAndReports([DEVOPS, QA]);
+    // No saved order: by name (DevOps before QA).
+    expect(subdivisionOrder(projectLeadershipGraph(nodes, opts(), engDepts))).toEqual([DEVOPS, QA]);
+    // Saved order wins over the name.
+    expect(subdivisionOrder(projectLeadershipGraph(nodes, opts(), engDepts, [QA, DEVOPS]))).toEqual(
+      [QA, DEVOPS]
+    );
+  });
+
   it("inserts a single card where one sub-division begins under a position not in it", () => {
     // The head has no family; its reports are all DevOps. The sub-division
     // begins here, so it gets a labelled box (matches the reference chart's

@@ -10,6 +10,7 @@ import {
   deleteLevelMappingEntry,
   ensureCareerTrackOfKind,
   ensureDefaultTrack,
+  reorderJobFamilies,
   updateJobFamily,
 } from "@/lib/services/career-framework.service";
 import { ConflictError, CrossCompanyError, NotFoundError } from "@/lib/domain/errors";
@@ -128,6 +129,52 @@ describe("career-framework.service — job family", () => {
 
     expect(await testPrisma.careerTrack.count({ where: { jobFamilyId: family.id } })).toBe(0);
     expect(await testPrisma.levelMappingEntry.count({ where: { jobFamilyId: family.id } })).toBe(0);
+  });
+});
+
+describe("career-framework.service — sub-division order (D55)", () => {
+  async function families() {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const make = (name: string) =>
+      createJobFamily({ companyId: company.id, departmentId: dept.id, name, code: name });
+    const [a, b, c, d] = [await make("A"), await make("B"), await make("C"), await make("D")];
+    return { company, a, b, c, d };
+  }
+  const order = async (companyId: string) =>
+    (
+      await testPrisma.jobFamily.findMany({
+        where: { companyId },
+        orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+      })
+    ).map((f) => f.name);
+
+  it("reorders the given sub-divisions among the slots they held, keeping the rest", async () => {
+    const { company, b, d } = await families();
+    // Only B and D are siblings on the chart; D goes first.
+    await reorderJobFamilies({ companyId: company.id, orderedJobFamilyIds: [d.id, b.id] });
+    expect(await order(company.id)).toEqual(["A", "D", "C", "B"]);
+
+    const audits = await testPrisma.auditEvent.count({
+      where: { companyId: company.id, entityType: "JobFamily", action: "UPDATED" },
+    });
+    expect(audits).toBeGreaterThan(0);
+  });
+
+  it("refuses a sub-division from another company and changes nothing", async () => {
+    const mine = await families();
+    const theirs = await families();
+    await expect(
+      reorderJobFamilies({
+        companyId: mine.company.id,
+        orderedJobFamilyIds: [mine.b.id, theirs.a.id],
+      })
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(
+      await testPrisma.jobFamily.count({
+        where: { companyId: mine.company.id, displayOrder: { not: null } },
+      })
+    ).toBe(0);
   });
 });
 
