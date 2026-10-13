@@ -53,7 +53,9 @@ export function layoutBranch(
   edges: readonly Edge[],
   _direction: GrowDirection,
   nodeWidth: CardWidth,
-  gap: number
+  gap: number,
+  /** The caller's order (the saved left-to-right order); see keepSavedBoxOrder. */
+  rankOf?: (id: string) => number
 ): { placed: Map<string, Point>; width: number } {
   const widthOf = widthFn(nodeWidth);
   const members = new Set(memberIds);
@@ -79,6 +81,10 @@ export function layoutBranch(
     const parent = parentOf.get(id);
     if (parent) children.set(parent, [...(children.get(parent) ?? []), id]);
     else roots.push(id);
+  }
+  if (rankOf) {
+    for (const [parent, kids] of children) children.set(parent, keepSavedBoxOrder(kids, rankOf));
+    roots.splice(0, roots.length, ...keepSavedBoxOrder(roots, rankOf));
   }
 
   // Each subtree is measured once: its total width, where its own card sits
@@ -179,6 +185,25 @@ export function layoutBranch(
   return { placed, width: Math.max(0, cursor - gap) };
 }
 
+/** Department, sub-department and sub-division boxes (D33, D55). */
+function isGroupingBox(id: string): boolean {
+  return id.startsWith("dept:") || id.startsWith("subdiv:");
+}
+
+/**
+ * Sibling boxes in their SAVED order (D55). ELK does not always keep the
+ * model order for boxes nested inside a department, so a reordered
+ * sub-division box could be drawn back in its old slot. The boxes are
+ * re-sorted among the slots they hold; position cards keep ELK's order.
+ */
+export function keepSavedBoxOrder(
+  ids: readonly string[],
+  rankOf: (id: string) => number
+): string[] {
+  const boxes = ids.filter(isGroupingBox).sort((a, b) => rankOf(a) - rankOf(b));
+  return ids.map((id) => (isGroupingBox(id) ? boxes.shift()! : id));
+}
+
 /**
  * Re-places every department branch to grow outward, packing branches left
  * to right in their existing order with `branchGap` between them. Only the
@@ -190,7 +215,8 @@ export function arrangeBranchesOutward(
   edges: readonly Edge[],
   nodeWidth: CardWidth,
   gap: number,
-  branchGap: number
+  branchGap: number,
+  rankOf?: (id: string) => number
 ): Map<string, Point> {
   const out = new Map(positions);
   const ordered = clusters
@@ -205,7 +231,15 @@ export function arrangeBranchesOutward(
   let cursor = ordered[0]!.minX;
   ordered.forEach(({ members }, index) => {
     const direction = growDirectionFor(index, ordered.length);
-    const { placed, width } = layoutBranch(members, positions, edges, direction, nodeWidth, gap);
+    const { placed, width } = layoutBranch(
+      members,
+      positions,
+      edges,
+      direction,
+      nodeWidth,
+      gap,
+      rankOf
+    );
     for (const [id, p] of placed) out.set(id, { x: cursor + p.x, y: p.y });
     cursor += width + branchGap;
   });

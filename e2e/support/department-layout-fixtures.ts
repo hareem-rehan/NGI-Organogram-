@@ -214,3 +214,81 @@ export async function readDepartmentId(companyId: string, name: string): Promise
     await prisma.$disconnect();
   }
 }
+
+/**
+ * A head of HR whose reports sit in three sub-divisions (Branding, HR Ops,
+ * Recruitment), each with one role under it — so the chart draws three
+ * sub-division boxes side by side under the head (D55 reorder).
+ */
+export async function seedSubdivisionChart(companyId: string, suffix: string): Promise<void> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  await seedJobGradeScale(companyId);
+  const prisma = new PrismaClient();
+  try {
+    const grade = await prisma.jobGrade.findFirstOrThrow({
+      where: { companyId, code: "L15", departmentId: null },
+    });
+    const dept = (name: string) =>
+      prisma.department.create({
+        data: {
+          companyId,
+          name: `${name} ${suffix}`,
+          code: `E2E-SV-${randomBytes(3).toString("hex")}`,
+          color: "#f5c242",
+        },
+      });
+    const founder = await dept("Founder");
+    const hr = await dept("People");
+    const make = (
+      departmentId: string,
+      title: string,
+      parentId: string | null,
+      level: number,
+      jobFamilyId: string | null = null
+    ) =>
+      prisma.position.create({
+        data: {
+          companyId,
+          departmentId,
+          jobGradeId: grade.id,
+          jobFamilyId,
+          title: `${title} ${suffix}`,
+          positionCode: `E2E-SV-${randomBytes(3).toString("hex")}`,
+          primaryReportsToPositionId: parentId,
+          organizationalLevel: level,
+        },
+      });
+    const ceo = await make(founder.id, "CEO", null, 1);
+    const head = await make(hr.id, "Head of People", ceo.id, 2);
+    for (const name of ["Branding", "HR Ops", "Recruitment"]) {
+      const family = await prisma.jobFamily.create({
+        data: {
+          companyId,
+          departmentId: hr.id,
+          name: `${name} ${suffix}`,
+          code: `E2E-SV-${randomBytes(3).toString("hex")}`,
+        },
+      });
+      const lead = await make(hr.id, `${name} Lead`, head.id, 3, family.id);
+      await make(hr.id, `${name} Officer`, lead.id, 4, family.id);
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/** Sub-division names for the company, in their saved order (D55), then by name. */
+export async function readSubdivisionOrder(companyId: string): Promise<string[]> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  const prisma = new PrismaClient();
+  try {
+    const rows = await prisma.jobFamily.findMany({
+      where: { companyId },
+      orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+      select: { name: true },
+    });
+    return rows.map((r) => r.name);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
