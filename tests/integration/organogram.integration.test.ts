@@ -50,8 +50,42 @@ describe("organogram repository — company scoping and bulk fetch", () => {
 
     const raw = await getOrganogramRawData(company.id, new Date());
 
-    expect(raw.occupantNamesByPositionId.get(root.id)).toBe("Amara Chen");
-    expect(raw.occupantEmployeeIdsByPositionId.get(root.id)).toBe(employee.id);
+    expect(raw.occupantNamesByPositionId.get(root.id)).toEqual(["Amara Chen"]);
+    expect(raw.occupantEmployeeIdsByPositionId.get(root.id)).toEqual([employee.id]);
+  });
+
+  it("lists everyone holding a position, longest-serving first (D56)", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const newer = await makeEmployee(company.id, { firstName: "Bilal", lastName: "Ahmed" });
+    const older = await makeEmployee(company.id, { firstName: "Amara", lastName: "Chen" });
+    await testPrisma.positionAssignment.createMany({
+      data: [
+        {
+          companyId: company.id,
+          employeeId: newer.id,
+          positionId: root.id,
+          isPrimary: true,
+          startDate: new Date("2024-01-01"),
+        },
+        {
+          companyId: company.id,
+          employeeId: older.id,
+          positionId: root.id,
+          isPrimary: true,
+          startDate: new Date("2020-01-01"),
+        },
+      ],
+    });
+
+    const { nodes } = await getOrganogramData({ companyId: company.id });
+    const node = nodes.find((n) => n.positionId === root.id)!;
+
+    expect(node.occupancyStatus).toBe("occupied");
+    expect(node.occupantDisplayNames).toEqual(["Amara Chen", "Bilal Ahmed"]);
+    expect(node.occupantEmployeeIds).toEqual([older.id, newer.id]);
+    expect(node.occupantDisplayName).toBe("Amara Chen");
   });
 
   it("leaves a position with no current assignment absent from the occupant map (vacant)", async () => {

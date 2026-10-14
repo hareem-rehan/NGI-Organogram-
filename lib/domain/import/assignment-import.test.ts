@@ -125,12 +125,32 @@ describe("validateAssignmentRows", () => {
     );
   });
 
-  it("rejects a position already occupied (two different employees ASSIGNed to the same position, overlapping)", () => {
+  it("lets several employees hold the same position at once (D56)", () => {
     const outcome = run(
       "operation,employeeCode,positionCode,effectiveDate\n" +
         "ASSIGN,EMP001,VPENG,2026-01-01\nASSIGN,EMP002,VPENG,2026-01-15\n"
     );
-    expect(outcome.issues).toContainEqual(expect.objectContaining({ code: "POSITION_OCCUPIED" }));
+    expect(outcome.rows.every((r) => r.action !== "ERROR")).toBe(true);
+  });
+
+  it("still refuses one employee holding two positions at once", () => {
+    const outcome = run(
+      "operation,employeeCode,positionCode,effectiveDate\n" +
+        "ASSIGN,EMP001,VPENG,2026-01-01\nASSIGN,EMP001,ENGMGR,2026-01-15\n"
+    );
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({ code: "EMPLOYEE_ALREADY_ASSIGNED" })
+    );
+  });
+
+  it("rejects a TRANSFER onto the position the employee already holds", () => {
+    const outcome = run(
+      "operation,employeeCode,positionCode,effectiveDate\nTRANSFER,EMP001,VPENG,2026-02-01\n",
+      [{ employeeCode: "EMP001", positionCode: "VPENG", startDate: "2025-01-01", endDate: null }]
+    );
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({ code: "EMPLOYEE_ALREADY_ASSIGNED", field: "positionCode" })
+    );
   });
 
   it("allows a same-day handoff on a position (new occupant starts exactly when the prior one's assignment ends)", () => {

@@ -112,7 +112,7 @@ Rows for the same employee or position are applied in **effective-date order**, 
 2. **Row schema validation** — required fields, formats, lengths, statuses, dates, sentinels.
 3. **In-file validation** — duplicate codes within the file, self-references, and a **combined-state cycle check across the whole proposed graph** (file rows plus every existing record they touch) — not just one row's own parent/manager, since two individually-valid changes can still form a cycle together. Row order never matters: a manager or parent appearing later in the file resolves correctly.
 4. **Database-reference validation** — does a referenced department/job-grade/manager/employee/position actually exist; is a CREATE_ONLY row's code already taken.
-5. **Combined-state validation** — a second potential root position, an employee already holding an open assignment elsewhere, a position already occupied — checked across the whole file plus current database state, not row-by-row in isolation.
+5. **Combined-state validation** — a second potential root position, an employee already holding an open assignment elsewhere, an employee transferred onto the position they already hold — checked across the whole file plus current database state, not row-by-row in isolation.
 6. **Change-plan generation** — every row is classified `CREATE`, `UPDATE`, `UNCHANGED`, or `ERROR`. Nothing is written to the database during any of this — see §9.
 
 ## 9. Errors vs. warnings

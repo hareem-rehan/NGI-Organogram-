@@ -30,17 +30,18 @@ export interface CreateAssignmentInput {
 }
 
 /**
- * Creates a primary position assignment.
+ * Creates a primary position assignment. A position may hold several
+ * employees at once (docs/DECISIONS.md D56); an employee still holds only
+ * one open primary position.
  *
  * Concurrency protection is layered (docs/DOMAIN_MODEL.md §7):
  * - Application/transaction level: `SELECT ... FOR UPDATE` on the target
  *   position row serializes concurrent assignment attempts for the same
- *   position, closing the check-then-insert race for the general
- *   overlapping-date-range check below.
- * - Database level (the authoritative guarantee for the common case): a
- *   partial unique index rejects a second open-ended (endDate IS NULL)
- *   primary assignment for the same position/employee even if the
- *   application-level lock were somehow bypassed.
+ *   position, closing the check-then-insert race for the "same employee
+ *   twice on this position" check below.
+ * - Database level (the authoritative guarantee): a partial unique index
+ *   rejects a second open-ended (endDate IS NULL) primary assignment for
+ *   the same employee even if the application-level lock were bypassed.
  */
 export async function createAssignment(
   input: CreateAssignmentInput,
@@ -74,12 +75,14 @@ export async function createAssignment(
       input.companyId,
       tx
     );
-    const overlapping = existingForPosition.find((existing) =>
-      dateRangesOverlap({ startDate: existing.startDate, endDate: existing.endDate }, dateRange)
+    const overlapping = existingForPosition.find(
+      (existing) =>
+        existing.employeeId === input.employeeId &&
+        dateRangesOverlap({ startDate: existing.startDate, endDate: existing.endDate }, dateRange)
     );
     if (overlapping) {
       throw new ConflictError(
-        `Position ${input.positionId} already has a primary assignment (${overlapping.id}) overlapping this date range.`
+        `Employee ${input.employeeId} is already assigned to position ${input.positionId} (${overlapping.id}) for an overlapping date range.`
       );
     }
 
@@ -165,7 +168,7 @@ export interface TransferEmployeeInput {
 /**
  * Ends the employee's current assignment and creates a new one on the
  * new position, atomically. If the new assignment fails validation (e.g.
- * the target position already has an active occupant), the whole
+ * the target position is inactive), the whole
  * transaction rolls back — the original assignment is NOT ended, so the
  * employee never ends up with zero active assignments due to a failed
  * transfer (docs/NEGATIVE_SCENARIOS.md "Failed employee transfer
@@ -216,18 +219,11 @@ export async function transferEmployee(
 
     await tx.$queryRaw`SELECT id FROM "positions" WHERE id = ${input.toPositionId}::uuid FOR UPDATE`;
 
-    const existingForNewPosition = await listPrimaryAssignmentsForPosition(
-      input.toPositionId,
-      input.companyId,
-      tx
-    );
-    const newRange = { startDate: input.transferDate, endDate: null };
-    const overlapping = existingForNewPosition.find((existing) =>
-      dateRangesOverlap({ startDate: existing.startDate, endDate: existing.endDate }, newRange)
-    );
-    if (overlapping) {
-      throw new ConflictError(
-        `Position ${input.toPositionId} already has an active primary assignment (${overlapping.id}) — cannot transfer into it.`
+    // A position may already hold other employees (D56); only moving the
+    // employee onto the position they already hold is refused.
+    if (current.positionId === input.toPositionId) {
+      throw new DomainValidationError(
+        `Employee ${input.employeeId} already holds position ${input.toPositionId}.`
       );
     }
 
@@ -297,7 +293,7 @@ function translateAssignmentWriteError(error: unknown): Error {
   if (error instanceof PrismaNamespace.PrismaClientKnownRequestError) {
     if (error.code === UNIQUE_CONSTRAINT_VIOLATION) {
       return new ConflictError(
-        "This position or employee already has an active primary assignment (concurrent request detected)."
+        "This employee already holds an active position (concurrent request detected)."
       );
     }
   }
@@ -305,46 +301,53 @@ function translateAssignmentWriteError(error: unknown): Error {
 }
 
 /**
- * Sets a position's current (open-ended, primary) occupant — the "assign
- * employee" action on the Position form. Runs the whole change in one
- * transaction (docs/DOMAIN_MODEL.md §7, CLAUDE.md §9) so a position never ends
- * up both vacated and un-filled:
+ * Sets the employees currently holding a position (docs/DECISIONS.md D56) —
+ * the "Assigned employees" field on the Position form. One transaction
+ * (docs/DOMAIN_MODEL.md §7, CLAUDE.md §9), with the position row locked so
+ * two concurrent saves of the same position cannot interleave:
  *
- * - `employeeId` unchanged from the current occupant → no-op.
- * - Any current occupant is cleared first: its open assignment is ended today
- *   (history preserved), unless it also started today — a same-day correction
- *   that cannot be end-dated (endDate must be after startDate), so that row is
- *   removed instead.
- * - `employeeId` set → a fresh primary assignment starts today, reusing
- *   `createAssignment` so all its guards apply (the DB still rejects assigning
- *   an employee who already holds another open primary assignment — surfaced as
- *   a conflict for the caller to show).
- * - `employeeId === null` → the position is left vacant.
+ * - Employees already holding the position and still listed are untouched.
+ * - Employees no longer listed are taken off: their open assignment is ended
+ *   today (history preserved), unless it also started today — a same-day
+ *   correction that cannot be end-dated (endDate must be after startDate), so
+ *   that row is removed instead.
+ * - Newly listed employees get a fresh primary assignment starting today,
+ *   through `createAssignment` so all its guards apply (an employee who
+ *   already holds another position is refused as a conflict).
+ * - An empty list leaves the position vacant. The position itself is never
+ *   changed (hierarchy-safety invariant 11).
  */
-export async function setPositionPrimaryOccupant(
+export async function setPositionOccupants(
   input: {
     companyId: string;
     actor?: AuditActor;
     positionId: string;
-    employeeId: string | null;
+    employeeIds: readonly string[];
   },
   db: DbClient = prisma
 ): Promise<void> {
   const actor = input.actor ?? "SYSTEM";
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const wanted = [...new Set(input.employeeIds)];
 
   await withTransaction(db, async (tx) => {
+    const position = await findPositionById(input.positionId, input.companyId, tx);
+    if (!position) {
+      throw new CrossCompanyError(
+        `Position ${input.positionId} does not exist in company ${input.companyId}.`
+      );
+    }
+    await tx.$queryRaw`SELECT id FROM "positions" WHERE id = ${input.positionId}::uuid FOR UPDATE`;
+
     const current = (
       await listPrimaryAssignmentsForPosition(input.positionId, input.companyId, tx)
-    ).find((assignment) => assignment.endDate === null);
+    ).filter((assignment) => assignment.endDate === null);
+    const currentIds = new Set(current.map((a) => a.employeeId));
 
-    if (current && input.employeeId && current.employeeId === input.employeeId) {
-      return; // already the occupant — nothing to do
-    }
-
-    if (current) {
-      const startedToday = current.startDate.getTime() >= today.getTime();
+    for (const assignment of current) {
+      if (wanted.includes(assignment.employeeId)) continue;
+      const startedToday = assignment.startDate.getTime() >= today.getTime();
       if (startedToday) {
         await recordAuditEvent(
           {
@@ -353,23 +356,24 @@ export async function setPositionPrimaryOccupant(
             action: "ASSIGNMENT_ENDED",
             category: "ASSIGNMENT",
             entityType: "PositionAssignment",
-            entityId: current.id,
-            before: current,
+            entityId: assignment.id,
+            before: assignment,
           },
           tx
         );
-        await tx.positionAssignment.delete({ where: { id: current.id } });
+        await tx.positionAssignment.delete({ where: { id: assignment.id } });
       } else {
-        await endAssignment(current.id, input.companyId, today, actor, tx);
+        await endAssignment(assignment.id, input.companyId, today, actor, tx);
       }
     }
 
-    if (input.employeeId) {
+    for (const employeeId of wanted) {
+      if (currentIds.has(employeeId)) continue;
       await createAssignment(
         {
           companyId: input.companyId,
           actor,
-          employeeId: input.employeeId,
+          employeeId,
           positionId: input.positionId,
           startDate: today,
         },

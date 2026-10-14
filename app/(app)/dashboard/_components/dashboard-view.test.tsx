@@ -41,7 +41,6 @@ function makeSummary(overrides: Partial<DashboardSummary> = {}): DashboardSummar
     assignments: {
       currentPrimary: 9,
       future: 0,
-      multiOccupantPositionCount: 0,
       multiPrimaryEmployeeCount: 0,
     },
     vacancyRate: { vacantCount: 1, eligibleCount: 10, percent: 10 },

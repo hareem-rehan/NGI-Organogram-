@@ -8,6 +8,7 @@
  * already authorized to fetch.
  */
 import type { OccupancyStatus, OrganogramNode, PositionStatus } from "@/lib/domain/organogram";
+import { occupantNamesOf } from "./organogram-occupants";
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
 export const SEARCH_MAX_QUERY_LENGTH = 100;
@@ -65,6 +66,8 @@ export function searchOrganogramNodes(
     node: OrganogramNode;
     matchType: SearchMatchType;
     isExact: boolean;
+    /** Who matched, when an occupant did — a position may hold several (D56). */
+    matchedOccupant: string | null;
   }
   const candidates: Candidate[] = [];
 
@@ -73,7 +76,9 @@ export function searchOrganogramNodes(
 
     const codeLower = node.positionCode.toLowerCase();
     const titleLower = node.title.toLowerCase();
-    const occupantLower = node.occupantDisplayName?.toLowerCase() ?? null;
+    const occupants = occupantNamesOf(node);
+    const exactOccupant = occupants.find((name) => name.toLowerCase() === needle) ?? null;
+    const partialOccupant = occupants.find((name) => name.toLowerCase().includes(needle)) ?? null;
     const deptNameLower = node.departmentName.toLowerCase();
     const deptCodeLower = node.departmentCode.toLowerCase();
 
@@ -86,7 +91,7 @@ export function searchOrganogramNodes(
     } else if (titleLower === needle) {
       matchType = "title";
       isExact = true;
-    } else if (occupantLower === needle) {
+    } else if (exactOccupant) {
       matchType = "occupant";
       isExact = true;
     } else if (deptNameLower === needle || deptCodeLower === needle) {
@@ -96,13 +101,16 @@ export function searchOrganogramNodes(
       matchType = "positionCode";
     } else if (titleLower.includes(needle)) {
       matchType = "title";
-    } else if (occupantLower?.includes(needle)) {
+    } else if (partialOccupant) {
       matchType = "occupant";
     } else if (deptNameLower.includes(needle) || deptCodeLower.includes(needle)) {
       matchType = "department";
     }
 
-    if (matchType) candidates.push({ node, matchType, isExact });
+    if (matchType) {
+      const matchedOccupant = matchType === "occupant" ? (exactOccupant ?? partialOccupant) : null;
+      candidates.push({ node, matchType, isExact, matchedOccupant });
+    }
   }
 
   candidates.sort((a, b) => {
@@ -120,7 +128,8 @@ export function searchOrganogramNodes(
     positionId: c.node.positionId,
     title: c.node.title,
     positionCode: c.node.positionCode,
-    occupantDisplayName: c.node.occupantDisplayName,
+    // The person who matched, else everyone holding the position.
+    occupantDisplayName: c.matchedOccupant ?? (occupantNamesOf(c.node).join(", ") || null),
     departmentName: c.node.departmentName,
     departmentCode: c.node.departmentCode,
     organizationalLevel: c.node.organizationalLevel,

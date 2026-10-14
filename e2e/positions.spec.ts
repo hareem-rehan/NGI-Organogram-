@@ -207,48 +207,64 @@ test.describe("Position and hierarchy management (Phase 5)", () => {
     ).toBeVisible();
   });
 
-  test("HR_EDITOR/ADMIN can assign, then vacate, a position's employee from the Position form", async ({
+  test("HR_EDITOR/ADMIN can assign several employees to a position, then remove them, from the Position form (D56)", async ({
     page,
   }) => {
     const occupiedTitle = `E2E Occupied ${suffix}`;
-    const employeeCode = `E2E-POSEMP-${suffix}`;
+    const people = [
+      { code: `E2E-POSEMP-${suffix}`, last: `Fixture ${suffix}` },
+      { code: `E2E-POSEMP2-${suffix}`, last: `Second ${suffix}` },
+    ];
 
-    await page.goto("/employees");
-    await page.getByRole("button", { name: /add employee/i }).click();
-    let dialog = page.getByRole("dialog");
-    await dialog.getByLabel(/employee code/i).fill(employeeCode);
-    // A name no other spec looks up by regex (employees.spec.ts matches
-    // /grace hopper/i and /ada lovelace/i in this same shared company).
-    await dialog.getByLabel(/first name/i).fill("Occupant");
-    await dialog.getByLabel(/last name/i).fill(`Fixture ${suffix}`);
-    await dialog.getByRole("button", { name: /create employee/i }).click();
-    await expect(dialog).toBeHidden();
+    for (const person of people) {
+      await page.goto("/employees");
+      await page.getByRole("button", { name: /add employee/i }).click();
+      const create = page.getByRole("dialog");
+      await create.getByLabel(/employee code/i).fill(person.code);
+      // A name no other spec looks up by regex (employees.spec.ts matches
+      // /grace hopper/i and /ada lovelace/i in this same shared company).
+      await create.getByLabel(/first name/i).fill("Occupant");
+      await create.getByLabel(/last name/i).fill(person.last);
+      await create.getByRole("button", { name: /create employee/i }).click();
+      await expect(create).toBeHidden();
+    }
 
     await page.goto("/positions");
     await page.getByRole("button", { name: /add position/i }).click();
-    dialog = page.getByRole("dialog");
+    let dialog = page.getByRole("dialog");
     await fillTitle(dialog, occupiedTitle);
     await dialog.getByRole("combobox", { name: /reports to/i }).click();
     await dialog.getByRole("combobox", { name: /reports to/i }).fill(rootTitle);
     await page.getByRole("option", { name: new RegExp(rootTitle) }).click();
-    const picker = dialog.getByRole("combobox", { name: /assigned employee/i });
-    await picker.click();
-    await picker.fill(employeeCode);
-    await page.getByRole("option", { name: new RegExp(`Occupant Fixture ${suffix}`) }).click();
+    const picker = dialog.getByRole("combobox", { name: /add an employee/i });
+    for (const person of people) {
+      await picker.click();
+      await picker.fill(person.code);
+      await page.getByRole("option", { name: new RegExp(`Occupant ${person.last}`) }).click();
+    }
+    const chosen = dialog.getByRole("list", { name: /assigned employees/i });
+    await expect(chosen.getByRole("listitem")).toHaveCount(2);
     await dialog.getByRole("button", { name: /create position/i }).click();
     await expect(dialog).toBeHidden();
 
     const row = page.getByRole("row", { name: new RegExp(occupiedTitle) });
     await expect(row.getByText("Filled")).toBeVisible();
 
-    // Editing prefills the current occupant; choosing Vacant ends the assignment.
+    // Editing lists both people; removing one keeps the position filled.
     await row.getByRole("button", { name: /^edit$/i }).click();
     dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("combobox", { name: /assigned employee/i })).toHaveValue(
-      `Occupant Fixture ${suffix}`
-    );
-    await dialog.getByRole("combobox", { name: /assigned employee/i }).click();
-    await page.getByRole("option", { name: /vacant/i }).click();
+    await expect(
+      dialog.getByRole("list", { name: /assigned employees/i }).getByRole("listitem")
+    ).toHaveCount(2);
+    await dialog.getByRole("button", { name: `Remove Occupant ${people[1]!.last}` }).click();
+    await dialog.getByRole("button", { name: /save changes/i }).click();
+    await expect(dialog).toBeHidden();
+    await expect(row.getByText("Filled")).toBeVisible();
+
+    // Removing the last person leaves it vacant.
+    await row.getByRole("button", { name: /^edit$/i }).click();
+    dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: `Remove Occupant ${people[0]!.last}` }).click();
     await dialog.getByRole("button", { name: /save changes/i }).click();
     await expect(dialog).toBeHidden();
     await expect(row.getByText("Vacant")).toBeVisible();

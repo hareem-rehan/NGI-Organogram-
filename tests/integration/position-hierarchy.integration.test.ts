@@ -839,7 +839,7 @@ describe("Position hierarchy", () => {
   });
 
   describe("searchEligiblePositions (Phase 6)", () => {
-    it("excludes an occupied position and includes a vacant one", async () => {
+    it("includes a position that already has someone, as well as a vacant one (D56)", async () => {
       const company = await makeCompany();
       const dept = await makeDepartment(company.id);
       const occupied = await makeRootPosition(company.id, dept.id, { positionCode: "OCC" });
@@ -860,7 +860,7 @@ describe("Position hierarchy", () => {
 
       const results = await searchEligiblePositions(company.id, undefined, new Date());
       const ids = results.map((r) => r.position.id);
-      expect(ids).not.toContain(occupied.id);
+      expect(ids).toContain(occupied.id);
       expect(ids).toContain(vacant.id);
     });
 

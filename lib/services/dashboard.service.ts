@@ -11,7 +11,6 @@ import {
   findAssignmentsWithInactiveEmployee,
   findAssignmentsWithInactivePosition,
   findEmployeesWithMultipleEffectiveAssignments,
-  findPositionsWithMultipleEffectiveOccupants,
   findRootPositionRow,
   getAssignmentCounts,
   getDepartmentCounts,
@@ -78,7 +77,6 @@ export interface DashboardEmployeeSummary {
 export interface DashboardAssignmentSummary {
   currentPrimary: number;
   future: number | null;
-  multiOccupantPositionCount: number;
   multiPrimaryEmployeeCount: number;
 }
 
@@ -167,7 +165,6 @@ export async function getDashboardSummary(
     occupiedEligible,
     hierarchySnapshot,
     rootRow,
-    multiOccupantPositions,
     multiPrimaryEmployees,
   ] = await Promise.all([
     getDepartmentCounts(companyId),
@@ -180,7 +177,6 @@ export async function getDashboardSummary(
     countOccupiedEligibleActivePositions(companyId, now),
     getPositionHierarchySnapshot(companyId),
     findRootPositionRow(companyId),
-    findPositionsWithMultipleEffectiveOccupants(companyId, now),
     findEmployeesWithMultipleEffectiveAssignments(companyId, now),
   ]);
 
@@ -210,7 +206,6 @@ export async function getDashboardSummary(
         rootRow,
         integrity,
         activeUnassignedCount: employeeCounts.active - activeAssigned,
-        multiOccupantPositions,
         multiPrimaryEmployees,
       });
     } catch {
@@ -259,7 +254,6 @@ export async function getDashboardSummary(
     assignments: {
       currentPrimary: assignmentCounts.currentPrimary,
       future: canSeeManagementDetails ? assignmentCounts.future : null,
-      multiOccupantPositionCount: multiOccupantPositions.length,
       multiPrimaryEmployeeCount: multiPrimaryEmployees.length,
     },
     vacancyRate,
@@ -275,18 +269,9 @@ async function buildWarnings(args: {
   rootRow: { id: string; title: string; status: string } | null;
   integrity: ReturnType<typeof detectHierarchyIntegrityWarnings>;
   activeUnassignedCount: number;
-  multiOccupantPositions: string[];
   multiPrimaryEmployees: string[];
 }): Promise<DashboardWarning[]> {
-  const {
-    companyId,
-    now,
-    rootRow,
-    integrity,
-    activeUnassignedCount,
-    multiOccupantPositions,
-    multiPrimaryEmployees,
-  } = args;
+  const { companyId, now, rootRow, integrity, activeUnassignedCount, multiPrimaryEmployees } = args;
 
   const [inactiveDeptPositions, inactiveEmployeeAssignments, inactivePositionAssignments] =
     await Promise.all([
@@ -373,17 +358,6 @@ async function buildWarnings(args: {
       description:
         "One or more current position assignments are attached to a position that is Inactive.",
       count: inactivePositionAssignments.length,
-      link: { href: "/positions", label: "View positions" },
-    });
-  }
-
-  if (multiOccupantPositions.length > 0) {
-    warnings.push({
-      id: "multiple-occupants",
-      title: "Multiple effective occupants for one position",
-      description:
-        "One or more positions have more than one currently-effective primary assignment.",
-      count: multiOccupantPositions.length,
       link: { href: "/positions", label: "View positions" },
     });
   }

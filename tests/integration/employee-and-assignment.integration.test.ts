@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import {
   createAssignment,
   endAssignment,
-  setPositionPrimaryOccupant,
+  setPositionOccupants,
   transferEmployee,
 } from "@/lib/services/assignment.service";
 import {
@@ -158,18 +158,11 @@ describe("createEmployeeWithOptionalAssignment", () => {
     expect(current.get(employee.id)?.position.id).toBe(position.id);
   });
 
-  it("rolls the employee back when the assignment fails (position already filled)", async () => {
+  it("rolls the employee back when the assignment fails (position is inactive)", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
-    // Fill the seat first.
-    const incumbent = await makeEmployee(company.id, { employeeCode: "EMP-INCUMBENT" });
-    await createAssignment({
-      companyId: company.id,
-      employeeId: incumbent.id,
-      positionId: position.id,
-      startDate: new Date("2023-01-01"),
-    });
+    await testPrisma.position.update({ where: { id: position.id }, data: { status: "INACTIVE" } });
 
     await expect(
       createEmployeeWithOptionalAssignment({
@@ -179,7 +172,7 @@ describe("createEmployeeWithOptionalAssignment", () => {
         lastName: "Victim",
         assignment: { positionId: position.id, startDate: new Date("2024-01-01") },
       })
-    ).rejects.toBeInstanceOf(ConflictError);
+    ).rejects.toBeInstanceOf(UnsafeMutationError);
 
     // The whole transaction rolled back — the new employee was never created,
     // so nothing is half-written (business rule: separate entities, atomic writes).
@@ -364,7 +357,7 @@ describe("Position assignment", () => {
     ).rejects.toBeInstanceOf(UnsafeMutationError);
   });
 
-  it("rejects two active primary occupants for one position", async () => {
+  it("lets two employees hold one position at the same time (D56)", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
@@ -376,10 +369,36 @@ describe("Position assignment", () => {
       positionId: position.id,
       startDate: new Date("2023-01-01"),
     });
+    await createAssignment({
+      companyId: company.id,
+      employeeId: employee2.id,
+      positionId: position.id,
+      startDate: new Date("2023-02-01"),
+    });
+    const open = await testPrisma.positionAssignment.findMany({
+      where: { positionId: position.id, endDate: null },
+    });
+    expect(open.map((a) => a.employeeId).sort()).toEqual([employee1.id, employee2.id].sort());
+  });
+
+  it("rejects the same employee twice on one position for overlapping dates", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const employee = await makeEmployee(company.id);
+    const future = new Date();
+    future.setFullYear(future.getFullYear() + 1);
+    await createAssignment({
+      companyId: company.id,
+      employeeId: employee.id,
+      positionId: position.id,
+      startDate: new Date("2023-01-01"),
+      endDate: future,
+    });
     await expect(
       createAssignment({
         companyId: company.id,
-        employeeId: employee2.id,
+        employeeId: employee.id,
         positionId: position.id,
         startDate: new Date("2023-02-01"),
       })
@@ -440,12 +459,11 @@ describe("Position assignment", () => {
     ).resolves.toBeDefined();
   });
 
-  it("rejects overlapping historical assignment date ranges", async () => {
+  it("rejects overlapping historical date ranges for the same employee on one position", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
     const employee1 = await makeEmployee(company.id);
-    const employee2 = await makeEmployee(company.id);
     await createAssignment({
       companyId: company.id,
       employeeId: employee1.id,
@@ -456,7 +474,7 @@ describe("Position assignment", () => {
     await expect(
       createAssignment({
         companyId: company.id,
-        employeeId: employee2.id,
+        employeeId: employee1.id,
         positionId: position.id,
         startDate: new Date("2022-06-01"),
         endDate: new Date("2023-01-01"),
@@ -465,6 +483,8 @@ describe("Position assignment", () => {
   });
 
   it("allows a same-day handoff — a new assignment starting the exact day an old one there ended (Phase 6 regression)", async () => {
+    // Still meaningful with several holders (D56): the same employee may
+    // start a new spell on the day their previous one ended.
     // Regression test for a bug found via e2e/employees.spec.ts: the
     // position becomes vacant "from the end date forward" per the End
     // Assignment dialog's own copy, and lib/repositories/employee.repository.ts's
@@ -476,7 +496,6 @@ describe("Position assignment", () => {
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
     const employee1 = await makeEmployee(company.id);
-    const employee2 = await makeEmployee(company.id);
     await createAssignment({
       companyId: company.id,
       employeeId: employee1.id,
@@ -487,19 +506,18 @@ describe("Position assignment", () => {
     await expect(
       createAssignment({
         companyId: company.id,
-        employeeId: employee2.id,
+        employeeId: employee1.id,
         positionId: position.id,
         startDate: new Date("2023-06-01"),
       })
     ).resolves.toBeDefined();
   });
 
-  it("still rejects a new assignment starting one day before the previous one ends", async () => {
+  it("still rejects the same employee starting again one day before their previous spell ends", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
     const employee1 = await makeEmployee(company.id);
-    const employee2 = await makeEmployee(company.id);
     await createAssignment({
       companyId: company.id,
       employeeId: employee1.id,
@@ -510,7 +528,7 @@ describe("Position assignment", () => {
     await expect(
       createAssignment({
         companyId: company.id,
-        employeeId: employee2.id,
+        employeeId: employee1.id,
         positionId: position.id,
         startDate: new Date("2023-05-31"),
       })
@@ -553,7 +571,7 @@ describe("Position assignment", () => {
     expect(await getActivePrimaryAssignmentForPosition(positionB.id, company.id)).not.toBeNull();
   });
 
-  it("rolls back the entire transfer if the destination position already has an active occupant", async () => {
+  it("transfers an employee into a position someone else already holds (D56)", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const positionA = await makeRootPosition(company.id, dept.id, { positionCode: "POS-A" });
@@ -583,22 +601,47 @@ describe("Position assignment", () => {
       startDate: new Date("2023-01-01"),
     });
 
+    const { ended, started } = await transferEmployee({
+      companyId: company.id,
+      employeeId: employee.id,
+      fromAssignmentId: original.id,
+      toPositionId: positionB.id,
+      transferDate: new Date("2023-06-01"),
+    });
+
+    expect(ended.endDate).not.toBeNull();
+    expect(started.positionId).toBe(positionB.id);
+    const openOnB = await testPrisma.positionAssignment.findMany({
+      where: { positionId: positionB.id, endDate: null },
+    });
+    expect(openOnB.map((a) => a.employeeId).sort()).toEqual([employee.id, otherEmployee.id].sort());
+  });
+
+  it("rejects transferring an employee onto the position they already hold, changing nothing", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const employee = await makeEmployee(company.id);
+    const original = await createAssignment({
+      companyId: company.id,
+      employeeId: employee.id,
+      positionId: position.id,
+      startDate: new Date("2023-01-01"),
+    });
+
     await expect(
       transferEmployee({
         companyId: company.id,
         employeeId: employee.id,
         fromAssignmentId: original.id,
-        toPositionId: positionB.id,
+        toPositionId: position.id,
         transferDate: new Date("2023-06-01"),
       })
-    ).rejects.toBeInstanceOf(ConflictError);
-
-    // Rollback verified: the ORIGINAL assignment must still be open-ended —
-    // a failed transfer must never leave the employee with zero active assignments.
-    const stillOriginal = await testPrisma.positionAssignment.findUniqueOrThrow({
+    ).rejects.toBeInstanceOf(DomainValidationError);
+    const still = await testPrisma.positionAssignment.findUniqueOrThrow({
       where: { id: original.id },
     });
-    expect(stillOriginal.endDate).toBeNull();
+    expect(still.endDate).toBeNull();
   });
 
   it("rejects ending an assignment that does not exist", async () => {
@@ -608,37 +651,58 @@ describe("Position assignment", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("allows exactly one of two concurrent attempts to fill the same position to succeed", async () => {
+  it("allows exactly one of two concurrent attempts to put one employee in two positions", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const root = await makeRootPosition(company.id, dept.id);
+    const other = await makeChildPosition(company.id, dept.id, root.id, 1);
+    const employee = await makeEmployee(company.id);
+
+    const results = await Promise.allSettled(
+      [root.id, other.id].map((positionId) =>
+        createAssignment({
+          companyId: company.id,
+          employeeId: employee.id,
+          positionId,
+          startDate: new Date("2023-01-01"),
+        })
+      )
+    );
+
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    const open = await testPrisma.positionAssignment.findMany({
+      where: { employeeId: employee.id, endDate: null },
+    });
+    expect(open).toHaveLength(1);
+  });
+
+  it("two concurrent attempts to add the same employee to one position leave exactly one row", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
-    const employee1 = await makeEmployee(company.id);
-    const employee2 = await makeEmployee(company.id);
+    const employee = await makeEmployee(company.id);
 
     const results = await Promise.allSettled([
       createAssignment({
         companyId: company.id,
-        employeeId: employee1.id,
+        employeeId: employee.id,
         positionId: position.id,
         startDate: new Date("2023-01-01"),
       }),
       createAssignment({
         companyId: company.id,
-        employeeId: employee2.id,
+        employeeId: employee.id,
         positionId: position.id,
         startDate: new Date("2023-01-01"),
       }),
     ]);
 
-    const fulfilled = results.filter((r) => r.status === "fulfilled");
-    const rejected = results.filter((r) => r.status === "rejected");
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-
-    const finalAssignments = await testPrisma.positionAssignment.findMany({
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const open = await testPrisma.positionAssignment.findMany({
       where: { positionId: position.id, endDate: null },
     });
-    expect(finalAssignments).toHaveLength(1);
+    expect(open).toHaveLength(1);
   });
 });
 
@@ -965,52 +1029,71 @@ describe("Employee search and derived assignment info (Phase 6)", () => {
   });
 });
 
-describe("setPositionPrimaryOccupant (Position form 'Assigned employee')", () => {
-  it("assigns an employee to a vacant position", async () => {
+describe("setPositionOccupants (Position form 'Assigned employees', D56)", () => {
+  const openHolders = async (positionId: string) =>
+    (
+      await testPrisma.positionAssignment.findMany({
+        where: { positionId, endDate: null },
+      })
+    )
+      .map((a) => a.employeeId)
+      .sort();
+
+  it("assigns several employees to a vacant position", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
-    const employee = await makeEmployee(company.id);
+    const a = await makeEmployee(company.id);
+    const b = await makeEmployee(company.id);
 
-    await setPositionPrimaryOccupant({
+    await setPositionOccupants({
       companyId: company.id,
       positionId: position.id,
-      employeeId: employee.id,
+      employeeIds: [a.id, b.id],
     });
 
-    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
-    expect(active?.employeeId).toBe(employee.id);
+    expect(await openHolders(position.id)).toEqual([a.id, b.id].sort());
   });
 
-  it("reassigns to a different employee, ending the previous occupant's assignment", async () => {
+  it("adds and removes people, keeping everyone still listed untouched", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
-    const first = await makeEmployee(company.id, { employeeCode: "OCC-1" });
-    const second = await makeEmployee(company.id, { employeeCode: "OCC-2" });
+    const stays = await makeEmployee(company.id, { employeeCode: "OCC-STAY" });
+    const leaves = await makeEmployee(company.id, { employeeCode: "OCC-LEAVE" });
+    const joins = await makeEmployee(company.id, { employeeCode: "OCC-JOIN" });
+    const kept = await createAssignment({
+      companyId: company.id,
+      employeeId: stays.id,
+      positionId: position.id,
+      startDate: new Date("2023-01-01"),
+    });
     await createAssignment({
       companyId: company.id,
-      employeeId: first.id,
+      employeeId: leaves.id,
       positionId: position.id,
       startDate: new Date("2023-01-01"),
     });
 
-    await setPositionPrimaryOccupant({
+    await setPositionOccupants({
       companyId: company.id,
       positionId: position.id,
-      employeeId: second.id,
+      employeeIds: [stays.id, joins.id],
     });
 
-    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
-    expect(active?.employeeId).toBe(second.id);
-    // The first employee's old assignment is closed, not open-ended.
-    const firstRows = await testPrisma.positionAssignment.findMany({
-      where: { companyId: company.id, employeeId: first.id },
+    expect(await openHolders(position.id)).toEqual([stays.id, joins.id].sort());
+    // The one who stays keeps the same assignment (no churn in history).
+    const still = await testPrisma.positionAssignment.findUniqueOrThrow({ where: { id: kept.id } });
+    expect(still.endDate).toBeNull();
+    // The one removed has their assignment closed, not deleted (history kept).
+    const leftRows = await testPrisma.positionAssignment.findMany({
+      where: { employeeId: leaves.id },
     });
-    expect(firstRows.every((r) => r.endDate !== null)).toBe(true);
+    expect(leftRows).toHaveLength(1);
+    expect(leftRows[0]?.endDate).not.toBeNull();
   });
 
-  it("vacates a position when the employee is null", async () => {
+  it("vacates a position when the list is empty, never touching the position itself", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
@@ -1022,17 +1105,15 @@ describe("setPositionPrimaryOccupant (Position form 'Assigned employee')", () =>
       startDate: new Date("2023-01-01"),
     });
 
-    await setPositionPrimaryOccupant({
-      companyId: company.id,
-      positionId: position.id,
-      employeeId: null,
-    });
+    await setPositionOccupants({ companyId: company.id, positionId: position.id, employeeIds: [] });
 
-    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
-    expect(active).toBeNull();
+    expect(await openHolders(position.id)).toEqual([]);
+    const after = await testPrisma.position.findUniqueOrThrow({ where: { id: position.id } });
+    expect(after.positionCode).toBe(position.positionCode);
+    expect(after.organizationalLevel).toBe(position.organizationalLevel);
   });
 
-  it("is a no-op when the chosen employee already occupies the position", async () => {
+  it("is a no-op when the list matches who already holds the position", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
@@ -1044,10 +1125,10 @@ describe("setPositionPrimaryOccupant (Position form 'Assigned employee')", () =>
       startDate: new Date("2023-01-01"),
     });
 
-    await setPositionPrimaryOccupant({
+    await setPositionOccupants({
       companyId: company.id,
       positionId: position.id,
-      employeeId: employee.id,
+      employeeIds: [employee.id],
     });
 
     const rows = await testPrisma.positionAssignment.findMany({
@@ -1057,32 +1138,31 @@ describe("setPositionPrimaryOccupant (Position form 'Assigned employee')", () =>
     expect(rows[0]?.id).toBe(existing.id);
   });
 
-  it("handles a same-day reassignment (occupant assigned today, replaced today)", async () => {
+  it("handles a same-day change (someone added today, removed today)", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
     const first = await makeEmployee(company.id, { employeeCode: "SD-1" });
     const second = await makeEmployee(company.id, { employeeCode: "SD-2" });
 
-    await setPositionPrimaryOccupant({
+    await setPositionOccupants({
       companyId: company.id,
       positionId: position.id,
-      employeeId: first.id,
+      employeeIds: [first.id],
     });
     // Same day, swap to a different person — the same-day row can't be
     // end-dated (endDate must be after startDate), so it is removed and a new
     // one created without error.
-    await setPositionPrimaryOccupant({
+    await setPositionOccupants({
       companyId: company.id,
       positionId: position.id,
-      employeeId: second.id,
+      employeeIds: [second.id],
     });
 
-    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
-    expect(active?.employeeId).toBe(second.id);
+    expect(await openHolders(position.id)).toEqual([second.id]);
   });
 
-  it("refuses to assign an employee who already holds another open position", async () => {
+  it("refuses an employee who already holds another open position", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const root = await makeRootPosition(company.id, dept.id);
@@ -1096,20 +1176,21 @@ describe("setPositionPrimaryOccupant (Position form 'Assigned employee')", () =>
     });
 
     await expect(
-      setPositionPrimaryOccupant({
+      setPositionOccupants({
         companyId: company.id,
         positionId: other.id,
-        employeeId: employee.id,
+        employeeIds: [employee.id],
       })
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it("rolls back the vacate step when the new assignment fails — the previous occupant stays", async () => {
+  it("rolls back the whole change when one addition fails — nobody is removed or added", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
     const root = await makeRootPosition(company.id, dept.id);
     const other = await makeChildPosition(company.id, dept.id, root.id, 1);
     const incumbent = await makeEmployee(company.id);
+    const newcomer = await makeEmployee(company.id);
     const busy = await makeEmployee(company.id);
     const incumbentAssignment = await createAssignment({
       companyId: company.id,
@@ -1125,35 +1206,80 @@ describe("setPositionPrimaryOccupant (Position form 'Assigned employee')", () =>
     });
 
     await expect(
-      setPositionPrimaryOccupant({
+      setPositionOccupants({
         companyId: company.id,
         positionId: other.id,
-        employeeId: busy.id,
+        // Removes the incumbent, adds a newcomer, then fails on `busy`.
+        employeeIds: [newcomer.id, busy.id],
       })
     ).rejects.toBeInstanceOf(ConflictError);
 
-    const active = await getActivePrimaryAssignmentForPosition(other.id, company.id);
-    expect(active?.id).toBe(incumbentAssignment.id);
-    expect(active?.endDate).toBeNull();
+    expect(await openHolders(other.id)).toEqual([incumbent.id]);
+    const still = await testPrisma.positionAssignment.findUniqueOrThrow({
+      where: { id: incumbentAssignment.id },
+    });
+    expect(still.endDate).toBeNull();
   });
 
-  it("refuses an employee from another company", async () => {
+  it("refuses an employee from another company, and a position from another company", async () => {
     const company = await makeCompany();
     const otherCompany = await makeCompany();
     const dept = await makeDepartment(company.id);
     const position = await makeRootPosition(company.id, dept.id);
+    const otherDept = await makeDepartment(otherCompany.id);
+    const otherPosition = await makeRootPosition(otherCompany.id, otherDept.id);
     const outsider = await makeEmployee(otherCompany.id);
+    const insider = await makeEmployee(company.id);
 
     await expect(
-      setPositionPrimaryOccupant({
+      setPositionOccupants({
         companyId: company.id,
         positionId: position.id,
-        employeeId: outsider.id,
+        employeeIds: [outsider.id],
+      })
+    ).rejects.toBeInstanceOf(CrossCompanyError);
+    await expect(
+      setPositionOccupants({
+        companyId: company.id,
+        positionId: otherPosition.id,
+        employeeIds: [insider.id],
       })
     ).rejects.toBeInstanceOf(CrossCompanyError);
 
-    const active = await getActivePrimaryAssignmentForPosition(position.id, company.id);
-    expect(active).toBeNull();
+    expect(await openHolders(position.id)).toEqual([]);
+    expect(await openHolders(otherPosition.id)).toEqual([]);
+  });
+
+  it("two concurrent saves of the same position never leave a duplicate holder", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const position = await makeRootPosition(company.id, dept.id);
+    const a = await makeEmployee(company.id);
+    const b = await makeEmployee(company.id);
+
+    const results = await Promise.allSettled([
+      setPositionOccupants({
+        companyId: company.id,
+        positionId: position.id,
+        employeeIds: [a.id, b.id],
+      }),
+      setPositionOccupants({
+        companyId: company.id,
+        positionId: position.id,
+        employeeIds: [a.id],
+      }),
+    ]);
+
+    // The position lock serializes the two saves: both succeed, one after the
+    // other, and the result is exactly one of the two lists — never a mix
+    // with a duplicated row.
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+    const holders = await openHolders(position.id);
+    expect([[a.id], [a.id, b.id].sort()]).toContainEqual(holders);
+    const rowsForA = await testPrisma.positionAssignment.findMany({
+      where: { positionId: position.id, employeeId: a.id, endDate: null },
+    });
+    expect(rowsForA).toHaveLength(1);
   });
 });
 

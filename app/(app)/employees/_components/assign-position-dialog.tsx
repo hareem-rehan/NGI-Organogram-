@@ -102,7 +102,7 @@ export function AssignPositionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title={`Assign ${employee.firstName} ${employee.lastName} to a Position`}
-        description="Only positions that are vacant on the effective date, in an active department, and not archived are shown."
+        description="Positions in an active department that are not archived are shown. A position can hold several people."
       >
         <Field label="Effective start date" required>
           {(fieldProps) => (

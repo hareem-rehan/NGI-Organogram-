@@ -5,7 +5,6 @@ import type { Position } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { DbClient } from "@/lib/repositories/types";
 import { HierarchyDepthExceededError, MAX_HIERARCHY_DEPTH } from "@/lib/domain/hierarchy";
-import { dateRangesOverlap } from "@/lib/domain/assignment";
 
 export interface PositionSearchParams {
   companyId: string;
@@ -111,22 +110,18 @@ export interface EligiblePosition {
 }
 
 /**
- * Positions a NEW assignment could target, effective `effectiveDate` —
- * same company, not INACTIVE (PLANNED is allowed — a future hire against
- * a not-yet-live position is legitimate HR planning), in an ACTIVE
- * department, and not already occupied by an overlapping primary
- * assignment as of that date. Used by the "Assign to Position" and
- * "Change destination" eligible-position pickers
- * (docs/phase-reports/PHASE_06_EMPLOYEES_AND_ASSIGNMENTS.md). One query
- * (assignments included, not N+1), filtered in application code with the
- * exact same overlap logic `createAssignment`/`transferEmployee` use, so
- * the picker can never suggest a position the actual assignment call
- * would then reject.
+ * Positions a NEW assignment could target — same company, not INACTIVE
+ * (PLANNED is allowed — a future hire against a not-yet-live position is
+ * legitimate HR planning), in an ACTIVE department. A position that already
+ * has people is still offered: several employees may hold one position
+ * (docs/DECISIONS.md D56). Used by the "Assign to Position", "Transfer" and
+ * new-employee position pickers. `_effectiveDate` is kept for callers; it no
+ * longer narrows the list.
  */
 export async function searchEligiblePositions(
   companyId: string,
   search: string | undefined,
-  effectiveDate: Date,
+  _effectiveDate: Date,
   db: DbClient = prisma
 ): Promise<EligiblePosition[]> {
   const candidates = await db.position.findMany({
@@ -143,26 +138,15 @@ export async function searchEligiblePositions(
           }
         : {}),
     },
-    include: {
-      department: { select: { name: true } },
-      assignments: { where: { isPrimary: true } },
-    },
+    include: { department: { select: { name: true } } },
     orderBy: [{ title: "asc" }],
     take: 100,
   });
 
-  const newRange = { startDate: effectiveDate, endDate: null };
-  return candidates
-    .filter(
-      (candidate) =>
-        !candidate.assignments.some((existing) =>
-          dateRangesOverlap({ startDate: existing.startDate, endDate: existing.endDate }, newRange)
-        )
-    )
-    .map((candidate) => ({
-      position: candidate,
-      departmentName: candidate.department.name,
-    }));
+  return candidates.map((candidate) => ({
+    position: candidate,
+    departmentName: candidate.department.name,
+  }));
 }
 
 export async function findPositionById(

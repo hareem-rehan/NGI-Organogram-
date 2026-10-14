@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { occupantNamesOf } from "@/lib/domain/organogram-occupants";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +40,8 @@ function OutlineNodeRow({
   const isSelected = selectedId === node.positionId;
   // No "Vacant" stamp, matching the card: an unfilled role simply has no
   // name line. See position-node.tsx for why.
-  const occupantName = node.occupancyStatus === "occupied" ? node.occupantDisplayName : null;
+  // Everyone holding the position (D56).
+  const occupantName = occupantNamesOf(node).join(", ") || null;
   const matchState = matchStateById?.get(node.positionId) ?? "none";
   // The synthetic grouping tiers (department, sub-division) from
   // lib/domain/organogram-leadership-graph.ts. Same reasoning as the canvas

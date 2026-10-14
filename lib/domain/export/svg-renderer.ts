@@ -8,6 +8,7 @@ import {
   textDecorationOf,
   type TextStyle,
 } from "@/lib/domain/organogram-text-style";
+import { occupantCardLines, occupantNamesOf } from "@/lib/domain/organogram-occupants";
 import { ORG_EDGE_BUS_OFFSET } from "@/app/(app)/organogram/_lib/elk-layout";
 import {
   CARD_METRICS,
@@ -57,6 +58,8 @@ export interface SvgRenderNode {
   jobFamilyName: string | null;
   occupancyStatus: "occupied" | "vacant";
   occupantDisplayName: string | null;
+  /** Everyone holding the position (D56); the card names up to three. */
+  occupantDisplayNames?: readonly string[];
   positionStatus: "PLANNED" | "ACTIVE" | "INACTIVE";
   matchState: "none" | "match" | "context";
   /** Whole-branch role count for the card footer (docs/DECISIONS.md D29). Optional so callers without it still render (the footer then falls back). */
@@ -261,6 +264,7 @@ export function exportCardSizes(
             title: node.title,
             departmentName: node.departmentName,
             occupantName: node.occupancyStatus === "occupied" ? node.occupantDisplayName : null,
+            occupantLines: occupantCardLines(occupantNamesOf(node)).length,
             roleCount: isHeading ? children : rolesUnderOf(node),
             hasChildren: children > 0,
             jobGradeCode: node.jobGradeCode,
@@ -456,20 +460,20 @@ function renderNodeCard(
     );
   });
 
-  const occupantName =
-    node.occupancyStatus === "occupied" ? (node.occupantDisplayName ?? null) : null;
-  if (occupantName) {
-    const occupantSize = f * m.secondaryEm;
-    const occupantLineHeight = occupantSize * m.secondaryLeading;
-    const occupantTop = top + titleLines.length * lineHeight + 1;
-    const line = wrapToWidth(occupantName, right - left, occupantSize, 1, {
+  // One line per person, up to three; the rest as "+N more" (D56), as on screen.
+  const occupantLines = occupantCardLines(occupantNamesOf(node));
+  const occupantSize = f * m.secondaryEm;
+  const occupantLineHeight = occupantSize * m.secondaryLeading;
+  occupantLines.forEach((name, index) => {
+    const occupantTop = top + titleLines.length * lineHeight + 1 + index * occupantLineHeight;
+    const line = wrapToWidth(name, right - left, occupantSize, 1, {
       bold: true,
       fontFamily: family,
     })[0];
     parts.push(
       `<text x="${left}" y="${baseline(occupantTop, occupantLineHeight, occupantSize)}" font-size="${round1(occupantSize)}" font-weight="700" fill="${textColor}">${escapeXmlText(line ?? "")}</text>`
     );
-  }
+  });
 
   // Footer: roles under it on the left, the level (and sub-division) on the
   // right, under a thin divider — pinned to the card's bottom edge.

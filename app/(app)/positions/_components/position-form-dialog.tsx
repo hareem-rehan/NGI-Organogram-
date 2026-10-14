@@ -19,9 +19,9 @@ import {
 } from "@/lib/domain/level-labels";
 import {
   createPositionAction,
-  getPositionOccupantAction,
+  getPositionOccupantsAction,
   listEmployeeOptionsAction,
-  setPositionOccupantAction,
+  setPositionOccupantsAction,
   updatePositionAction,
 } from "@/app/(app)/positions/actions";
 import type { EmployeeOption } from "@/lib/repositories/employee.repository";
@@ -83,6 +83,11 @@ interface FormValues {
  * be a security assumption. Reports-To is entirely independent of the
  * career-framework fields above it in the form.
  */
+/** How an employee is named in the "Assigned employees" field. */
+function employeeName(e: EmployeeOption): string {
+  return (e.preferredName?.trim() || `${e.firstName} ${e.lastName}`.trim()).trim();
+}
+
 export function scopeReportsToOptions(
   allPositions: readonly Position[],
   departmentId: string,
@@ -161,19 +166,19 @@ export function PositionFormDialog({
   const [coHeadValue, setCoHeadValue] = useState("");
   const [coHeadQuery, setCoHeadQuery] = useState("");
 
-  // "Assigned employee" picker. `occupantValue` is the chosen employee id, ""
-  // for vacant. `initialOccupant` is what the position started with, so a save
-  // only touches assignments when the occupant actually changed. Employees are
-  // loaded when the dialog opens.
+  // "Assigned employees" (D56): everyone currently holding this position, in
+  // the order they were added. `initialOccupants` is what the position started
+  // with, so a save only touches assignments when the list actually changed.
+  // Employees are loaded when the dialog opens.
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
-  const [occupantValue, setOccupantValue] = useState("");
-  const [initialOccupant, setInitialOccupant] = useState("");
+  const [occupantIds, setOccupantIds] = useState<string[]>([]);
+  const [initialOccupants, setInitialOccupants] = useState<string[]>([]);
   const [occupantQuery, setOccupantQuery] = useState("");
   // Once a create succeeds, remember the new id so a retry (e.g. after an
   // occupant-assignment error) updates that position instead of creating a duplicate.
   const justCreatedIdRef = useRef<string | null>(null);
-  // Set once the user picks an occupant, so a slow occupant fetch can never
-  // overwrite their choice.
+  // Set once the user adds or removes someone, so a slow occupant fetch can
+  // never overwrite their choice.
   const occupantTouchedRef = useRef(false);
 
   const {
@@ -273,18 +278,17 @@ export function PositionFormDialog({
     setCoHeadValue("");
     setCoHeadQuery("");
     setOccupantQuery("");
-    setOccupantValue("");
-    setInitialOccupant("");
+    setOccupantIds([]);
+    setInitialOccupants([]);
     listEmployeeOptionsAction().then((result) => {
       if (result.ok) setEmployeeOptions(result.data);
     });
     const editing = positionRef.current;
     if (editing) {
-      getPositionOccupantAction(editing.id).then((result) => {
+      getPositionOccupantsAction(editing.id).then((result) => {
         if (result.ok) {
-          const value = result.data.employeeId ?? "";
-          setInitialOccupant(value);
-          if (!occupantTouchedRef.current) setOccupantValue(value);
+          setInitialOccupants(result.data.employeeIds);
+          if (!occupantTouchedRef.current) setOccupantIds(result.data.employeeIds);
         }
       });
     }
@@ -403,21 +407,28 @@ export function PositionFormDialog({
   const effectiveCoHead =
     primaryReportsToPositionId && coHeadValue !== primaryReportsToPositionId ? coHeadValue : "";
 
-  // "Assigned employee" options: a "Vacant" choice plus every active employee,
+  // "Add an employee" options: every active employee not already listed,
   // filtered by the picker's query (name or code).
   const employeeOptionsForCombobox: ComboboxOption[] = useMemo(() => {
     const q = occupantQuery.trim().toLowerCase();
-    const name = (e: EmployeeOption) =>
-      (e.preferredName?.trim() || `${e.firstName} ${e.lastName}`.trim()).trim();
-    const matches = employeeOptions.filter(
-      (e) =>
-        q === "" || name(e).toLowerCase().includes(q) || e.employeeCode.toLowerCase().includes(q)
-    );
-    return [
-      { value: "", label: "Vacant (no one assigned)" },
-      ...matches.map((e) => ({ value: e.id, label: name(e), description: e.employeeCode })),
-    ];
-  }, [employeeOptions, occupantQuery]);
+    const chosen = new Set(occupantIds);
+    return employeeOptions
+      .filter(
+        (e) =>
+          !chosen.has(e.id) &&
+          (q === "" ||
+            employeeName(e).toLowerCase().includes(q) ||
+            e.employeeCode.toLowerCase().includes(q))
+      )
+      .map((e) => ({ value: e.id, label: employeeName(e), description: e.employeeCode }));
+  }, [employeeOptions, occupantQuery, occupantIds]);
+  const employeeById = useMemo(
+    () => new Map(employeeOptions.map((e) => [e.id, e])),
+    [employeeOptions]
+  );
+  const occupantsChanged =
+    occupantIds.length !== initialOccupants.length ||
+    occupantIds.some((id) => !initialOccupants.includes(id));
 
   function onSubmit(values: FormValues) {
     setFormError(null);
@@ -468,14 +479,11 @@ export function PositionFormDialog({
         justCreatedIdRef.current = positionId;
       }
 
-      // Only touch assignments when the occupant actually changed.
-      if (occupantValue !== initialOccupant) {
-        const occ = await setPositionOccupantAction({
-          positionId,
-          employeeId: occupantValue || null,
-        });
+      // Only touch assignments when the list of people actually changed.
+      if (occupantsChanged) {
+        const occ = await setPositionOccupantsAction({ positionId, employeeIds: occupantIds });
         if (!occ.ok) {
-          // The position saved, but the occupant change didn't (e.g. the person
+          // The position saved, but the people change didn't (e.g. someone
           // already holds another position). Keep the dialog open with the
           // reason and refresh the list to reflect the saved position; a retry
           // updates rather than re-creates.
@@ -483,7 +491,7 @@ export function PositionFormDialog({
           onSaved();
           return;
         }
-        setInitialOccupant(occupantValue);
+        setInitialOccupants(occupantIds);
       }
 
       onOpenChange(false);
@@ -626,23 +634,56 @@ export function PositionFormDialog({
           </Field>
 
           <Field
-            label="Assigned employee"
-            hint="Who currently holds this position (optional). Pick from the Employees module, or leave vacant."
+            label="Assigned employees"
+            hint="Who currently holds this position (optional). Add one or more people from the Employees module, or leave it vacant."
           >
             {(fieldProps) => (
-              <Combobox
-                {...fieldProps}
-                value={occupantValue}
-                onChange={(value) => {
-                  occupantTouchedRef.current = true;
-                  setOccupantValue(value ?? "");
-                }}
-                options={employeeOptionsForCombobox}
-                query={occupantQuery}
-                onQueryChange={setOccupantQuery}
-                placeholder="Search employees…"
-                aria-label="Assigned employee"
-              />
+              <div className="space-y-2">
+                {occupantIds.length > 0 ? (
+                  <ul aria-label="Assigned employees" className="flex flex-wrap gap-1.5">
+                    {occupantIds.map((id) => {
+                      const employee = employeeById.get(id);
+                      const label = employee ? employeeName(employee) : "Employee";
+                      return (
+                        <li
+                          key={id}
+                          className="bg-muted flex items-center gap-1 rounded-md py-0.5 pr-1 pl-2 text-sm"
+                        >
+                          {label}
+                          <button
+                            type="button"
+                            aria-label={`Remove ${label}`}
+                            className="text-muted-foreground hover:text-foreground rounded px-1"
+                            onClick={() => {
+                              occupantTouchedRef.current = true;
+                              setOccupantIds((ids) => ids.filter((x) => x !== id));
+                            }}
+                          >
+                            ×
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground text-sm">Vacant (no one assigned)</p>
+                )}
+                <Combobox
+                  {...fieldProps}
+                  value={null}
+                  onChange={(value) => {
+                    if (!value) return;
+                    occupantTouchedRef.current = true;
+                    setOccupantIds((ids) => (ids.includes(value) ? ids : [...ids, value]));
+                    setOccupantQuery("");
+                  }}
+                  options={employeeOptionsForCombobox}
+                  query={occupantQuery}
+                  onQueryChange={setOccupantQuery}
+                  placeholder="Search employees to add…"
+                  aria-label="Add an employee"
+                />
+              </div>
             )}
           </Field>
 
