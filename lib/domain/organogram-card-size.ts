@@ -162,6 +162,8 @@ export interface CardSizeInput {
   departmentName: string;
   /** The person in the role, when it is filled. */
   occupantName?: string | null;
+  /** How many name lines the card shows (D56: up to three); defaults to one when `occupantName` is set. */
+  occupantLines?: number;
   /** "N roles under" on a position card; "N roles" on a heading. */
   roleCount: number;
   /** Whether the card shows an expand/collapse chevron. */
@@ -233,13 +235,20 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
     2 * m.border +
     m.padTop +
     Math.max(card.badgeWidth ? BADGE_HEIGHT : 0, titleLines * f * m.titleLeading) +
-    (card.occupantName ? 1 + f * m.secondaryEm * m.secondaryLeading : 0) +
+    occupantBlockHeight(card, f) +
     m.footerGap +
     1 +
     m.footerPadTop +
     Math.max(14, footerFont * m.footerLeading) +
     m.footerPadBottom;
   return { width, height: Math.ceil(height), titleLines };
+}
+
+/** The names under a position title: a 1px gap, then one line per name line (D56). */
+function occupantBlockHeight(card: CardSizeInput, f: number): number {
+  const lines = card.occupantLines ?? (card.occupantName ? 1 : 0);
+  if (lines <= 0) return 0;
+  return 1 + lines * f * CARD_METRICS.secondaryEm * CARD_METRICS.secondaryLeading;
 }
 
 /** The name row of a heading card: its lines, or the chevron beside them if taller. */

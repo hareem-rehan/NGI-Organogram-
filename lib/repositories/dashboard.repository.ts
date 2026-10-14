@@ -168,25 +168,6 @@ export async function getAssignmentCounts(
   return { currentPrimary, future };
 }
 
-/**
- * Positions with more than one currently-effective primary assignment —
- * should always be empty (docs/DASHBOARD_METRICS.md §H). A real SQL
- * GROUP BY + HAVING, computed entirely in Postgres.
- */
-export async function findPositionsWithMultipleEffectiveOccupants(
-  companyId: string,
-  onDate: Date,
-  db: DbClient = prisma
-): Promise<string[]> {
-  const rows = await db.positionAssignment.groupBy({
-    by: ["positionId"],
-    where: { companyId, ...CURRENT_ASSIGNMENT_DATE_FILTER(onDate) },
-    _count: { positionId: true },
-    having: { positionId: { _count: { gt: 1 } } },
-  });
-  return rows.map((r) => r.positionId);
-}
-
 /** Employees with more than one currently-effective primary assignment — should always be empty. */
 export async function findEmployeesWithMultipleEffectiveAssignments(
   companyId: string,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { occupantNamesOf } from "@/lib/domain/organogram-occupants";
 import Link from "next/link";
 import { X } from "lucide-react";
 
@@ -51,6 +52,12 @@ export function OrganogramDetailsPanel({
         ? "outline"
         : "muted";
 
+  // Everyone holding the position (D56), each linked to their own page.
+  const occupants = occupantNamesOf(node).map((name, index) => ({
+    name,
+    employeeId: node.occupantEmployeeIds?.[index] ?? (index === 0 ? node.occupantEmployeeId : null),
+  }));
+
   return (
     <aside
       aria-label="Position details"
@@ -79,16 +86,22 @@ export function OrganogramDetailsPanel({
         <dd>
           <Badge variant={statusVariant}>{node.positionStatus}</Badge>
         </dd>
-        <dt className="text-muted-foreground">Occupant</dt>
+        <dt className="text-muted-foreground">{occupants.length > 1 ? "Occupants" : "Occupant"}</dt>
         <dd>
-          {node.occupancyStatus === "occupied" ? (
-            canViewEmployeeDetails && node.occupantEmployeeId ? (
-              <Link href={`/employees/${node.occupantEmployeeId}`} className="underline">
-                {node.occupantDisplayName}
-              </Link>
-            ) : (
-              node.occupantDisplayName
-            )
+          {occupants.length > 0 ? (
+            <ul className="space-y-0.5">
+              {occupants.map(({ name, employeeId }, index) => (
+                <li key={employeeId ?? `${name}-${index}`}>
+                  {canViewEmployeeDetails && employeeId ? (
+                    <Link href={`/employees/${employeeId}`} className="underline">
+                      {name}
+                    </Link>
+                  ) : (
+                    name
+                  )}
+                </li>
+              ))}
+            </ul>
           ) : (
             <span className="text-status-vacant font-medium">Vacant</span>
           )}

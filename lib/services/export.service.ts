@@ -207,6 +207,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     jobFamilyName: n.jobFamilyName,
     occupancyStatus: n.occupancyStatus,
     occupantDisplayName: n.occupantDisplayName,
+    occupantDisplayNames: n.occupantDisplayNames,
     positionStatus: n.positionStatus,
     matchState: n.matchState,
   }));

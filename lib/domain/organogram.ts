@@ -196,7 +196,16 @@ export interface OrganogramNode {
   organizationalLevel: number;
   positionStatus: PositionStatus;
   occupancyStatus: OccupancyStatus;
+  /** The longest-serving current holder's name; null when vacant. */
   occupantDisplayName: string | null;
+  /**
+   * Everyone currently holding this position, longest-serving first (D56).
+   * Empty when vacant; `occupantDisplayName` is its first entry. Optional so
+   * synthetic nodes and older fixtures need not set it.
+   */
+  occupantDisplayNames?: readonly string[];
+  /** Their employee ids, in the same order as `occupantDisplayNames`. */
+  occupantEmployeeIds?: readonly string[];
   /** Present only when occupied — lets an authorized viewer navigate to the employee's own (independently authorization-gated) detail page. Never a substitute for exposing the raw Employee record. */
   occupantEmployeeId: string | null;
   directReportCount: number;
@@ -259,8 +268,9 @@ export function buildOrganogramGraph(args: {
   jobGradesById?: ReadonlyMap<string, { code: string; level: number | null }>;
   /** Family name per id, for the card/details/colour dimension. Optional so existing callers and fixtures keep working (a position simply has no family name when absent). */
   jobFamilyNamesById?: ReadonlyMap<string, string>;
-  occupantNamesByPositionId: ReadonlyMap<string, string>;
-  occupantEmployeeIdsByPositionId: ReadonlyMap<string, string>;
+  /** Every current holder's name per position, longest-serving first (D56). A single string is one holder. */
+  occupantNamesByPositionId: ReadonlyMap<string, string | readonly string[]>;
+  occupantEmployeeIdsByPositionId: ReadonlyMap<string, string | readonly string[]>;
 }): { nodes: OrganogramNode[]; edges: OrganogramEdge[] } {
   const {
     positions,
@@ -318,7 +328,13 @@ export function buildOrganogramGraph(args: {
   const nodes: OrganogramNode[] = safePositions
     .map((p): OrganogramNode => {
       const department = departmentsById.get(p.departmentId);
-      const occupantDisplayName = occupantNamesByPositionId.get(p.id) ?? null;
+      const holders = occupantNamesByPositionId.get(p.id);
+      const occupantDisplayNames: string[] =
+        holders === undefined ? [] : typeof holders === "string" ? [holders] : [...holders];
+      const occupantDisplayName = occupantDisplayNames[0] ?? null;
+      const ids = occupantEmployeeIdsByPositionId.get(p.id);
+      const occupantEmployeeIds: string[] =
+        ids === undefined ? [] : typeof ids === "string" ? [ids] : [...ids];
       // A corrupted position's own parent may itself have been excluded
       // as unsafe — never point an edge at a node that won't be
       // rendered (no dangling edges, docs/NEGATIVE_SCENARIOS.md ORG15).
@@ -352,7 +368,9 @@ export function buildOrganogramGraph(args: {
         positionStatus: p.status,
         occupancyStatus: occupantDisplayName ? "occupied" : "vacant",
         occupantDisplayName,
-        occupantEmployeeId: occupantEmployeeIdsByPositionId.get(p.id) ?? null,
+        occupantDisplayNames,
+        occupantEmployeeIds,
+        occupantEmployeeId: occupantEmployeeIds[0] ?? null,
         directReportCount: childCounts.get(p.id) ?? 0,
         totalReportCount: totalReportCountOf(p.id),
         primaryReportsToPositionId: safeParentId,

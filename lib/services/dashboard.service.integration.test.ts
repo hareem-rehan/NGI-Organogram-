@@ -26,7 +26,6 @@ const repoMocks = vi.hoisted(() => ({
   countOccupiedEligibleActivePositionsMock: vi.fn(),
   getPositionHierarchySnapshotMock: vi.fn(),
   findRootPositionRowMock: vi.fn(),
-  findPositionsWithMultipleEffectiveOccupantsMock: vi.fn(),
   findEmployeesWithMultipleEffectiveAssignmentsMock: vi.fn(),
   buildDepartmentSummariesMock: vi.fn(),
   findActivePositionsInInactiveDepartmentsMock: vi.fn(),
@@ -48,8 +47,6 @@ vi.mock("@/lib/repositories/dashboard.repository", () => ({
   countOccupiedEligibleActivePositions: repoMocks.countOccupiedEligibleActivePositionsMock,
   getPositionHierarchySnapshot: repoMocks.getPositionHierarchySnapshotMock,
   findRootPositionRow: repoMocks.findRootPositionRowMock,
-  findPositionsWithMultipleEffectiveOccupants:
-    repoMocks.findPositionsWithMultipleEffectiveOccupantsMock,
   findEmployeesWithMultipleEffectiveAssignments:
     repoMocks.findEmployeesWithMultipleEffectiveAssignmentsMock,
   buildDepartmentSummaries: repoMocks.buildDepartmentSummariesMock,
@@ -82,7 +79,6 @@ function mockHappyDefaults() {
   repoMocks.countOccupiedEligibleActivePositionsMock.mockResolvedValue(0);
   repoMocks.getPositionHierarchySnapshotMock.mockResolvedValue([]);
   repoMocks.findRootPositionRowMock.mockResolvedValue(null);
-  repoMocks.findPositionsWithMultipleEffectiveOccupantsMock.mockResolvedValue([]);
   repoMocks.findEmployeesWithMultipleEffectiveAssignmentsMock.mockResolvedValue([]);
   repoMocks.buildDepartmentSummariesMock.mockResolvedValue([]);
   repoMocks.findActivePositionsInInactiveDepartmentsMock.mockResolvedValue([]);

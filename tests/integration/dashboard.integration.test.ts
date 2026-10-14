@@ -10,7 +10,6 @@ import {
   findAssignmentsWithInactiveEmployee,
   findAssignmentsWithInactivePosition,
   findEmployeesWithMultipleEffectiveAssignments,
-  findPositionsWithMultipleEffectiveOccupants,
   findRootPositionRow,
   getAssignmentCounts,
   getDepartmentCounts,
@@ -190,25 +189,6 @@ describe("Dashboard repository — vacancy-rate eligibility excludes inactive de
 });
 
 describe("Dashboard repository — data-quality detection queries", () => {
-  it("finds a position with more than one currently-effective primary assignment (corrupted data, direct write)", async () => {
-    const company = await makeCompany();
-    const dept = await makeDepartment(company.id);
-    const position = await makeRootPosition(company.id, dept.id);
-    const employeeA = await makeEmployee(company.id);
-    const employeeB = await makeEmployee(company.id);
-    // Two finite, still-open, overlapping-by-date ranges — neither has
-    // endDate IS NULL, so the DB partial unique index does not block
-    // this (see docs/DASHBOARD_METRICS.md §H) — a genuine gap only
-    // reachable by bypassing assignment.service.ts's overlap check.
-    const future = new Date();
-    future.setFullYear(future.getFullYear() + 1);
-    await assign(company.id, employeeA.id, position.id, new Date("2024-01-01"), future);
-    await assign(company.id, employeeB.id, position.id, new Date("2024-02-01"), future);
-
-    const found = await findPositionsWithMultipleEffectiveOccupants(company.id, new Date());
-    expect(found).toEqual([position.id]);
-  });
-
   it("finds an employee with more than one currently-effective primary assignment (corrupted data, direct write)", async () => {
     const company = await makeCompany();
     const dept = await makeDepartment(company.id);
@@ -271,7 +251,6 @@ describe("Dashboard repository — data-quality detection queries", () => {
     const employee = await makeEmployee(company.id);
     await assign(company.id, employee.id, root.id, new Date("2024-01-01"));
 
-    expect(await findPositionsWithMultipleEffectiveOccupants(company.id, new Date())).toEqual([]);
     expect(await findEmployeesWithMultipleEffectiveAssignments(company.id, new Date())).toEqual([]);
     expect(await findActivePositionsInInactiveDepartments(company.id)).toEqual([]);
     expect(await findAssignmentsWithInactiveEmployee(company.id, new Date())).toEqual([]);

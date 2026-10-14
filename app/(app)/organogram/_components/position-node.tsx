@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { occupantCardLines, occupantNamesOf } from "@/lib/domain/organogram-occupants";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight, Plus, Scan, Trash2 } from "lucide-react";
 
@@ -475,7 +476,10 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
   // than as a fact. An empty second line says the same thing quietly. The
   // accessible name below still states it outright, because a
   // screen-reader user cannot see that the line is absent.
-  const occupantName = node.occupancyStatus === "occupied" ? node.occupantDisplayName : null;
+  const occupantNames = occupantNamesOf(node);
+  const occupantName = occupantNames.length > 0 ? occupantNames.join(", ") : null;
+  // Up to three name lines on the card; the rest as "+N more" (D56).
+  const occupantLines = occupantCardLines(occupantNames);
   // What expanding this card will actually reveal. Once the leadership
   // filter hides some of a manager's reports, that is fewer than the real
   // `directReportCount` — which stays intact on the node for the details
@@ -649,10 +653,22 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             ) : null}
           </div>
         </div>
-        {occupantName ? (
-          <p className={cn("mt-px truncate text-[0.923em] leading-[1.3] font-bold")}>
-            {occupantName}
-          </p>
+        {occupantLines.length > 0 ? (
+          <div className="mt-px">
+            {occupantLines.map((line, index) => (
+              <p
+                key={index}
+                className={cn(
+                  "truncate text-[0.923em] leading-[1.3]",
+                  occupantNames.length > occupantLines.length && index === occupantLines.length - 1
+                    ? "font-semibold opacity-80"
+                    : "font-bold"
+                )}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
         ) : null}
       </button>
       {/* Footer: how many roles sit under it (the expand control) on the

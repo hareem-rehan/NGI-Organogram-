@@ -51,13 +51,12 @@ function todayInputValue(): string {
  * details page), so a plain detail correction can never accidentally
  * also end someone's employment.
  *
- * On CREATE only, an OPTIONAL "Assign to a vacant position" section lets HR
- * put a new hire straight into an open seat. It is entirely optional — left
+ * On CREATE only, an OPTIONAL "Assign to a position" section lets HR put a
+ * new hire straight into a position (one that may already hold others, D56). It is entirely optional — left
  * blank, the employee is created unassigned. When a position is chosen the
  * create + assignment happen atomically server-side
  * (createEmployeeWithOptionalAssignment); the position list is the same
- * server-eligibility-checked set the standalone Assign flow uses, so it only
- * offers seats vacant on the chosen start date.
+ * server-eligibility-checked set the standalone Assign flow uses.
  */
 export function EmployeeFormDialog({
   open,
@@ -122,10 +121,10 @@ export function EmployeeFormDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employee]);
 
-  // Eligible (vacant, active-department, non-archived) positions for the
+  // Eligible (active-department, non-archived) positions for the
   // optional assignment, re-queried when the search or start date changes —
   // create mode only. Mirrors AssignPositionDialog so the two flows can never
-  // disagree on what "vacant" means.
+  // disagree on which positions are open to a new person.
   useEffect(() => {
     if (!open || isEdit) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -252,7 +251,7 @@ export function EmployeeFormDialog({
 
               <Field
                 label="Position"
-                hint="Leave empty to create an unassigned employee. Only seats vacant on the start date are shown."
+                hint="Leave empty to create an unassigned employee. A position can hold several people."
               >
                 {(fieldProps) => (
                   <Combobox
@@ -263,7 +262,7 @@ export function EmployeeFormDialog({
                     query={positionQuery}
                     onQueryChange={setPositionQuery}
                     loading={loadingPositions}
-                    emptyMessage="No vacant positions for this start date."
+                    emptyMessage="No matching positions."
                     placeholder="Search positions…"
                     aria-label="Position"
                   />

@@ -164,7 +164,7 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     await expect(page.getByRole("button", { name: /^transfer$/i })).toBeVisible();
   });
 
-  test("an occupied position is not offered as eligible for a second employee", async ({
+  test("a position that already has someone is still offered to a second employee (D56)", async ({
     page,
   }) => {
     await page.goto("/employees");
@@ -182,15 +182,11 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     await dialog.getByRole("combobox", { name: "Position" }).click();
     await dialog.getByRole("combobox", { name: "Position" }).fill(positionATitle);
 
-    await expect(dialog.getByText(/no eligible positions found/i)).toBeVisible();
-    await expect(page.getByRole("option", { name: new RegExp(positionATitle) })).toHaveCount(0);
-
-    // Position B is still vacant and should appear instead.
-    await dialog.getByRole("combobox", { name: "Position" }).fill(positionBTitle);
-    await page.getByRole("option", { name: new RegExp(positionBTitle) }).click();
+    // Ada already holds Position A; Grace can join her there.
+    await page.getByRole("option", { name: new RegExp(positionATitle) }).click();
     await dialog.getByRole("button", { name: /^assign$/i }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByText(positionBTitle).first()).toBeVisible();
+    await expect(page.getByText(positionATitle).first()).toBeVisible();
   });
 
   test("HR_EDITOR/ADMIN can transfer an employee, preserving assignment history", async ({
@@ -204,8 +200,7 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     await expect(dialog.getByText(positionATitle)).toBeVisible();
     await dialog.getByRole("combobox", { name: "Destination position" }).click();
     await dialog.getByRole("combobox", { name: "Destination position" }).fill(positionBTitle);
-    // Position B is occupied by Grace Hopper, so it must not be offered.
-    await expect(page.getByRole("option", { name: new RegExp(positionBTitle) })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: new RegExp(positionBTitle) })).toBeVisible();
     await page.keyboard.press("Escape");
 
     // Regression: Escape closes the popover but leaves the input focused.
@@ -222,18 +217,6 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     await dialog.getByRole("button", { name: /cancel/i }).click();
     await expect(dialog).toBeHidden();
 
-    // End Grace's assignment first so Position B becomes vacant, then retry the transfer.
-    await page.getByRole("link", { name: /^employees$/i }).click();
-    await page.getByRole("link", { name: /grace hopper/i }).click();
-    await page.getByRole("button", { name: /end assignment/i }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: /end assignment/i })
-      .click();
-    await expect(page.getByText(/not currently assigned to any position/i)).toBeVisible();
-
-    await page.getByRole("link", { name: /^employees$/i }).click();
-    await page.getByRole("link", { name: /ada lovelace/i }).click();
     await page.getByRole("button", { name: /^transfer$/i }).click();
     const transferDialog = page.getByRole("dialog");
     await transferDialog.getByRole("combobox", { name: "Destination position" }).click();
@@ -269,16 +252,9 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
     await expect(page.getByRole("button", { name: /assign to position/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /terminate employee/i })).toHaveCount(0);
 
-    // Position B is vacant again — a different employee can now take it.
+    // Grace, who shared Position A with Ada, is untouched by Ada's exit.
     await page.getByRole("link", { name: /^employees$/i }).click();
     await page.getByRole("link", { name: /grace hopper/i }).click();
-    await page.getByRole("button", { name: /assign to position/i }).click();
-    const assignDialog = page.getByRole("dialog");
-    await assignDialog.getByRole("combobox", { name: "Position" }).click();
-    await assignDialog.getByRole("combobox", { name: "Position" }).fill(positionBTitle);
-    await page.getByRole("option", { name: new RegExp(positionBTitle) }).click();
-    await assignDialog.getByRole("button", { name: /^assign$/i }).click();
-    await expect(assignDialog).toBeHidden();
-    await expect(page.getByText(positionBTitle).first()).toBeVisible();
+    await expect(page.getByText(positionATitle).first()).toBeVisible();
   });
 });

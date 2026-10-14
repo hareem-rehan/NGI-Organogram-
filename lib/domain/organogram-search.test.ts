@@ -78,6 +78,20 @@ describe("searchOrganogramNodes", () => {
     expect(results[0]?.matchType).toBe("occupant");
   });
 
+  it("finds a position by ANY of the people holding it, naming who matched (D56)", () => {
+    const nodes = [
+      node({
+        positionId: "a",
+        occupancyStatus: "occupied",
+        occupantDisplayName: "Amara Chen",
+        occupantDisplayNames: ["Amara Chen", "Bilal Ahmed"],
+      }),
+    ];
+    const results = searchOrganogramNodes(nodes, "Bilal");
+    expect(results[0]?.matchType).toBe("occupant");
+    expect(results[0]?.occupantDisplayName).toBe("Bilal Ahmed");
+  });
+
   it("a vacant position is still searchable by title and code", () => {
     const nodes = [
       node({

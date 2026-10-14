@@ -274,6 +274,27 @@ describe("renderOrganogramSvg", () => {
     expect(result.svg).toContain(EXPORT_COLORS.border);
   });
 
+  it("names up to two people and '+N more' when several hold a position, as on screen (D56)", () => {
+    const result = renderOrganogramSvg(
+      [
+        node({
+          positionId: "shared",
+          occupancyStatus: "occupied",
+          occupantDisplayName: "Ali Raza",
+          occupantDisplayNames: ["Ali Raza", "Sara Malik", "Omar Butt", "Hina Shah"],
+        }),
+      ],
+      [],
+      new Map([["shared", { x: 0, y: 0 }]]),
+      METADATA,
+      BASE_OPTIONS
+    );
+    expect(result.svg).toContain("Ali Raza");
+    expect(result.svg).toContain("Sara Malik");
+    expect(result.svg).toContain("+2 more");
+    expect(result.svg).not.toContain("Omar Butt");
+  });
+
   it("never writes 'Vacant' for an unoccupied position, but shows the occupant name for an occupied one", () => {
     const positions = new Map([
       ["vacantPos", { x: 0, y: 0 }],

@@ -224,7 +224,7 @@ The link between `Employee` and `Position`. New as a dedicated entity in Phase 2
 
 **Concurrency-safety constraints (database-level, partial unique indexes — see `docs/adr/0009-phase2-domain-model.md`):**
 
-- At most one row with `isPrimary=true AND endDate IS NULL` per `positionId` ("one active primary occupant per position").
+- A `positionId` may have several rows with `isPrimary=true AND endDate IS NULL` — several people holding one position (docs/DECISIONS.md D56; the per-position unique index was dropped in migration `20261014120000_multiple_occupants_per_position`).
 - At most one row with `isPrimary=true AND endDate IS NULL` per `employeeId` ("one active primary position per employee").
 
 **Vacancy derivation:** a Position is vacant at a given moment iff no `PositionAssignment` with `isPrimary=true` covers that moment (`startDate <= date <= endDate`, or `endDate IS NULL` for "now"). See `lib/domain/assignment.ts`'s `isVacantOnDate()`.

@@ -41,7 +41,7 @@ const {
     listCareerTracksForCompany: vi.fn(),
   },
   deptLevelTitleRepoMock: { listDepartmentLevelTitlesForCompany: vi.fn() },
-  assignmentServiceMock: { setPositionPrimaryOccupant: vi.fn() },
+  assignmentServiceMock: { setPositionOccupants: vi.fn() },
   assignmentRepoMock: { listPrimaryAssignmentsForPosition: vi.fn() },
   employeeRepoMock: { listEmployeeOptionsForCompany: vi.fn() },
 }));
@@ -84,8 +84,8 @@ import {
   getSubtreeIdsAction,
   updatePositionAction,
   listEmployeeOptionsAction,
-  getPositionOccupantAction,
-  setPositionOccupantAction,
+  getPositionOccupantsAction,
+  setPositionOccupantsAction,
 } from "./actions";
 
 const ADMIN_USER = { id: "u_1", role: "ADMIN", companyId: "company-trusted", status: "ACTIVE" };
@@ -553,6 +553,7 @@ describe("position actions — assign employee to a position", () => {
 
   const POS = "11111111-1111-4111-8111-111111111111";
   const EMP = "22222222-2222-4222-8222-222222222222";
+  const EMP2 = "44444444-4444-4444-8444-444444444444";
 
   it("listEmployeeOptionsAction requires employees:view", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
@@ -564,73 +565,95 @@ describe("position actions — assign employee to a position", () => {
     expect(employeeRepoMock.listEmployeeOptionsForCompany).toHaveBeenCalledWith("company-trusted");
   });
 
-  it("getPositionOccupantAction requires positions:view and returns the open occupant", async () => {
+  it("getPositionOccupantsAction requires positions:view and returns the open occupant", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
     assignmentRepoMock.listPrimaryAssignmentsForPosition.mockResolvedValue([
       { id: "a1", employeeId: "old", endDate: new Date("2020-01-01") },
       { id: "a2", employeeId: EMP, endDate: null },
+      { id: "a3", employeeId: EMP2, endDate: null },
     ]);
 
-    const result = await getPositionOccupantAction(POS);
+    const result = await getPositionOccupantsAction(POS);
 
     expect(requirePermissionMock).toHaveBeenCalledWith("positions:view");
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data.employeeId).toBe(EMP);
+    if (result.ok) expect(result.data.employeeIds).toEqual([EMP, EMP2]);
   });
 
-  it("getPositionOccupantAction returns null when the position is vacant", async () => {
+  it("getPositionOccupantsAction returns null when the position is vacant", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
     assignmentRepoMock.listPrimaryAssignmentsForPosition.mockResolvedValue([
       { id: "a1", employeeId: "old", endDate: new Date("2020-01-01") },
     ]);
 
-    const result = await getPositionOccupantAction(POS);
+    const result = await getPositionOccupantsAction(POS);
 
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data.employeeId).toBeNull();
+    if (result.ok) expect(result.data.employeeIds).toEqual([]);
   });
 
-  it("setPositionOccupantAction requires employees:manage and forwards the change", async () => {
+  it("setPositionOccupantsAction requires employees:manage and forwards the change", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
-    assignmentServiceMock.setPositionPrimaryOccupant.mockResolvedValue(undefined);
+    assignmentServiceMock.setPositionOccupants.mockResolvedValue(undefined);
 
-    const result = await setPositionOccupantAction({ positionId: POS, employeeId: EMP });
+    const result = await setPositionOccupantsAction({ positionId: POS, employeeIds: [EMP, EMP2] });
 
     expect(requirePermissionMock).toHaveBeenCalledWith("employees:manage");
-    expect(assignmentServiceMock.setPositionPrimaryOccupant).toHaveBeenCalledWith(
-      expect.objectContaining({ companyId: "company-trusted", positionId: POS, employeeId: EMP })
+    expect(assignmentServiceMock.setPositionOccupants).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: "company-trusted",
+        positionId: POS,
+        employeeIds: [EMP, EMP2],
+      })
     );
     expect(result.ok).toBe(true);
   });
 
-  it("setPositionOccupantAction accepts a null employee (vacate)", async () => {
+  it("setPositionOccupantsAction accepts an empty list (vacate)", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
-    assignmentServiceMock.setPositionPrimaryOccupant.mockResolvedValue(undefined);
+    assignmentServiceMock.setPositionOccupants.mockResolvedValue(undefined);
 
-    const result = await setPositionOccupantAction({ positionId: POS, employeeId: null });
+    const result = await setPositionOccupantsAction({ positionId: POS, employeeIds: [] });
 
     expect(result.ok).toBe(true);
-    expect(assignmentServiceMock.setPositionPrimaryOccupant).toHaveBeenCalledWith(
-      expect.objectContaining({ positionId: POS, employeeId: null })
+    expect(assignmentServiceMock.setPositionOccupants).toHaveBeenCalledWith(
+      expect.objectContaining({ positionId: POS, employeeIds: [] })
     );
+  });
+
+  it("setPositionOccupantsAction rejects a duplicated employee and an over-long list", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+
+    const dup = await setPositionOccupantsAction({ positionId: POS, employeeIds: [EMP, EMP] });
+    const tooMany = await setPositionOccupantsAction({
+      positionId: POS,
+      employeeIds: Array.from(
+        { length: 51 },
+        (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`
+      ),
+    });
+
+    expect(dup.ok).toBe(false);
+    expect(tooMany.ok).toBe(false);
+    expect(assignmentServiceMock.setPositionOccupants).not.toHaveBeenCalled();
   });
 
   it("a VIEWER cannot set an occupant — the service is never reached", async () => {
     requirePermissionMock.mockRejectedValue(new ForbiddenError());
 
-    const result = await setPositionOccupantAction({ positionId: POS, employeeId: EMP });
+    const result = await setPositionOccupantsAction({ positionId: POS, employeeIds: [EMP] });
 
     expect(result.ok).toBe(false);
-    expect(assignmentServiceMock.setPositionPrimaryOccupant).not.toHaveBeenCalled();
+    expect(assignmentServiceMock.setPositionOccupants).not.toHaveBeenCalled();
   });
 
-  it("setPositionOccupantAction rejects a malformed id before the service", async () => {
+  it("setPositionOccupantsAction rejects a malformed id before the service", async () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
 
-    const result = await setPositionOccupantAction({ positionId: "nope", employeeId: EMP });
+    const result = await setPositionOccupantsAction({ positionId: "nope", employeeIds: [EMP] });
 
     expect(result.ok).toBe(false);
-    expect(assignmentServiceMock.setPositionPrimaryOccupant).not.toHaveBeenCalled();
+    expect(assignmentServiceMock.setPositionOccupants).not.toHaveBeenCalled();
   });
 });
 

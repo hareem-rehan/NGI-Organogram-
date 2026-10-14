@@ -7,22 +7,22 @@ const {
   createPositionActionMock,
   updatePositionActionMock,
   listEmployeeOptionsActionMock,
-  getPositionOccupantActionMock,
-  setPositionOccupantActionMock,
+  getPositionOccupantsActionMock,
+  setPositionOccupantsActionMock,
 } = vi.hoisted(() => ({
   createPositionActionMock: vi.fn(),
   updatePositionActionMock: vi.fn(),
   listEmployeeOptionsActionMock: vi.fn(),
-  getPositionOccupantActionMock: vi.fn(),
-  setPositionOccupantActionMock: vi.fn(),
+  getPositionOccupantsActionMock: vi.fn(),
+  setPositionOccupantsActionMock: vi.fn(),
 }));
 
 vi.mock("@/app/(app)/positions/actions", () => ({
   createPositionAction: createPositionActionMock,
   updatePositionAction: updatePositionActionMock,
   listEmployeeOptionsAction: listEmployeeOptionsActionMock,
-  getPositionOccupantAction: getPositionOccupantActionMock,
-  setPositionOccupantAction: setPositionOccupantActionMock,
+  getPositionOccupantsAction: getPositionOccupantsActionMock,
+  setPositionOccupantsAction: setPositionOccupantsActionMock,
 }));
 
 // The shared Combobox's Radix Popover hangs in jsdom once opened (a known,
@@ -200,8 +200,8 @@ const EMPLOYEES = [
 describe("PositionFormDialog", () => {
   beforeEach(() => {
     listEmployeeOptionsActionMock.mockResolvedValue({ ok: true, data: EMPLOYEES });
-    getPositionOccupantActionMock.mockResolvedValue({ ok: true, data: { employeeId: null } });
-    setPositionOccupantActionMock.mockResolvedValue({ ok: true, data: null });
+    getPositionOccupantsActionMock.mockResolvedValue({ ok: true, data: { employeeIds: [] } });
+    setPositionOccupantsActionMock.mockResolvedValue({ ok: true, data: null });
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -542,67 +542,73 @@ describe("PositionFormDialog", () => {
     });
   });
 
-  describe("Assigned employee", () => {
-    const picker = () => screen.getByRole("combobox", { name: /assigned employee/i });
+  describe("Assigned employees (D56)", () => {
+    const picker = () => screen.getByRole("combobox", { name: /add an employee/i });
+    const chosen = () => screen.queryByRole("list", { name: /assigned employees/i });
 
-    async function pickEmployee(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+    async function addEmployee(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
       await waitFor(() => expect(within(picker()).getByRole("option", { name })).toBeTruthy());
       await user.selectOptions(picker(), within(picker()).getByRole("option", { name }));
     }
 
-    it("prefills the picker with the position's current occupant when editing", async () => {
-      getPositionOccupantActionMock.mockResolvedValue({
+    it("prefills the list with everyone currently holding the position when editing", async () => {
+      getPositionOccupantsActionMock.mockResolvedValue({
         ok: true,
-        data: { employeeId: EMPLOYEE_A_ID },
+        data: { employeeIds: [EMPLOYEE_A_ID, EMPLOYEE_B_ID] },
       });
       const position = makePosition();
       renderForm({ position, allPositions: [position] });
 
-      await waitFor(() => expect(picker()).toHaveDisplayValue("Ayesha Khan"));
-      expect(getPositionOccupantActionMock).toHaveBeenCalledWith(POSITION_ID);
+      await waitFor(() => expect(chosen()).not.toBeNull());
+      expect(within(chosen()!).getByText("Ayesha Khan")).toBeInTheDocument();
+      expect(within(chosen()!).getByText("Bilal Ahmed")).toBeInTheDocument();
+      expect(getPositionOccupantsActionMock).toHaveBeenCalledWith(POSITION_ID);
+      // Someone already listed is not offered again.
+      expect(within(picker()).queryByRole("option", { name: /ayesha khan/i })).toBeNull();
     });
 
-    it("does not touch assignments when the occupant is unchanged", async () => {
-      getPositionOccupantActionMock.mockResolvedValue({
+    it("does not touch assignments when the people are unchanged", async () => {
+      getPositionOccupantsActionMock.mockResolvedValue({
         ok: true,
-        data: { employeeId: EMPLOYEE_A_ID },
+        data: { employeeIds: [EMPLOYEE_A_ID] },
       });
       const position = makePosition();
       updatePositionActionMock.mockResolvedValue({ ok: true, data: position });
       const onOpenChange = vi.fn();
       const user = userEvent.setup();
       renderForm({ position, allPositions: [position], onOpenChange });
-      await waitFor(() => expect(picker()).toHaveDisplayValue("Ayesha Khan"));
+      await waitFor(() => expect(chosen()).not.toBeNull());
 
       await user.click(screen.getByRole("button", { name: /save changes/i }));
 
       await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-      expect(setPositionOccupantActionMock).not.toHaveBeenCalled();
+      expect(setPositionOccupantsActionMock).not.toHaveBeenCalled();
     });
 
-    it("vacates the position when 'Vacant' is chosen on edit", async () => {
-      getPositionOccupantActionMock.mockResolvedValue({
+    it("removing the only person leaves the position vacant", async () => {
+      getPositionOccupantsActionMock.mockResolvedValue({
         ok: true,
-        data: { employeeId: EMPLOYEE_A_ID },
+        data: { employeeIds: [EMPLOYEE_A_ID] },
       });
       const position = makePosition();
       updatePositionActionMock.mockResolvedValue({ ok: true, data: position });
       const user = userEvent.setup();
       renderForm({ position, allPositions: [position] });
-      await waitFor(() => expect(picker()).toHaveDisplayValue("Ayesha Khan"));
+      await waitFor(() => expect(chosen()).not.toBeNull());
 
-      await pickEmployee(user, /vacant/i);
+      await user.click(screen.getByRole("button", { name: "Remove Ayesha Khan" }));
+      expect(screen.getByText(/vacant \(no one assigned\)/i)).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: /save changes/i }));
 
       await waitFor(() =>
-        expect(setPositionOccupantActionMock).toHaveBeenCalledWith({
+        expect(setPositionOccupantsActionMock).toHaveBeenCalledWith({
           positionId: POSITION_ID,
-          employeeId: null,
+          employeeIds: [],
         })
       );
     });
 
-    it("assigns the chosen employee to a newly created position", async () => {
+    it("assigns several chosen employees to a newly created position", async () => {
       const NEW_ID = "44444444-4444-4444-8444-444444444444";
       createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition({ id: NEW_ID }) });
       const onOpenChange = vi.fn();
@@ -610,13 +616,14 @@ describe("PositionFormDialog", () => {
       renderForm({ onOpenChange });
 
       await user.type(screen.getByLabelText(/title/i), "Engineering Manager");
-      await pickEmployee(user, /bilal ahmed/i);
+      await addEmployee(user, /bilal ahmed/i);
+      await addEmployee(user, /ayesha khan/i);
       await user.click(screen.getByRole("button", { name: /create position/i }));
 
       await waitFor(() =>
-        expect(setPositionOccupantActionMock).toHaveBeenCalledWith({
+        expect(setPositionOccupantsActionMock).toHaveBeenCalledWith({
           positionId: NEW_ID,
-          employeeId: EMPLOYEE_B_ID,
+          employeeIds: [EMPLOYEE_B_ID, EMPLOYEE_A_ID],
         })
       );
       await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
@@ -626,7 +633,7 @@ describe("PositionFormDialog", () => {
       const NEW_ID = "44444444-4444-4444-8444-444444444444";
       createPositionActionMock.mockResolvedValue({ ok: true, data: makePosition({ id: NEW_ID }) });
       updatePositionActionMock.mockResolvedValue({ ok: true, data: makePosition({ id: NEW_ID }) });
-      setPositionOccupantActionMock.mockResolvedValueOnce({
+      setPositionOccupantsActionMock.mockResolvedValueOnce({
         ok: false,
         error: "This employee already holds another position.",
       });
@@ -636,7 +643,7 @@ describe("PositionFormDialog", () => {
       renderForm({ onOpenChange, onSaved });
 
       await user.type(screen.getByLabelText(/title/i), "Engineering Manager");
-      await pickEmployee(user, /bilal ahmed/i);
+      await addEmployee(user, /bilal ahmed/i);
       await user.click(screen.getByRole("button", { name: /create position/i }));
 
       expect(await screen.findByText(/already holds another position/i)).toBeInTheDocument();
@@ -659,7 +666,7 @@ describe("PositionFormDialog", () => {
       expect(updatePositionActionMock).toHaveBeenCalledWith(
         expect.objectContaining({ positionId: NEW_ID })
       );
-      expect(setPositionOccupantActionMock).toHaveBeenCalledTimes(2);
+      expect(setPositionOccupantsActionMock).toHaveBeenCalledTimes(2);
     });
   });
 });

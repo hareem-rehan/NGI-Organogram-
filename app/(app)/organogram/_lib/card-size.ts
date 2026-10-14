@@ -1,4 +1,5 @@
 import type { OrganogramNode } from "@/lib/domain/organogram";
+import { occupantCardLines, occupantNamesOf } from "@/lib/domain/organogram-occupants";
 import { cardSizeFor, type CardSize } from "@/lib/domain/organogram-card-size";
 import type { TextStyle } from "@/lib/domain/organogram-text-style";
 
@@ -19,6 +20,7 @@ export function organogramCardSize(node: OrganogramNode, style: TextStyle | unde
       title: node.title,
       departmentName: node.departmentName,
       occupantName: node.occupancyStatus === "occupied" ? node.occupantDisplayName : null,
+      occupantLines: occupantCardLines(occupantNamesOf(node)).length,
       roleCount: isHeading
         ? (node.departmentMemberCount ?? node.displayChildCount ?? node.directReportCount)
         : (node.totalReportCount ?? node.displayChildCount ?? node.directReportCount),

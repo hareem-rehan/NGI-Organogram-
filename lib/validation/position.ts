@@ -148,13 +148,23 @@ export const deletePositionSchema = z
   })
   .strict();
 
+/** Most employees one position can hold at once (D56) — a sanity cap, not a business rule. */
+export const MAX_OCCUPANTS_PER_POSITION = 50;
+
 /**
- * Sets a position's current occupant. `employeeId` null means "leave vacant".
+ * Sets the employees currently holding a position (D56). An empty list
+ * leaves it vacant. Unique ids, capped.
  */
-export const setPositionOccupantSchema = z
+export const setPositionOccupantsSchema = z
   .object({
     positionId: z.string().uuid(),
-    employeeId: z.string().uuid().nullable(),
+    employeeIds: z
+      .array(z.string().uuid())
+      .max(
+        MAX_OCCUPANTS_PER_POSITION,
+        `A position can hold at most ${MAX_OCCUPANTS_PER_POSITION} employees.`
+      )
+      .refine((ids) => new Set(ids).size === ids.length, "Each employee may be listed only once."),
   })
   .strict();
 

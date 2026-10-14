@@ -19,8 +19,10 @@ export interface OrganogramRawData {
   jobGradesById: Map<string, { code: string; level: number | null }>;
   /** Family name per id, for the card/details/colour dimension. */
   jobFamilyNamesById: Map<string, string>;
-  occupantNamesByPositionId: Map<string, string>;
-  occupantEmployeeIdsByPositionId: Map<string, string>;
+  /** Every current holder's display name per position, longest-serving first (D56). */
+  occupantNamesByPositionId: Map<string, string[]>;
+  /** Every current holder's employee id per position, in the same order as the names. */
+  occupantEmployeeIdsByPositionId: Map<string, string[]>;
 }
 
 /**
@@ -76,7 +78,9 @@ export async function getOrganogramRawData(
         employeeId: true,
         employee: { select: { firstName: true, lastName: true, preferredName: true } },
       },
-      distinct: ["positionId"],
+      // Every current holder (a position may have several, D56), the
+      // longest-serving first so the card's first name is stable.
+      orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
     }),
   ]);
 
@@ -86,11 +90,23 @@ export async function getOrganogramRawData(
     jobGradeNamesById: new Map(jobGrades.map((g) => [g.id, g.name])),
     jobGradesById: new Map(jobGrades.map((g) => [g.id, { code: g.code, level: g.displayOrder }])),
     jobFamilyNamesById: new Map(jobFamilies.map((f) => [f.id, f.name])),
-    occupantNamesByPositionId: new Map(
-      occupantRows.map((row) => [row.positionId, formatEmployeeDisplayName(row.employee)])
+    occupantNamesByPositionId: groupByPosition(occupantRows, (row) =>
+      formatEmployeeDisplayName(row.employee)
     ),
-    occupantEmployeeIdsByPositionId: new Map(
-      occupantRows.map((row) => [row.positionId, row.employeeId])
-    ),
+    occupantEmployeeIdsByPositionId: groupByPosition(occupantRows, (row) => row.employeeId),
   };
+}
+
+/** One list per position, keeping the rows' order. */
+function groupByPosition<R extends { positionId: string }>(
+  rows: readonly R[],
+  value: (row: R) => string
+): Map<string, string[]> {
+  const grouped = new Map<string, string[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.positionId) ?? [];
+    list.push(value(row));
+    grouped.set(row.positionId, list);
+  }
+  return grouped;
 }

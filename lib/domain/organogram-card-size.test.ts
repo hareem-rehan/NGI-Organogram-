@@ -60,6 +60,13 @@ describe("cardSizeFor", () => {
     expect(filled.height - empty.height).toBeGreaterThan(14);
   });
 
+  it("grows by one line per name line when several people hold the role (D56)", () => {
+    const one = cardSizeFor({ ...position, occupantName: "Ali", occupantLines: 1 });
+    const three = cardSizeFor({ ...position, occupantName: "Ali", occupantLines: 3 });
+    expect(three.height - one.height).toBeGreaterThan(2 * 14);
+    expect(three.width).toBe(one.width);
+  });
+
   it("keeps one width and wraps a long title onto more lines, growing taller (D49)", () => {
     const short = cardSizeFor(position);
     const two = cardSizeFor({ ...position, title: "Principal Software Engineer II" });
