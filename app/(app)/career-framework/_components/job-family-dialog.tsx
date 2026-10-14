@@ -24,7 +24,6 @@ interface JobFamilyDialogProps {
 interface FormValues {
   departmentId: string;
   name: string;
-  code: string;
   description: string | null;
 }
 
@@ -47,7 +46,7 @@ export function JobFamilyDialog({
     setValue,
     formState: { errors },
   } = useForm<FormValues>({
-    defaultValues: { departmentId: "", name: "", code: "", description: null },
+    defaultValues: { departmentId: "", name: "", description: null },
   });
 
   useEffect(() => {
@@ -56,7 +55,6 @@ export function JobFamilyDialog({
       reset({
         departmentId: jobFamily?.departmentId ?? departments[0]?.id ?? "",
         name: jobFamily?.name ?? "",
-        code: jobFamily?.code ?? "",
         description: jobFamily?.description ?? null,
       });
     }
@@ -72,13 +70,12 @@ export function JobFamilyDialog({
         ? await updateJobFamilyAction({
             jobFamilyId: jobFamily.id,
             name: values.name,
-            code: values.code,
             description: values.description,
           })
         : await createJobFamilyAction({
             departmentId: values.departmentId,
+            // The code is generated from the name on the server (D57).
             name: values.name,
-            code: values.code,
             description: values.description,
           });
 
@@ -111,12 +108,6 @@ export function JobFamilyDialog({
                 {...register("name", { required: "Name is required." })}
                 autoFocus
               />
-            )}
-          </Field>
-
-          <Field label="Code" required error={errors.code?.message}>
-            {(fieldProps) => (
-              <Input {...fieldProps} {...register("code", { required: "Code is required." })} />
             )}
           </Field>
 

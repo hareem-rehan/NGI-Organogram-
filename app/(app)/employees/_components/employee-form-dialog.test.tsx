@@ -3,17 +3,23 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Employee } from "@prisma/client";
 
-const { createEmployeeActionMock, updateEmployeeActionMock, listEligiblePositionsActionMock } =
-  vi.hoisted(() => ({
-    createEmployeeActionMock: vi.fn(),
-    updateEmployeeActionMock: vi.fn(),
-    listEligiblePositionsActionMock: vi.fn(),
-  }));
+const {
+  createEmployeeActionMock,
+  updateEmployeeActionMock,
+  listEligiblePositionsActionMock,
+  checkEmployeeCodeActionMock,
+} = vi.hoisted(() => ({
+  createEmployeeActionMock: vi.fn(),
+  updateEmployeeActionMock: vi.fn(),
+  listEligiblePositionsActionMock: vi.fn(),
+  checkEmployeeCodeActionMock: vi.fn(),
+}));
 
 vi.mock("@/app/(app)/employees/actions", () => ({
   createEmployeeAction: createEmployeeActionMock,
   updateEmployeeAction: updateEmployeeActionMock,
   listEligiblePositionsAction: listEligiblePositionsActionMock,
+  checkEmployeeCodeAction: checkEmployeeCodeActionMock,
 }));
 
 import { EmployeeFormDialog } from "./employee-form-dialog";
@@ -43,6 +49,10 @@ describe("EmployeeFormDialog", () => {
     // The create form loads eligible positions for the optional assignment
     // section on open; default to an empty list so unrelated tests don't error.
     listEligiblePositionsActionMock.mockResolvedValue({ ok: true, data: [] });
+    checkEmployeeCodeActionMock.mockImplementation(async ({ employeeCode }) => ({
+      ok: true,
+      data: { employeeCode: String(employeeCode).toUpperCase(), available: true },
+    }));
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -119,6 +129,56 @@ describe("EmployeeFormDialog", () => {
 
     expect(await screen.findByText(/already in use/i)).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it("says a code is already used as soon as it is typed, before the rest of the form (user request)", async () => {
+    checkEmployeeCodeActionMock.mockResolvedValue({
+      ok: true,
+      data: { employeeCode: "EMP001", available: false },
+    });
+    const user = userEvent.setup();
+    render(<EmployeeFormDialog open onOpenChange={() => {}} employee={null} onSaved={() => {}} />);
+
+    await user.type(screen.getByLabelText(/employee code/i), "emp001");
+    await user.tab(); // leave the field; nothing else filled in
+
+    expect(await screen.findByText(/"EMP001" is already in use/i)).toBeInTheDocument();
+    expect(checkEmployeeCodeActionMock).toHaveBeenCalledWith({ employeeCode: "emp001" });
+  });
+
+  it("never saves while the typed code is already used", async () => {
+    checkEmployeeCodeActionMock.mockResolvedValue({
+      ok: true,
+      data: { employeeCode: "EMP001", available: false },
+    });
+    const user = userEvent.setup();
+    render(<EmployeeFormDialog open onOpenChange={() => {}} employee={null} onSaved={() => {}} />);
+
+    await user.type(screen.getByLabelText(/employee code/i), "EMP001");
+    await user.type(screen.getByLabelText(/first name/i), "Ada");
+    await user.type(screen.getByLabelText(/last name/i), "Lovelace");
+    await screen.findByText(/already in use/i);
+    await user.click(screen.getByRole("button", { name: /create employee/i }));
+
+    expect(createEmployeeActionMock).not.toHaveBeenCalled();
+  });
+
+  it("does not flag an employee's own unchanged code when editing", async () => {
+    const user = userEvent.setup();
+    render(
+      <EmployeeFormDialog
+        open
+        onOpenChange={() => {}}
+        employee={makeEmployee()}
+        onSaved={() => {}}
+      />
+    );
+    await user.click(screen.getByLabelText(/employee code/i));
+    await user.tab();
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(checkEmployeeCodeActionMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/already in use/i)).toBeNull();
   });
 
   it("edit submission never includes employmentStatus in the update payload", async () => {

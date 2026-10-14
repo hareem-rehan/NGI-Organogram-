@@ -137,11 +137,24 @@ export const listEmployeesQuerySchema = z
     status: z.enum(["ACTIVE", "TRANSFERRED", "TERMINATED"]).optional(),
     assignment: z.enum(["assigned", "unassigned"]).optional(),
     departmentId: z.string().uuid().optional(),
+    sort: z.enum(["name", "code"]).optional(),
+    direction: z.enum(["asc", "desc"]).optional(),
     page: pageSchema,
     pageSize: pageSizeSchema,
   })
   .strict();
 export type ListEmployeesQuery = z.infer<typeof listEmployeesQuerySchema>;
+
+/**
+ * The Add/Edit Employee form's instant "is this code free?" check. Same code
+ * rules as saving; `excludeEmployeeId` is the employee being edited.
+ */
+export const checkEmployeeCodeSchema = z
+  .object({
+    employeeCode: employeeCodeSchema,
+    excludeEmployeeId: z.string().uuid().optional(),
+  })
+  .strict();
 
 export const eligiblePositionSearchSchema = z
   .object({

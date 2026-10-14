@@ -44,7 +44,8 @@ export const createJobFamilySchema = z
   .object({
     departmentId: z.string().uuid(),
     name: nameSchema,
-    code: codeSchema,
+    /** Optional: generated from the name when absent (D57 — the form has no Code field). */
+    code: codeSchema.optional(),
     description: descriptionSchema,
     displayOrder: z.number().int().nullable().optional(),
   })

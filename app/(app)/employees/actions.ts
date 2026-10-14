@@ -5,6 +5,7 @@ import type { Department, Employee, EmploymentStatus, PositionAssignment } from 
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
 import { toAuditActor } from "@/lib/server/audit-actor";
+import { normalizeCode } from "@/lib/domain/normalize";
 import {
   changeEmployeeStatus,
   createEmployeeWithOptionalAssignment,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/services/assignment.service";
 import {
   findEmployeeById,
+  isEmployeeCodeTaken,
   listCurrentAssignmentsForEmployees,
   searchEmployees,
   type CurrentAssignmentInfo,
@@ -37,6 +39,7 @@ import { listDepartmentsForCompany } from "@/lib/repositories/department.reposit
 import {
   assignEmployeeSchema,
   changeEmployeeStatusSchema,
+  checkEmployeeCodeSchema,
   createEmployeeWithAssignmentSchema,
   eligiblePositionSearchSchema,
   endAssignmentSchema,
@@ -136,6 +139,24 @@ export async function listEligiblePositionsAction(
       values.search,
       values.effectiveDate ?? new Date()
     );
+  });
+}
+
+/**
+ * The Add/Edit Employee form's instant check (user request, 2026-10-14): is
+ * this code already used by another employee? Lets the form say so as soon
+ * as the code is typed, instead of only after every field is filled and
+ * saved. Saving still re-checks (the database's unique constraint).
+ */
+export async function checkEmployeeCodeAction(
+  input: unknown
+): Promise<ActionResult<{ employeeCode: string; available: boolean }>> {
+  return runAction(async () => {
+    const user = await requirePermission("employees:manage");
+    const { employeeCode, excludeEmployeeId } = checkEmployeeCodeSchema.parse(input);
+    const code = normalizeCode(employeeCode);
+    const taken = await isEmployeeCodeTaken(user.companyId, code, excludeEmployeeId);
+    return { employeeCode: code, available: !taken };
   });
 }
 

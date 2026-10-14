@@ -67,10 +67,11 @@ describe("CareerFrameworkView", () => {
     expect(screen.getByRole("button", { name: /add sub-division/i })).toBeInTheDocument();
   });
 
-  it("lists each sub-division with its department and code", () => {
+  it("lists each sub-division with its department, and no code (D57)", () => {
     renderView();
     expect(screen.getByRole("heading", { name: "Software Engineering" })).toBeInTheDocument();
-    expect(screen.getByText(/Engineering · SWE/)).toBeInTheDocument();
+    expect(screen.getByText("Engineering")).toBeInTheDocument();
+    expect(screen.queryByText(/SWE/)).toBeNull();
   });
 
   it("points level names to the Levels Mapping page", () => {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Plus } from "lucide-react";
 import type { Department, Employee } from "@prisma/client";
 
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +69,19 @@ export function EmployeesView({ canManage }: EmployeesViewProps) {
     parseUuidParam(searchParams.get("department"))
   );
   const [page, setPage] = useState(1);
+  // Table sort (user request, 2026-10-14): click Name or Code; again to reverse.
+  const [sort, setSort] = useState<{ field: "name" | "code"; direction: "asc" | "desc" }>({
+    field: "name",
+    direction: "asc",
+  });
+  const toggleSort = (field: "name" | "code") => {
+    setSort((current) =>
+      current.field === field
+        ? { field, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { field, direction: "asc" }
+    );
+    setPage(1);
+  };
 
   const [payload, setPayload] = useState<EmployeeListPayload | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -87,6 +100,8 @@ export function EmployeesView({ canManage }: EmployeesViewProps) {
           status: status === "ALL" ? undefined : status,
           assignment: assignment === "ALL" ? undefined : assignment,
           departmentId: departmentFilter || undefined,
+          sort: sort.field,
+          direction: sort.direction,
           page,
           pageSize: DEFAULT_PAGE_SIZE,
         }),
@@ -100,7 +115,7 @@ export function EmployeesView({ canManage }: EmployeesViewProps) {
       setPayload(listResult.data);
       if (deptResult.ok) setDepartments(deptResult.data);
     })();
-  }, [search, status, assignment, departmentFilter, page]);
+  }, [search, status, assignment, departmentFilter, sort, page]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -226,12 +241,8 @@ export function EmployeesView({ canManage }: EmployeesViewProps) {
             <caption className="sr-only">Employees</caption>
             <thead className="bg-muted text-muted-foreground">
               <tr>
-                <th scope="col" className="px-4 py-2 text-left font-medium">
-                  Name
-                </th>
-                <th scope="col" className="px-4 py-2 text-left font-medium">
-                  Code
-                </th>
+                <SortableHeader label="Name" field="name" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Code" field="code" sort={sort} onSort={toggleSort} />
                 <th scope="col" className="px-4 py-2 text-left font-medium">
                   Current position
                 </th>
@@ -342,5 +353,42 @@ export function EmployeesView({ canManage }: EmployeesViewProps) {
         />
       ) : null}
     </div>
+  );
+}
+
+/** A column header that sorts the table by its column; clicking again reverses. */
+function SortableHeader({
+  label,
+  field,
+  sort,
+  onSort,
+}: {
+  label: string;
+  field: "name" | "code";
+  sort: { field: "name" | "code"; direction: "asc" | "desc" };
+  onSort: (field: "name" | "code") => void;
+}) {
+  const active = sort.field === field;
+  const Icon = !active ? ArrowUpDown : sort.direction === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th
+      scope="col"
+      className="px-4 py-2 text-left font-medium"
+      aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className="hover:text-foreground inline-flex items-center gap-1"
+      >
+        {label}
+        <Icon aria-hidden="true" className={active ? "size-3.5" : "size-3.5 opacity-40"} />
+        <span className="sr-only">
+          {active
+            ? `, sorted ${sort.direction === "asc" ? "ascending" : "descending"}. Click to reverse.`
+            : ", click to sort."}
+        </span>
+      </button>
+    </th>
   );
 }

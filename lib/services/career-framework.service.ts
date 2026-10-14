@@ -4,6 +4,7 @@ import { Prisma as PrismaNamespace } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
+import { departmentCodeFromName, firstFreeCode } from "@/lib/domain/department-code";
 import { normalizeCode } from "@/lib/domain/normalize";
 import { reorderWithinSlots } from "@/lib/domain/organogram-card-offsets";
 import { ConflictError, CrossCompanyError, NotFoundError } from "@/lib/domain/errors";
@@ -45,7 +46,8 @@ export interface CreateJobFamilyInput {
   actor?: AuditActor;
   departmentId: string;
   name: string;
-  code: string;
+  /** Internal key; generated from the name when absent (D57). */
+  code?: string;
   description?: string | null;
   displayOrder?: number | null;
 }
@@ -54,8 +56,6 @@ export async function createJobFamily(
   input: CreateJobFamilyInput,
   db: DbClient = prisma
 ): Promise<JobFamily> {
-  const code = normalizeCode(input.code);
-
   return withTransaction(db, async (tx) => {
     // The parent department must belong to this company — a cross-company
     // department id must never anchor a sub-division.
@@ -65,6 +65,12 @@ export async function createJobFamily(
         `Department ${input.departmentId} does not exist in company ${input.companyId}.`
       );
     }
+
+    // Sub-division codes are internal (D57): generated from the name unless a
+    // caller (a script, an import) supplies one.
+    const code = input.code
+      ? normalizeCode(input.code)
+      : await generateJobFamilyCode(input.name, input.companyId, tx);
 
     let created: JobFamily;
     try {
@@ -90,7 +96,7 @@ export async function createJobFamily(
         category: "CAREER_FRAMEWORK",
         entityType: "JobFamily",
         entityId: created.id,
-        entityDisplayReference: created.code,
+        entityDisplayReference: created.name,
         after: created,
       },
       tx
@@ -144,7 +150,7 @@ export async function updateJobFamily(
         category: "CAREER_FRAMEWORK",
         entityType: "JobFamily",
         entityId: updated.id,
-        entityDisplayReference: updated.code,
+        entityDisplayReference: updated.name,
         before: existing,
         after: updated,
       },
@@ -195,7 +201,7 @@ export async function reorderJobFamilies(
           category: "CAREER_FRAMEWORK",
           entityType: "JobFamily",
           entityId: jobFamilyId,
-          entityDisplayReference: after.code,
+          entityDisplayReference: after.name,
           before,
           after,
           metadata: { reordered: true },
@@ -204,6 +210,20 @@ export async function reorderJobFamilies(
       );
     }
   });
+}
+
+/** A free code for a new sub-division, built from its name ("HR Ops" → HO, "DevOps" → DEV). */
+async function generateJobFamilyCode(
+  name: string,
+  companyId: string,
+  tx: PrismaNamespace.TransactionClient
+): Promise<string> {
+  const base = departmentCodeFromName(name);
+  const existing = await tx.jobFamily.findMany({
+    where: { companyId, code: { startsWith: base, mode: "insensitive" } },
+    select: { code: true },
+  });
+  return firstFreeCode(base, new Set(existing.map((f) => f.code.toUpperCase())));
 }
 
 export async function deleteJobFamily(
@@ -239,7 +259,7 @@ export async function deleteJobFamily(
         category: "CAREER_FRAMEWORK",
         entityType: "JobFamily",
         entityId: existing.id,
-        entityDisplayReference: existing.code,
+        entityDisplayReference: existing.name,
         before: existing,
       },
       tx
@@ -302,7 +322,7 @@ export async function createCareerTrack(
         category: "CAREER_FRAMEWORK",
         entityType: "CareerTrack",
         entityId: created.id,
-        entityDisplayReference: `${family.code}:${created.kind}`,
+        entityDisplayReference: `${family.name}:${created.kind}`,
         after: created,
       },
       tx

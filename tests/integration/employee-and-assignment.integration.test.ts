@@ -24,6 +24,7 @@ import {
 } from "@/lib/domain/errors";
 import { getActivePrimaryAssignmentForPosition } from "@/lib/repositories/assignment.repository";
 import {
+  isEmployeeCodeTaken,
   listCurrentAssignmentsForEmployees,
   searchEmployees,
 } from "@/lib/repositories/employee.repository";
@@ -703,6 +704,75 @@ describe("Position assignment", () => {
       where: { positionId: position.id, endDate: null },
     });
     expect(open).toHaveLength(1);
+  });
+});
+
+describe("isEmployeeCodeTaken (instant duplicate-code check)", () => {
+  it("finds a used code in the same company only, ignoring case, and can leave one employee out", async () => {
+    const company = await makeCompany();
+    const other = await makeCompany();
+    const employee = await makeEmployee(company.id, { employeeCode: "EMP001" });
+    await makeEmployee(other.id, { employeeCode: "EMP777" });
+
+    expect(await isEmployeeCodeTaken(company.id, "EMP001")).toBe(true);
+    expect(await isEmployeeCodeTaken(company.id, "emp001")).toBe(true);
+    expect(await isEmployeeCodeTaken(company.id, "EMP002")).toBe(false);
+    expect(await isEmployeeCodeTaken(company.id, "EMP777")).toBe(false);
+    expect(await isEmployeeCodeTaken(company.id, "EMP001", employee.id)).toBe(false);
+  });
+});
+
+describe("searchEmployees — sorting (user request, 2026-10-14)", () => {
+  it("sorts by code with numbers by value, across pages, either way round", async () => {
+    const company = await makeCompany();
+    for (const code of ["EMP10", "EMP2", "EMP001", "EMP100", "EMP03"]) {
+      await makeEmployee(company.id, { employeeCode: code });
+    }
+    const page = async (n: number, direction: "asc" | "desc" = "asc") =>
+      (
+        await searchEmployees({
+          companyId: company.id,
+          sort: "code",
+          direction,
+          page: n,
+          pageSize: 2,
+        })
+      ).items.map((e) => e.employeeCode);
+
+    expect([...(await page(1)), ...(await page(2)), ...(await page(3))]).toEqual([
+      "EMP001",
+      "EMP2",
+      "EMP03",
+      "EMP10",
+      "EMP100",
+    ]);
+    expect(await page(1, "desc")).toEqual(["EMP100", "EMP10"]);
+    const result = await searchEmployees({
+      companyId: company.id,
+      sort: "code",
+      page: 1,
+      pageSize: 2,
+    });
+    expect(result.totalCount).toBe(5);
+  });
+
+  it("sorts by name (last, then first) either way round", async () => {
+    const company = await makeCompany();
+    await makeEmployee(company.id, { firstName: "Zara", lastName: "Ali" });
+    await makeEmployee(company.id, { firstName: "Bilal", lastName: "Khan" });
+    const names = async (direction: "asc" | "desc") =>
+      (
+        await searchEmployees({
+          companyId: company.id,
+          sort: "name",
+          direction,
+          page: 1,
+          pageSize: 10,
+        })
+      ).items.map((e) => e.lastName);
+
+    expect(await names("asc")).toEqual(["Ali", "Khan"]);
+    expect(await names("desc")).toEqual(["Khan", "Ali"]);
   });
 });
 
