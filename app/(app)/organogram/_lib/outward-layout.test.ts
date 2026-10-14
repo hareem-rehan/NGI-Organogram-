@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { NODE_WIDTH, computeElkLayout } from "./elk-layout";
-import { arrangeBranchesOutward, growDirectionFor, layoutBranch } from "./outward-layout";
+import {
+  arrangeBranchesOutward,
+  growDirectionFor,
+  keepSavedBoxOrder,
+  layoutBranch,
+} from "./outward-layout";
 
 const W = 100;
 const GAP = 10;
@@ -237,5 +242,24 @@ describe("computeElkLayout — outward branches (end to end)", () => {
     expect(x("dM")).toBe(x("m1"));
     // The CEO stays centred over the department row.
     expect(x("ceo") + NODE_WIDTH / 2).toBeCloseTo((x("dL") + x("dR") + NODE_WIDTH) / 2, 0);
+  });
+});
+
+describe("keepSavedBoxOrder (D55)", () => {
+  const rank = new Map(["subdiv:a", "subdiv:b", "subdiv:c", "p1"].map((id, i) => [id, i]));
+  const rankOf = (id: string) => rank.get(id) ?? Number.MAX_SAFE_INTEGER;
+  it("puts sibling boxes back in their saved order", () => {
+    expect(keepSavedBoxOrder(["subdiv:c", "subdiv:a", "subdiv:b"], rankOf)).toEqual([
+      "subdiv:a",
+      "subdiv:b",
+      "subdiv:c",
+    ]);
+  });
+  it("leaves position cards where they are, sorting boxes only among their own slots", () => {
+    expect(keepSavedBoxOrder(["subdiv:b", "p1", "subdiv:a"], rankOf)).toEqual([
+      "subdiv:a",
+      "p1",
+      "subdiv:b",
+    ]);
   });
 });

@@ -195,7 +195,8 @@ export async function computeElkLayout(
       edges,
       widthOf,
       NODE_GAP,
-      2 * DEPARTMENT_SIDE_PADDING + NODE_GAP
+      2 * DEPARTMENT_SIDE_PADDING + NODE_GAP,
+      rankOf
     );
   }
 
