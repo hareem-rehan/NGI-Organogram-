@@ -23,6 +23,7 @@ const {
   },
   employeeRepoMocks: {
     findEmployeeById: vi.fn(),
+    isEmployeeCodeTaken: vi.fn(),
     searchEmployees: vi.fn(),
     listCurrentAssignmentsForEmployees: vi.fn(),
   },
@@ -48,6 +49,7 @@ import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
 import {
   assignEmployeeAction,
   changeEmployeeStatusAction,
+  checkEmployeeCodeAction,
   createEmployeeAction,
   endAssignmentAction,
   getEmployeeDetailAction,
@@ -302,5 +304,50 @@ describe("getEmployeeDetailAction — manager line (docs/DECISIONS.md D27)", () 
       );
     }
     expect(positionRepoMocks.findPositionById).toHaveBeenCalledWith("head-1", "company-trusted");
+  });
+});
+
+describe("checkEmployeeCodeAction (instant duplicate-code check)", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("needs employees:manage and checks the trimmed, uppercased code in the caller's company", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    employeeRepoMocks.isEmployeeCodeTaken.mockResolvedValue(true);
+
+    const result = await checkEmployeeCodeAction({ employeeCode: "  emp001 " });
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("employees:manage");
+    expect(employeeRepoMocks.isEmployeeCodeTaken).toHaveBeenCalledWith(
+      "company-trusted",
+      "EMP001",
+      undefined
+    );
+    expect(result).toEqual({ ok: true, data: { employeeCode: "EMP001", available: false } });
+  });
+
+  it("leaves out the employee being edited", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    employeeRepoMocks.isEmployeeCodeTaken.mockResolvedValue(false);
+
+    const result = await checkEmployeeCodeAction({
+      employeeCode: "EMP001",
+      excludeEmployeeId: VALID_UUID,
+    });
+
+    expect(employeeRepoMocks.isEmployeeCodeTaken).toHaveBeenCalledWith(
+      "company-trusted",
+      "EMP001",
+      VALID_UUID
+    );
+    expect(result.ok && result.data.available).toBe(true);
+  });
+
+  it("refuses a VIEWER, and a too-short code, before any lookup", async () => {
+    requirePermissionMock.mockRejectedValueOnce(new ForbiddenError());
+    expect((await checkEmployeeCodeAction({ employeeCode: "EMP001" })).ok).toBe(false);
+
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    expect((await checkEmployeeCodeAction({ employeeCode: "E" })).ok).toBe(false);
+    expect(employeeRepoMocks.isEmployeeCodeTaken).not.toHaveBeenCalled();
   });
 });

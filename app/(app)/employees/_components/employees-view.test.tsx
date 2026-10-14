@@ -154,6 +154,39 @@ describe("EmployeesView", () => {
     expect(screen.queryByText("Amara Chen")).not.toBeInTheDocument();
   });
 
+  it("sorts by Code when its header is clicked, and reverses on a second click", async () => {
+    mockDefaults();
+    listEmployeesActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [makeEmployee()], totalCount: 1, currentAssignments: {} },
+    });
+    const user = userEvent.setup();
+    render(<EmployeesView canManage={false} />);
+    await screen.findByText("Unassigned");
+    // Name ascending by default.
+    expect(listEmployeesActionMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "name", direction: "asc" })
+    );
+
+    await user.click(screen.getByRole("button", { name: /^code/i }));
+    await waitFor(() =>
+      expect(listEmployeesActionMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "code", direction: "asc", page: 1 })
+      )
+    );
+    expect(screen.getByRole("columnheader", { name: /code/i })).toHaveAttribute(
+      "aria-sort",
+      "ascending"
+    );
+
+    await user.click(screen.getByRole("button", { name: /^code/i }));
+    await waitFor(() =>
+      expect(listEmployeesActionMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "code", direction: "desc" })
+      )
+    );
+  });
+
   it("shows the empty state when there are no employees", async () => {
     mockDefaults();
     listEmployeesActionMock.mockResolvedValue({

@@ -39,6 +39,24 @@ describe("career-framework.service — job family", () => {
     expect(family.name).toBe("Software Engineering");
   });
 
+  it("generates a free code from the name when none is given (D57)", async () => {
+    const company = await makeCompany();
+    const dept = await makeDepartment(company.id);
+    const make = (name: string) =>
+      createJobFamily({ companyId: company.id, departmentId: dept.id, name });
+
+    const first = await make("HR Ops");
+    const second = await make("Human Resources Ops");
+    const oneWord = await make("DevOps");
+
+    expect(first.code).toBe("HO");
+    expect(second.code).toBe("HRO");
+    expect(oneWord.code).toBe("DEV");
+    // Same initials as "HR Ops": the next free code.
+    const clash = await make("Head Office");
+    expect(clash.code).toBe("HO2");
+  });
+
   it("rejects a department from another company (no cross-company anchor)", async () => {
     const a = await makeCompany({ code: "AA" });
     const b = await makeCompany({ code: "BB" });

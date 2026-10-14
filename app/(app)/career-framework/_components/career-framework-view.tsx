@@ -98,7 +98,7 @@ export function CareerFrameworkView({
                 <div>
                   <h2 className="text-base font-semibold">{family.name}</h2>
                   <p className="text-muted-foreground text-xs">
-                    {department ? department.name : "—"} · {family.code}
+                    {department ? department.name : "—"}
                   </p>
                   {family.description ? (
                     <p className="text-muted-foreground mt-1 text-sm">{family.description}</p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Employee } from "@prisma/client";
@@ -14,6 +14,7 @@ import { z } from "zod";
 
 import { createEmployeeSchema, type CreateEmployeeValues } from "@/lib/validation/employee";
 import {
+  checkEmployeeCodeAction,
   createEmployeeAction,
   listEligiblePositionsAction,
   updateEmployeeAction,
@@ -52,8 +53,9 @@ function todayInputValue(): string {
  * also end someone's employment.
  *
  * On CREATE only, an OPTIONAL "Assign to a position" section lets HR put a
- * new hire straight into a position (one that may already hold others, D56). It is entirely optional — left
- * blank, the employee is created unassigned. When a position is chosen the
+ * new hire straight into a position (one that may already hold others,
+ * D56). It is entirely optional — left blank, the employee is created
+ * unassigned. When a position is chosen the
  * create + assignment happen atomically server-side
  * (createEmployeeWithOptionalAssignment); the position list is the same
  * server-eligibility-checked set the standalone Assign flow uses.
@@ -77,6 +79,11 @@ export function EmployeeFormDialog({
   const [positionOptions, setPositionOptions] = useState<EligiblePosition[]>([]);
   const [loadingPositions, setLoadingPositions] = useState(false);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  // "Already in use" for the typed employee code, checked as soon as it is
+  // typed (user request, 2026-10-14) — not only after the whole form is
+  // filled and saved. null = free, or not checked yet.
+  const [codeTakenMessage, setCodeTakenMessage] = useState<string | null>(null);
+  const [employeeCodeValue, setEmployeeCodeValue] = useState("");
 
   const {
     register,
@@ -104,6 +111,8 @@ export function EmployeeFormDialog({
     setAssignPositionId(null);
     setPositionQuery("");
     setAssignStartDate(todayInputValue());
+    setCodeTakenMessage(null);
+    setEmployeeCodeValue(employee?.employeeCode ?? "");
     /* eslint-enable react-hooks/set-state-in-effect */
     reset({
       employeeCode: employee?.employeeCode ?? "",
@@ -154,9 +163,40 @@ export function EmployeeFormDialog({
     [positionOptions]
   );
 
+  // Check the code while it is typed (after a short pause) and again when
+  // the field is left. Only the latest answer counts.
+  const codeCheckRef = useRef(0);
+  const checkCode = useCallback(
+    async (raw: string) => {
+      const code = raw.trim();
+      const ticket = ++codeCheckRef.current;
+      if (code.length < 2 || (isEdit && code.toUpperCase() === employee.employeeCode)) {
+        setCodeTakenMessage(null);
+        return;
+      }
+      const result = await checkEmployeeCodeAction({
+        employeeCode: code,
+        ...(isEdit ? { excludeEmployeeId: employee.id } : {}),
+      });
+      if (ticket !== codeCheckRef.current || !result.ok) return;
+      setCodeTakenMessage(
+        result.data.available
+          ? null
+          : `Employee code "${result.data.employeeCode}" is already in use. Choose a different code.`
+      );
+    },
+    [isEdit, employee]
+  );
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => void checkCode(employeeCodeValue ?? ""), 400);
+    return () => clearTimeout(timer);
+  }, [open, employeeCodeValue, checkCode]);
+
   async function onSubmit(values: SubmittedValues) {
     setFormError(null);
     setAssignmentError(null);
+    if (codeTakenMessage) return; // shown under the code field already
 
     // A chosen position needs a start date (mirrors the server's
     // createEmployeeWithAssignmentSchema refinement) — guard before the
@@ -210,10 +250,27 @@ export function EmployeeFormDialog({
           <Field
             label="Employee code"
             required
-            error={errors.employeeCode?.message}
+            error={errors.employeeCode?.message ?? codeTakenMessage ?? undefined}
             hint="Trimmed and uppercased automatically."
           >
-            {(fieldProps) => <Input {...fieldProps} {...register("employeeCode")} autoFocus />}
+            {(fieldProps) => {
+              const field = register("employeeCode");
+              return (
+                <Input
+                  {...fieldProps}
+                  {...field}
+                  onChange={(event) => {
+                    void field.onChange(event);
+                    setEmployeeCodeValue(event.target.value);
+                  }}
+                  onBlur={(event) => {
+                    void field.onBlur(event);
+                    void checkCode(event.target.value);
+                  }}
+                  autoFocus
+                />
+              );
+            }}
           </Field>
 
           <Field label="First name" required error={errors.firstName?.message}>

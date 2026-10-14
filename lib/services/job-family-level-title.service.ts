@@ -94,7 +94,7 @@ export async function createJobFamilyLevelTitle(
         category: "CAREER_FRAMEWORK",
         entityType: "JobFamilyLevelTitle",
         entityId: created.id,
-        entityDisplayReference: `${family.code}:${jobGradeCode}:${input.kind}:${title}`,
+        entityDisplayReference: `${family.name}:${jobGradeCode}:${input.kind}:${title}`,
         after: created,
       },
       tx
@@ -224,7 +224,7 @@ export async function setLevelsMappingColumnVisibility(
         category: "CAREER_FRAMEWORK",
         entityType: "JobFamily",
         entityId: after.id,
-        entityDisplayReference: after.code,
+        entityDisplayReference: after.name,
         before: { showInLevelsMapping: before.showInLevelsMapping },
         after: { showInLevelsMapping: after.showInLevelsMapping },
       },

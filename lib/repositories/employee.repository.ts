@@ -2,6 +2,7 @@ import "server-only";
 import type { Employee, EmploymentStatus, Position, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
+import { compareEmployeeCodes } from "@/lib/domain/employee-code";
 import type { DbClient } from "@/lib/repositories/types";
 
 export async function findEmployeeById(
@@ -10,6 +11,28 @@ export async function findEmployeeById(
   db: DbClient = prisma
 ): Promise<Employee | null> {
   return db.employee.findFirst({ where: { id, companyId } });
+}
+
+/**
+ * Whether another employee in the company already uses this code (codes are
+ * stored trimmed and uppercased, and unique per company). `excludeEmployeeId`
+ * leaves out the employee being edited.
+ */
+export async function isEmployeeCodeTaken(
+  companyId: string,
+  employeeCode: string,
+  excludeEmployeeId?: string,
+  db: DbClient = prisma
+): Promise<boolean> {
+  const match = await db.employee.findFirst({
+    where: {
+      companyId,
+      employeeCode: { equals: employeeCode, mode: "insensitive" },
+      ...(excludeEmployeeId ? { id: { not: excludeEmployeeId } } : {}),
+    },
+    select: { id: true },
+  });
+  return match !== null;
 }
 
 export interface EmployeeOption {
@@ -45,9 +68,14 @@ export interface EmployeeSearchParams {
   /** "assigned" = has a currently open-ended primary assignment; "unassigned" = does not. Omit for no filter. */
   assignment?: "assigned" | "unassigned";
   departmentId?: string;
+  /** Column to sort by (default: name). "code" sorts numbers by value: EMP2 before EMP10. */
+  sort?: EmployeeSortField;
+  direction?: "asc" | "desc";
   page: number;
   pageSize: number;
 }
+
+export type EmployeeSortField = "name" | "code";
 
 export interface EmployeeSearchResult {
   items: Employee[];
@@ -95,11 +123,35 @@ export async function searchEmployees(
       : {}),
   };
 
+  const direction = params.direction ?? "asc";
+  const skip = (params.page - 1) * params.pageSize;
+
+  if (params.sort === "code") {
+    // The database sorts text letter by letter (EMP10 before EMP2), so the
+    // code order is worked out here: every matching code (a light query —
+    // employee counts stay small), sorted by number, then one page fetched.
+    const codes = await db.employee.findMany({
+      where,
+      select: { id: true, employeeCode: true },
+    });
+    const sign = direction === "asc" ? 1 : -1;
+    const pageIds = codes
+      .sort((a, b) => sign * compareEmployeeCodes(a.employeeCode, b.employeeCode))
+      .slice(skip, skip + params.pageSize)
+      .map((row) => row.id);
+    const rows = await db.employee.findMany({ where: { id: { in: pageIds } } });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return {
+      items: pageIds.flatMap((id) => byId.get(id) ?? []),
+      totalCount: codes.length,
+    };
+  }
+
   const [items, totalCount] = await Promise.all([
     db.employee.findMany({
       where,
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      skip: (params.page - 1) * params.pageSize,
+      orderBy: [{ lastName: direction }, { firstName: direction }, { employeeCode: "asc" }],
+      skip,
       take: params.pageSize,
     }),
     db.employee.count({ where }),

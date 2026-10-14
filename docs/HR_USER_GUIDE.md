@@ -113,6 +113,8 @@ Click **Create position** to save. **Edit** opens the same fields pre-filled wit
 
 ### 5.3a Level names (Levels Mapping)
 
+**Sub-divisions** (Career Framework page) need only a name and a department; there is no code to type. The app keeps an internal code for each one, made from its name, and never shows it.
+
 **Levels Mapping** holds the name of the role at each level, e.g. L3 = "Software Engineer". Names are kept per department, per ladder (IC / Manager), and optionally per sub-division.
 
 - **Choose the columns.** Use **Add column** (top right) to show a department or a sub-division. The **×** on a column header hides it. Hiding never deletes the names; add the column back and they return. It also never changes the department's ladders or any position.
@@ -157,7 +159,8 @@ Someone who held the position **in the past** does not block the delete. Their o
 Open **Employees** from the menu.
 
 - **Search**: "Search by name, code, or email…".
-- **Add Employee** (HR_EDITOR/ADMIN): **Employee code** (required, unique), **First name** and **Last name** (required), **Preferred name** (optional — shown instead of the full name wherever an occupant's name is displayed, e.g. on the organogram), **Work email** (optional but must be unique if provided), **Joining date** (optional). Click **Create employee**.
+- **Sort**: click the **Name** or **Code** column header to sort by it; click again to reverse. Codes sort by their number, so EMP2 comes before EMP10.
+- **Add Employee** (HR_EDITOR/ADMIN): **Employee code** (required, unique; if the code is already used, the form says so as soon as you type it, before you fill in anything else), **First name** and **Last name** (required), **Preferred name** (optional — shown instead of the full name wherever an occupant's name is displayed, e.g. on the organogram), **Work email** (optional but must be unique if provided), **Joining date** (optional). Click **Create employee**.
 
 An employee created this way starts with **no position** — creating an employee never assigns them to anything. This is intentional and is exactly how you'd represent a new hire who hasn't been placed yet, or record someone between roles.
 
