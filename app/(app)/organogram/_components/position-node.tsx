@@ -484,8 +484,9 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
   // screen-reader user cannot see that the line is absent.
   const occupantNames = occupantNamesOf(node);
   const occupantName = occupantNames.length > 0 ? occupantNames.join(", ") : null;
-  // One name on the card; with several people, a "Show names" toggle that
-  // opens them all — the card grows and the chart makes room (D56, D58).
+  // One person's name on the card; with several people, only a
+  // "+N Show Names" toggle that opens them all — the card grows and the chart
+  // makes room (D56, D58).
   const occupantView = occupantCardView(occupantNames, namesExpanded);
   // What expanding this card will actually reveal. Once the leadership
   // filter hides some of a manager's reports, that is fewer than the real
@@ -637,7 +638,6 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
           <p
-            data-org-fixed-weight=""
             className={cn(
               "min-w-0 text-[1em] leading-[1.2] font-extrabold tracking-tight",
               // One line unless the card is at its widest (D47); a line that

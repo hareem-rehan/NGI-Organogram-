@@ -456,7 +456,7 @@ function renderNodeCard(
   });
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="${left}" y="${baseline(top + index * lineHeight, lineHeight, f)}" font-size="${round1(f)}" font-weight="800" ${FIXED_WEIGHT} fill="${textColor}">${escapeXmlText(line)}</text>`
+      `<text x="${left}" y="${baseline(top + index * lineHeight, lineHeight, f)}" font-size="${round1(f)}" font-weight="800" fill="${textColor}">${escapeXmlText(line)}</text>`
     );
   });
 
@@ -542,7 +542,7 @@ const FIXED_WEIGHT = `data-fixed-weight="true"`;
  */
 export function applyTextStyleToCardSvg(cardSvg: string, style: TextStyle | undefined): string {
   if (!style || isEmptyTextStyle(style)) return cardSvg;
-  // The role title and names keep their weights (title bold, names regular).
+  // People's names keep their regular weight, apart from the title.
   let out = cardSvg.replace(/font-weight="(\d+)"(?! data-fixed-weight)/g, (_m, weight: string) => {
     return `font-weight="${fontWeightOf(style, Number(weight))}"`;
   });

@@ -626,15 +626,14 @@ describe("PositionNode — several people (expandable names)", () => {
       occupantDisplayNames: people,
     });
 
-  it("shows one name and a 'Show names' button that asks to open the full list", async () => {
+  it("shows no name, only '+5 Show Names', which asks to open the full list", async () => {
     const onToggleNames = vi.fn();
     const onSelect = vi.fn();
     const data = renderNode({ node: shared(), onToggleNames, onSelect });
-    expect(screen.getByText("Ghulam Nabi")).toBeInTheDocument();
-    expect(screen.queryByText("Waqas Ansari")).toBeNull();
+    for (const name of people) expect(screen.queryByText(name)).toBeNull();
 
     const show = screen.getByRole("button", { name: /show all 5 names/i });
-    expect(show).toHaveTextContent("+4 Show Names");
+    expect(show).toHaveTextContent("+5 Show Names");
     expect(show).toHaveAttribute("aria-expanded", "false");
     await userEvent.setup().click(show);
 

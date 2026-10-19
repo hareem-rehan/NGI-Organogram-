@@ -211,7 +211,7 @@ export function TextStylePanel({
 
           <Field
             label="Weight"
-            hint="Role titles are always bold and people's names regular, so they stay easy to tell apart."
+            hint="People's names always stay regular, so they read apart from the role title."
           >
             {(fieldProps) => (
               <Select
@@ -229,8 +229,8 @@ export function TextStylePanel({
                 }
               >
                 <option value="">{inheritLabel} (bold titles)</option>
-                <option value="bold">Bold — other text</option>
-                <option value="regular">Regular — other text</option>
+                <option value="bold">Bold — all text except names</option>
+                <option value="regular">Regular — no bold</option>
               </Select>
             )}
           </Field>

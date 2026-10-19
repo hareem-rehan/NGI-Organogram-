@@ -739,7 +739,7 @@ describe("renderOrganogramSvg — sub-division grouping card", () => {
   });
 });
 
-describe("role title vs names on exported cards (client request, 2026-10-19)", () => {
+describe("names on exported cards (client request, 2026-10-19)", () => {
   const svgFor = (bold: boolean | undefined) =>
     renderOrganogramSvg(
       [
@@ -762,10 +762,13 @@ describe("role title vs names on exported cards (client request, 2026-10-19)", (
   const weightOf = (svg: string, text: string) =>
     new RegExp(`font-weight="(\\d+)"[^>]*>${text}<`).exec(svg)?.[1];
 
-  it.each([undefined, false, true])("title stays bold and names regular (Bold = %s)", (bold) => {
-    const svg = svgFor(bold);
-    expect(weightOf(svg, "Associate Director")).toBe("800");
-    expect(weightOf(svg, "Shahid Ali")).toBe("400");
+  it.each([undefined, false, true])("names stay regular whatever the Bold setting (%s)", (bold) => {
+    expect(weightOf(svgFor(bold), "Shahid Ali")).toBe("400");
+  });
+
+  it("the title follows the Bold setting (regular when Bold is off)", () => {
+    expect(weightOf(svgFor(false), "Associate Director")).toBe("400");
+    expect(weightOf(svgFor(undefined), "Associate Director")).toBe("800");
   });
 });
 
