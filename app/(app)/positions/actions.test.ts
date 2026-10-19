@@ -21,6 +21,8 @@ const {
     movePosition: vi.fn(),
     changeReportsTo: vi.fn(),
     movePositionToDepartment: vi.fn(),
+    movePositionUnderHead: vi.fn(),
+    undoMovePositionUnderHead: vi.fn(),
     archivePosition: vi.fn(),
     activatePosition: vi.fn(),
     deletePosition: vi.fn(),
@@ -81,6 +83,8 @@ import {
   movePositionAction,
   changeReportsToAction,
   movePositionToDepartmentAction,
+  movePositionUnderHeadAction,
+  undoMovePositionUnderHeadAction,
   getSubtreeIdsAction,
   updatePositionAction,
   listEmployeeOptionsAction,
@@ -775,6 +779,67 @@ describe("position actions — organogram drag-and-drop (docs/DECISIONS.md D29)"
     const result = await movePositionToDepartmentAction(input);
     expect(result.ok).toBe(false);
     expect(serviceMocks.movePositionToDepartment).not.toHaveBeenCalled();
+  });
+
+  it("movePositionUnderHeadAction requires positions:manage and forwards the trusted company", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    serviceMocks.movePositionUnderHead.mockResolvedValue({
+      position: {},
+      previousHeadPositionId: "old-head",
+      departmentChanges: [],
+    });
+    const result = await movePositionUnderHeadAction({
+      positionId: VALID_UUID,
+      newParentPositionId: DEPT,
+    });
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    expect(serviceMocks.movePositionUnderHead).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: "company-trusted", positionId: VALID_UUID })
+    );
+    expect(result).toEqual({
+      ok: true,
+      data: { previousHeadPositionId: "old-head", departmentChanges: [] },
+    });
+  });
+
+  it("a VIEWER can't move a card under another or undo it — the service is never reached", async () => {
+    requirePermissionMock.mockRejectedValue(new ForbiddenError());
+    const moved = await movePositionUnderHeadAction({
+      positionId: VALID_UUID,
+      newParentPositionId: DEPT,
+    });
+    const undone = await undoMovePositionUnderHeadAction({
+      positionId: VALID_UUID,
+      previousHeadPositionId: DEPT,
+      departmentChanges: [],
+    });
+    expect(moved.ok).toBe(false);
+    expect(undone.ok).toBe(false);
+    expect(serviceMocks.movePositionUnderHead).not.toHaveBeenCalled();
+    expect(serviceMocks.undoMovePositionUnderHead).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a malformed snapshot id", { jobFamilyId: "nope" }],
+    ["an extra snapshot key", { companyId: "other" }],
+  ])("undo rejects %s before the service", async (_label, extra) => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    const result = await undoMovePositionUnderHeadAction({
+      positionId: VALID_UUID,
+      previousHeadPositionId: DEPT,
+      departmentChanges: [
+        {
+          positionId: VALID_UUID,
+          departmentId: DEPT,
+          jobGradeId: null,
+          jobFamilyId: null,
+          careerTrackId: null,
+          ...extra,
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(serviceMocks.undoMovePositionUnderHead).not.toHaveBeenCalled();
   });
 
   it("getSubtreeIdsAction requires positions:view and returns the subordinate ids", async () => {

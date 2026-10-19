@@ -162,4 +162,49 @@ test.describe("Organogram — drag and drop", () => {
         `Client Delivery Services ${suffix}`,
       ]);
   });
+
+  test("dropping a card onto a card in another department: it joins that department and shows under it; Undo puts it back", async ({
+    page,
+  }) => {
+    await page.goto("/organogram");
+    await page.getByRole("button", { name: /arrange/i }).click();
+    const director = card(page, `Engineering Director 6 ${suffix}`);
+    const cdsDirector = card(page, `Client Delivery Services Director 1 ${suffix}`);
+    await expect(director).toBeVisible();
+    await expect(cdsDirector).toBeVisible();
+    const before = await readPositionByTitle(companyId, `Engineering Director 6 ${suffix}`);
+
+    await drag(page, director, cdsDirector);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText(`and join Client Delivery Services ${suffix}`);
+    await dialog.getByRole("button", { name: /^move$/i }).click();
+    await expect(dialog).toBeHidden();
+
+    const head = await readPositionByTitle(
+      companyId,
+      `Client Delivery Services Director 1 ${suffix}`
+    );
+    await expect
+      .poll(
+        async () =>
+          (await readPositionByTitle(companyId, `Engineering Director 6 ${suffix}`))
+            .primaryReportsToPositionId
+      )
+      .toBe(head.id);
+    const moved = await readPositionByTitle(companyId, `Engineering Director 6 ${suffix}`);
+    const report = await readPositionByTitle(companyId, `Engineering Manager 6.1 ${suffix}`);
+    expect(moved.departmentId).toBe(head.departmentId);
+    expect(report.departmentId).toBe(head.departmentId);
+    // Drawn right under its new head, not under its old department's box.
+    await expect(page.locator(`[data-testid="rf__edge-${head.id}-${moved.id}"]`)).toHaveCount(1);
+
+    await page.getByRole("button", { name: /^undo: re-attach/i }).click();
+    await expect(page.getByText(/^Undid: Re-attach/)).toBeVisible();
+    const back = await readPositionByTitle(companyId, `Engineering Director 6 ${suffix}`);
+    expect(back.primaryReportsToPositionId).toBe(before.primaryReportsToPositionId);
+    expect(back.departmentId).toBe(before.departmentId);
+    expect(
+      (await readPositionByTitle(companyId, `Engineering Manager 6.1 ${suffix}`)).departmentId
+    ).toBe(before.departmentId);
+  });
 });

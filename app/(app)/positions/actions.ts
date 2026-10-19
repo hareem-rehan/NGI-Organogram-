@@ -27,6 +27,9 @@ import {
   movePosition,
   changeReportsTo,
   movePositionToDepartment,
+  movePositionUnderHead,
+  undoMovePositionUnderHead,
+  type BranchDepartmentSnapshot,
   updatePosition,
   type DeleteSubtreeResult,
 } from "@/lib/services/hierarchy.service";
@@ -51,6 +54,8 @@ import {
   movePositionSchema,
   changeReportsToSchema,
   movePositionToDepartmentSchema,
+  movePositionUnderHeadSchema,
+  undoMovePositionUnderHeadSchema,
   positionStatusChangeSchema,
   deletePositionSchema,
   setPositionOccupantsSchema,
@@ -304,6 +309,48 @@ export async function movePositionToDepartmentAction(
       newHeadPositionId: result.newHeadPositionId,
       departmentChangedCount: result.departmentChangedCount,
     };
+  });
+}
+
+/**
+ * Organogram drag-and-drop onto another card: the position reports to that
+ * card, and joins its department (with its branch) when the head is in
+ * another one. A hierarchy change, so gated on positions:manage; every rule
+ * is re-checked in the service.
+ */
+export async function movePositionUnderHeadAction(input: unknown): Promise<
+  ActionResult<{
+    previousHeadPositionId: string | null;
+    departmentChanges: BranchDepartmentSnapshot[];
+  }>
+> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const values = movePositionUnderHeadSchema.parse(input);
+    const result = await movePositionUnderHead({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      ...values,
+    });
+    return {
+      previousHeadPositionId: result.previousHeadPositionId,
+      departmentChanges: result.departmentChanges,
+    };
+  });
+}
+
+/** Undo of `movePositionUnderHeadAction`. Every id is re-checked against the company in the service. */
+export async function undoMovePositionUnderHeadAction(
+  input: unknown
+): Promise<ActionResult<Position>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const values = undoMovePositionUnderHeadSchema.parse(input);
+    return undoMovePositionUnderHead({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      ...values,
+    });
   });
 }
 

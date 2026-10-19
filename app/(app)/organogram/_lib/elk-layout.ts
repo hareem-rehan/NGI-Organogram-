@@ -60,6 +60,45 @@ export const NODE_GAP = 24;
  */
 export const ORG_EDGE_BUS_OFFSET = LAYER_GAP / 2;
 
+/**
+ * The height of a connector's horizontal bar. Every report of one head
+ * shares ONE bar, placed above the highest of those reports that sits below
+ * the head (`busTop`), so cards nudged to slightly different heights (D62)
+ * still hang from a single line instead of each drawing its own (client
+ * report, 2026-10-20). A card moved above its head keeps its own midpoint.
+ */
+export function orgEdgeBusY(sourceBottom: number, targetTop: number, busTop?: number): number {
+  if (targetTop <= sourceBottom) return (sourceBottom + targetTop) / 2;
+  // (+2: on screen the handles are 1 px dots, a pixel off a card's edge.)
+  const top =
+    busTop !== undefined && busTop > sourceBottom && busTop <= targetTop + 2
+      ? Math.min(busTop, targetTop)
+      : targetTop;
+  return top - ORG_EDGE_BUS_OFFSET > sourceBottom
+    ? top - ORG_EDGE_BUS_OFFSET
+    : (sourceBottom + top) / 2;
+}
+
+/**
+ * For each head, the top edge of its highest report that sits below it: the
+ * `busTop` that `orgEdgeBusY` hangs the head's one shared bar from.
+ */
+export function sharedBusTops(
+  edges: readonly { sourcePositionId: string; targetPositionId: string }[],
+  bottomOf: (id: string) => number | undefined,
+  topOf: (id: string) => number | undefined
+): Map<string, number> {
+  const tops = new Map<string, number>();
+  for (const edge of edges) {
+    const bottom = bottomOf(edge.sourcePositionId);
+    const top = topOf(edge.targetPositionId);
+    if (bottom === undefined || top === undefined || top <= bottom) continue;
+    const current = tops.get(edge.sourcePositionId);
+    if (current === undefined || top < current) tops.set(edge.sourcePositionId, top);
+  }
+  return tops;
+}
+
 const BASE_LAYOUT_OPTIONS = {
   "elk.algorithm": "layered",
   "elk.direction": "DOWN",

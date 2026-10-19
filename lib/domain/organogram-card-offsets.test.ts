@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ROW_SNAP_PX,
+  snapMoveToRow,
   applyCardOffsets,
   departmentOrderAfterDrop,
   isGroupingNodeKey,
@@ -202,5 +204,19 @@ describe("placeCards groups cards by their shared shift (D62)", () => {
     expect(out.get("child")!.x).toBe(out.get("head")!.x);
     expect(out.get("static")).toEqual({ x: 300, y: 0 });
     expect(out.get("head")!.x).not.toBe(300);
+  });
+});
+
+describe("snapMoveToRow (client report 2026-10-20)", () => {
+  it("a small wobble lands back on the row", () => {
+    expect(snapMoveToRow(0, 9)).toBe(0);
+    expect(snapMoveToRow(0, -(ROW_SNAP_PX - 1))).toBe(0);
+  });
+  it("a card already off its row snaps back when moved near it", () => {
+    expect(snapMoveToRow(60, -50)).toBe(-60);
+  });
+  it("a real move up or down is kept", () => {
+    expect(snapMoveToRow(0, 90)).toBe(90);
+    expect(snapMoveToRow(0, -ROW_SNAP_PX)).toBe(-ROW_SNAP_PX);
   });
 });

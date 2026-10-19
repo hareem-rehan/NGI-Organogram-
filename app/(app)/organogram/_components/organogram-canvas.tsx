@@ -19,6 +19,7 @@ import {
 
 import {
   computeElkLayout,
+  sharedBusTops,
   NODE_GAP,
   type LayoutPosition,
 } from "@/app/(app)/organogram/_lib/elk-layout";
@@ -858,21 +859,29 @@ function CanvasInner({
     [visibleNodes]
   );
 
-  const flowEdges = useMemo<Edge[]>(
-    () =>
-      visibleEdges
-        .filter(
-          (edge) => positions.has(edge.sourcePositionId) && positions.has(edge.targetPositionId)
-        )
-        .map((edge) => ({
-          id: `${edge.sourcePositionId}-${edge.targetPositionId}`,
-          source: edge.sourcePositionId,
-          target: edge.targetPositionId,
-          // Org-chart connector: one shared bar per parent (D31).
-          type: "org",
-        })),
-    [visibleEdges, positions]
-  );
+  const flowEdges = useMemo<Edge[]>(() => {
+    const shown = visibleEdges.filter(
+      (edge) => positions.has(edge.sourcePositionId) && positions.has(edge.targetPositionId)
+    );
+    const at = (id: string) => manualPositions.get(id) ?? placedPositions.get(id);
+    // One bar per head, above its highest report, wherever the cards sit.
+    const busTops = sharedBusTops(
+      shown,
+      (id) => {
+        const pos = at(id);
+        return pos ? pos.y + sizeOf(id).height : undefined;
+      },
+      (id) => at(id)?.y
+    );
+    return shown.map((edge) => ({
+      id: `${edge.sourcePositionId}-${edge.targetPositionId}`,
+      source: edge.sourcePositionId,
+      target: edge.targetPositionId,
+      // Org-chart connector: one shared bar per parent (D31).
+      type: "org",
+      data: { busTop: busTops.get(edge.sourcePositionId) },
+    }));
+  }, [visibleEdges, positions, manualPositions, placedPositions, sizeOf]);
 
   useEffect(() => {
     if (fitViewSignal === 0) return;
