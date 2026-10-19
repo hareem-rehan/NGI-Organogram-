@@ -544,6 +544,15 @@ function CanvasInner({
       if (!isPlainPosition) return null;
       const target = targetUnderPointer(event, dragged);
       if (!target) return null;
+      // A sibling card (same head on the chart) is a reorder, not a new head:
+      // dropping onto it swaps their places, like boxes (D61, client report
+      // 2026-10-19). Reporting to a sibling is set from the Positions page.
+      if (
+        (target.kind ?? "position") === "position" &&
+        target.primaryReportsToPositionId === draggedNode!.primaryReportsToPositionId
+      ) {
+        return null;
+      }
       return {
         targetId: target.positionId,
         verdict: judgeDrop(dragged.id, target, dragDescendantsRef.current),
@@ -630,9 +639,10 @@ function CanvasInner({
       if (siblings.length < 2) return;
       const row = siblings.map((sibling) => sibling.id);
       const draggedId = orderIdOf(dragged);
-      const target = kind === "position" ? null : targetUnderPointer(event, node);
+      const target = targetUnderPointer(event, node);
       const next =
-        target?.kind === kind &&
+        target &&
+        (target.kind ?? "position") === kind &&
         target.primaryReportsToPositionId === dragged.primaryReportsToPositionId
           ? departmentOrderAfterDrop(row, draggedId, orderIdOf(target))
           : orderAfterDropAt(siblings, draggedId, node.position.x + sizeOf(node.id).width / 2);

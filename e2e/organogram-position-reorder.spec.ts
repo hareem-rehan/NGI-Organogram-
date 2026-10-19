@@ -97,4 +97,35 @@ test.describe("Organogram — reorder position cards", () => {
       .poll(async () => (await staff.boundingBox())!.x > (await principal.boundingBox())!.x)
       .toBe(true);
   });
+
+  test("dropping a card ONTO its sibling swaps their places — no reporting-line change", async ({
+    page,
+  }) => {
+    await page.goto("/organogram");
+    await page.getByRole("button", { name: /arrange/i }).click();
+    const principal = card(page, "Principal Engineer");
+    const staff = card(page, "Staff Engineer");
+    await expect(staff).toBeVisible();
+    await page.getByRole("button", { name: /fit to view/i }).click();
+    await page.locator(".react-flow").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
+    const p0 = (await principal.boundingBox())!;
+    const s0 = (await staff.boundingBox())!;
+    const staffWasFirst = s0.x < p0.x;
+
+    // Let go with the pointer right on top of the sibling card.
+    await page.mouse.move(s0.x + s0.width / 2, s0.y + s0.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(p0.x + p0.width / 2, p0.y + p0.height / 2, { steps: 20 });
+    await page.mouse.up();
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect
+      .poll(async () => (await staff.boundingBox())!.x < (await principal.boundingBox())!.x)
+      .toBe(!staffWasFirst);
+    const staffRow = await readPositionByTitle(companyId, `Staff Engineer ${suffix}`);
+    const principalRow = await readPositionByTitle(companyId, `Principal Engineer ${suffix}`);
+    // Still both report to the same head.
+    expect(staffRow.primaryReportsToPositionId).toBe(principalRow.primaryReportsToPositionId);
+  });
 });
