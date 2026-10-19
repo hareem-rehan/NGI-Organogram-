@@ -145,13 +145,18 @@ test.describe("Organogram — reorder position cards", () => {
         return Math.abs(now.x - reportBefore.x) + Math.abs(now.y - reportBefore.y);
       })
       .toBeGreaterThan(20);
-    await page.waitForTimeout(500);
+    // The moved branch may now sit at the window's edge: frame it again.
+    await page.getByRole("button", { name: /fit to view/i }).click();
+    await page.locator(".react-flow").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
 
     // Senior Engineer (under Principal) let go on Staff Engineer: not a
     // sibling, so it asks to change the reporting line.
     const r0 = (await report.boundingBox())!;
     const s0 = (await staff.boundingBox())!;
-    await page.mouse.move(r0.x + 24, r0.y + 12);
+    // By its centre (it is vacant: no Show Names button there), so the card
+    // itself lands on Staff Engineer whatever the zoom.
+    await page.mouse.move(r0.x + r0.width / 2, r0.y + r0.height / 2);
     await page.mouse.down();
     await page.mouse.move(s0.x + s0.width / 2, s0.y + s0.height / 2, { steps: 20 });
     await page.mouse.up();
