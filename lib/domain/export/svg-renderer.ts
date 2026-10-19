@@ -18,6 +18,7 @@ import {
   gradeFamilyLabel,
   headingNameRowHeight,
   measureTextWidth,
+  POSITION_TITLE_TRACKING_EM,
   rolesUnderLabel,
   wrapToWidth,
   type CardSize,
@@ -449,13 +450,16 @@ function renderNodeCard(
       `<text x="${right}" y="${baseline(top, lineHeight, 8)}" font-size="8" font-weight="600" letter-spacing="0.3" text-anchor="end" fill="${badge.color}">${escapeXmlText(badge.label)}</text>`
     );
   }
+  // Wrapped and drawn exactly as sized and as on screen: in the weight the
+  // text style draws it, slightly tightened.
   const titleLines = wrapToWidth(node.title, right - left - badgeWidth, f, size.titleLines, {
-    bold: true,
+    bold: style?.bold !== false,
     fontFamily: family,
+    letterSpacingEm: POSITION_TITLE_TRACKING_EM,
   });
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="${left}" y="${baseline(top + index * lineHeight, lineHeight, f)}" font-size="${round1(f)}" font-weight="800" fill="${textColor}">${escapeXmlText(line)}</text>`
+      `<text x="${left}" y="${baseline(top + index * lineHeight, lineHeight, f)}" font-size="${round1(f)}" font-weight="800" letter-spacing="${round1(POSITION_TITLE_TRACKING_EM * f)}" fill="${textColor}">${escapeXmlText(line)}</text>`
     );
   });
 

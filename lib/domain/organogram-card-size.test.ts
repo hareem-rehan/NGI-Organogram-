@@ -147,3 +147,28 @@ describe("a word too wide for the card (D53)", () => {
     expect(normal.width).toBe(CARD_WIDTH);
   });
 });
+
+describe("titles measured as they are drawn (client report, 2026-10-19)", () => {
+  const card = (title: string, style: Parameters<typeof cardSizeFor>[1]) =>
+    cardSizeFor({ title, departmentName: "Engineering", roleCount: 2, hasChildren: true }, style);
+
+  it("measures in the text style's weight: a title that needs two lines in bold fits one in regular", () => {
+    expect(card("Associate Architect", { fontSize: 16 }).titleLines).toBe(2);
+    expect(card("Associate Architect", { fontSize: 16, bold: false }).titleLines).toBe(1);
+    expect(card("Associate Architect", { fontSize: 16, bold: false }).height).toBeLessThan(
+      card("Associate Architect", { fontSize: 16 }).height
+    );
+  });
+
+  it.each([
+    "Principal QA Engineer",
+    "Associate Lead UI/UX",
+    "Sr. Software Engineer",
+    "Associate Tech Lead",
+  ])(
+    "includes the titles' tight letter spacing: '%s' fits one line (Arial 15, regular)",
+    (title) => {
+      expect(card(title, { fontFamily: "arial", fontSize: 15, bold: false }).titleLines).toBe(1);
+    }
+  );
+});

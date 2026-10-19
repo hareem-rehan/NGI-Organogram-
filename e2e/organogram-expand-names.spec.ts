@@ -87,4 +87,40 @@ test.describe("Organogram — expandable names on a card", () => {
       .poll(async () => Math.abs((await below.boundingBox())!.y - before.below.y))
       .toBeLessThan(2);
   });
+
+  test("collapsing or expanding a branch keeps the clicked card where it is, at the same zoom", async ({
+    page,
+  }) => {
+    await page.goto("/organogram");
+    const shared = card(page, "Principal Engineer");
+    const below = card(page, "Senior Engineer");
+    await expect(below).toBeVisible();
+    await page.getByRole("button", { name: /fit to view/i }).click();
+    await page.locator(".react-flow").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
+    const zoomLevel = page.getByRole("combobox", { name: "Zoom level" });
+    const zoomText = () =>
+      zoomLevel.evaluate((el) => (el as HTMLSelectElement).selectedOptions[0]?.textContent);
+    const zoomBefore = await zoomText();
+    const before = (await shared.boundingBox())!;
+
+    await shared
+      .getByRole("button", { name: new RegExp(`^collapse principal engineer`, "i") })
+      .click();
+    await expect(below).toHaveCount(0);
+    await page.waitForTimeout(700);
+    const collapsed = (await shared.boundingBox())!;
+    expect(Math.abs(collapsed.x - before.x)).toBeLessThan(2);
+    expect(Math.abs(collapsed.y - before.y)).toBeLessThan(2);
+    expect(await zoomText()).toBe(zoomBefore);
+
+    await shared
+      .getByRole("button", { name: new RegExp(`^expand principal engineer`, "i") })
+      .click();
+    await expect(below).toBeVisible();
+    await page.waitForTimeout(700);
+    const expanded = (await shared.boundingBox())!;
+    expect(Math.abs(expanded.x - before.x)).toBeLessThan(2);
+    expect(Math.abs(expanded.y - before.y)).toBeLessThan(2);
+  });
 });
