@@ -110,13 +110,23 @@ export async function seedDepartmentLayoutChart(
 export async function readPositionByTitle(
   companyId: string,
   title: string
-): Promise<{ id: string; departmentId: string; primaryReportsToPositionId: string | null }> {
+): Promise<{
+  id: string;
+  departmentId: string;
+  primaryReportsToPositionId: string | null;
+  displayOrder: number | null;
+}> {
   assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
   const prisma = new PrismaClient();
   try {
     return await prisma.position.findFirstOrThrow({
       where: { companyId, title },
-      select: { id: true, departmentId: true, primaryReportsToPositionId: true },
+      select: {
+        id: true,
+        departmentId: true,
+        primaryReportsToPositionId: true,
+        displayOrder: true,
+      },
     });
   } finally {
     await prisma.$disconnect();

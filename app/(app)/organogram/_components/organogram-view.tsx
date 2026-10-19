@@ -14,6 +14,7 @@ import {
   clearCardPositionsAction,
   clearTextStyleAction,
   getOrganogramAction,
+  reorderPositionsAction,
   resetCardPositionsAction,
   saveCardPositionAction,
   saveTextStyleAction,
@@ -452,46 +453,6 @@ export function OrganogramView({
     []
   );
 
-  // Arrange mode: cards dropped on empty canvas stay exactly there, for
-  // everyone (D38) — one card, or a whole selected group as ONE undo step.
-  // Shown at once; saved in the background, and put back if refused.
-  const handlePlaceCards = useCallback(
-    (moves: readonly { nodeKey: string; dx: number; dy: number }[]) => {
-      if (moves.length === 0) return;
-      setDropNotice(null);
-      const previous: Record<string, CardOffset | undefined> = {};
-      for (const { nodeKey } of moves) previous[nodeKey] = data?.cardOffsets[nodeKey];
-      setData((current) => {
-        if (!current) return current;
-        const cardOffsets = { ...current.cardOffsets };
-        for (const { nodeKey, dx, dy } of moves) {
-          if (Math.round(dx) !== 0 || Math.round(dy) !== 0) cardOffsets[nodeKey] = { dx, dy };
-          else delete cardOffsets[nodeKey];
-        }
-        return { ...current, cardOffsets };
-      });
-      void (async () => {
-        for (const { nodeKey, dx, dy } of moves) {
-          const result = await saveCardPositionAction({ nodeKey, dx, dy });
-          if (!result.ok) {
-            await restoreOffsets(previous);
-            setDropNotice(result.error);
-            return;
-          }
-        }
-        pushUndo({
-          label: moves.length > 1 ? `Move ${moves.length} cards` : "Move card",
-          run: () => restoreOffsets(previous),
-        });
-      })();
-    },
-    [data, restoreOffsets, pushUndo]
-  );
-  const handlePlaceCard = useCallback(
-    (nodeKey: string, dx: number, dy: number) => handlePlaceCards([{ nodeKey, dx, dy }]),
-    [handlePlaceCards]
-  );
-
   // A card that has just been re-attached somewhere else should land in its
   // new place, not keep the offset it had in the old one.
   const clearPlacement = useCallback(
@@ -606,12 +567,18 @@ export function OrganogramView({
   // a new spot in its row takes that place in the order (D33, D55); the chart
   // is laid out again, so its whole branch moves with it. One Undo step.
   const handleReorderBoxes = useCallback(
-    (kind: "department" | "subdivision", orderedIds: string[], previousOrderedIds: string[]) => {
+    (
+      kind: "department" | "subdivision" | "position",
+      orderedIds: string[],
+      previousOrderedIds: string[]
+    ) => {
       setDropNotice(null);
       const save = (ids: string[]) =>
         kind === "department"
           ? reorderDepartmentsAction({ orderedDepartmentIds: ids })
-          : reorderJobFamiliesAction({ orderedJobFamilyIds: ids });
+          : kind === "subdivision"
+            ? reorderJobFamiliesAction({ orderedJobFamilyIds: ids })
+            : reorderPositionsAction({ orderedPositionIds: ids });
       void (async () => {
         const result = await save(orderedIds);
         if (!result.ok) {
@@ -619,7 +586,12 @@ export function OrganogramView({
           return;
         }
         pushUndo({
-          label: kind === "department" ? "Reorder departments" : "Reorder sub-divisions",
+          label:
+            kind === "department"
+              ? "Reorder departments"
+              : kind === "subdivision"
+                ? "Reorder sub-divisions"
+                : "Reorder positions",
           run: async () => {
             const back = await save(previousOrderedIds);
             refreshAfterMutation();
@@ -1198,13 +1170,11 @@ export function OrganogramView({
 
       {arrangeMode ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Arrange mode — drag any card and let go on empty space to place it there (everyone sees
-          it). Let go with the pointer over another card to change who it reports to, or over a
-          department heading to move it into that department; its whole branch moves with it. The
-          card under the pointer is outlined before you let go. Drag a department or sub-division
-          box left or right to change its place in the row; everything under it moves along. Hold
-          Shift and drag across empty space (or Shift+click) to select several cards, then drag one
-          of them to move the group. Use{" "}
+          Arrange mode — drag any card or box left or right along its row to change its place;
+          everything under it moves along and the others make room (everyone sees it). Let go with
+          the pointer over another card to change who a position reports to, or over a department
+          heading to move it into that department; its whole branch moves with it. The card under
+          the pointer is outlined before you let go. Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
           the trash icon to delete, and click a card to edit it.
         </p>
@@ -1372,8 +1342,6 @@ export function OrganogramView({
                 onInvalidDrop={setDropNotice}
                 onReorderBoxes={handleReorderBoxes}
                 cardOffsets={data.cardOffsets}
-                onPlaceCard={handlePlaceCard}
-                onPlaceCards={handlePlaceCards}
                 textStyles={previewTextStyles}
                 onEditStyle={canManage ? (nodeKey) => setStyleTarget(nodeKey) : undefined}
                 onEditCard={handleEditCard}

@@ -76,6 +76,8 @@ export interface OrganogramPositionInput {
   primaryReportsToPositionId: string | null;
   /** Optional second head (docs/DECISIONS.md D27). Absent means none. */
   coReportsToPositionId?: string | null;
+  /** Saved left-to-right place among its siblings on the chart (D61). */
+  displayOrder?: number | null;
 }
 
 export interface OrganogramDepartmentInput {
@@ -196,6 +198,8 @@ export interface OrganogramNode {
   organizationalLevel: number;
   positionStatus: PositionStatus;
   occupancyStatus: OccupancyStatus;
+  /** Saved left-to-right place among its siblings on the chart (D61); null = not set (title order). */
+  siblingOrder?: number | null;
   /** The longest-serving current holder's name; null when vacant. */
   occupantDisplayName: string | null;
   /**
@@ -368,6 +372,7 @@ export function buildOrganogramGraph(args: {
         positionStatus: p.status,
         occupancyStatus: occupantDisplayName ? "occupied" : "vacant",
         occupantDisplayName,
+        siblingOrder: p.displayOrder ?? null,
         occupantDisplayNames,
         occupantEmployeeIds,
         occupantEmployeeId: occupantEmployeeIds[0] ?? null,

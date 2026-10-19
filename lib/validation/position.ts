@@ -199,3 +199,18 @@ export const listPositionsQuerySchema = z
   })
   .strict();
 export type ListPositionsQuery = z.infer<typeof listPositionsQuerySchema>;
+
+/**
+ * The organogram's drag-to-reorder for position cards (docs/DECISIONS.md
+ * D61): the sibling positions under one head, in their new left-to-right
+ * order. Unique ids, capped.
+ */
+export const reorderPositionsSchema = z
+  .object({
+    orderedPositionIds: z
+      .array(z.string().uuid())
+      .min(1)
+      .max(500)
+      .refine((ids) => new Set(ids).size === ids.length, "Each position may appear only once."),
+  })
+  .strict();

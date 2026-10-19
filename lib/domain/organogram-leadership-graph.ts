@@ -439,6 +439,11 @@ export function projectLeadershipGraph(
       ? (subdivisionRank.get(node.jobFamilyId) ?? Number.MAX_SAFE_INTEGER)
       : Number.MAX_SAFE_INTEGER;
 
+  const positionRankOf = (node: OrganogramNode): number =>
+    (node.kind ?? "position") === "position" && typeof node.siblingOrder === "number"
+      ? node.siblingOrder
+      : Number.MAX_SAFE_INTEGER;
+
   const projectedNodes = allNodes
     .map((node): OrganogramNode => {
       const displayChildCount =
@@ -460,8 +465,10 @@ export function projectLeadershipGraph(
         // Department boxes keep the saved left-to-right order (D33).
         (departmentRank.get(a.positionId) ?? Number.MAX_SAFE_INTEGER) -
           (departmentRank.get(b.positionId) ?? Number.MAX_SAFE_INTEGER) ||
-        // Sub-division boxes keep the saved left-to-right order too (D55).
+        // Sub-division boxes keep the saved left-to-right order too (D55),
+        // and so do position cards (D61).
         subdivisionRankOf(a) - subdivisionRankOf(b) ||
+        positionRankOf(a) - positionRankOf(b) ||
         a.title.localeCompare(b.title) ||
         a.positionCode.localeCompare(b.positionCode)
     );

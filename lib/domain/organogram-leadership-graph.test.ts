@@ -455,6 +455,43 @@ describe("projectLeadershipGraph — empty departments", () => {
   });
 });
 
+describe("projectLeadershipGraph — sibling position order (D61)", () => {
+  const engDepts = [{ id: ENG, name: "Engineering", code: "ENG", color: null }];
+  const reports = (orders: Record<string, number | null>) => [
+    ceo(),
+    ...Object.entries(orders).map(([title, siblingOrder]) =>
+      node({
+        positionId: title.toLowerCase(),
+        title,
+        departmentId: ENG,
+        primaryReportsToPositionId: "ceo",
+        siblingOrder,
+      })
+    ),
+  ];
+  const titlesInOrder = (nodes: OrganogramNode[]) =>
+    projectLeadershipGraph(nodes, opts(), engDepts)
+      .nodes.filter((n) => (n.kind ?? "position") === "position" && n.positionId !== "ceo")
+      .map((n) => n.title);
+
+  it("puts saved positions first, in their saved order, then the rest by title", () => {
+    expect(titlesInOrder(reports({ Alpha: null, Bravo: 2, Charlie: 1, Delta: null }))).toEqual([
+      "Charlie",
+      "Bravo",
+      "Alpha",
+      "Delta",
+    ]);
+  });
+
+  it("without any saved order, keeps title order", () => {
+    expect(titlesInOrder(reports({ Charlie: null, Alpha: null, Bravo: null }))).toEqual([
+      "Alpha",
+      "Bravo",
+      "Charlie",
+    ]);
+  });
+});
+
 describe("projectLeadershipGraph — sub-division tier", () => {
   const DEVOPS = "fam-devops";
   const QA = "fam-qa";

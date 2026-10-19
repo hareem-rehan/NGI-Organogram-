@@ -1,5 +1,7 @@
 "use server";
 
+import { reorderPositions } from "@/lib/services/position-order.service";
+import { reorderPositionsSchema } from "@/lib/validation/position";
 import { requirePermission } from "@/lib/auth/current-user";
 import { runAction, type ActionResult } from "@/lib/server/action-result";
 import {
@@ -89,6 +91,23 @@ export async function clearTextStyleAction(input: unknown): Promise<ActionResult
       actor: toAuditActor(user),
       nodeKey,
       style: {},
+    });
+    return null;
+  });
+}
+
+/**
+ * Saves a new left-to-right order for sibling position cards, from Arrange
+ * mode (docs/DECISIONS.md D61). Display order only — never a reporting line.
+ */
+export async function reorderPositionsAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { orderedPositionIds } = reorderPositionsSchema.parse(input);
+    await reorderPositions({
+      companyId: user.companyId,
+      actor: toAuditActor(user),
+      orderedPositionIds,
     });
     return null;
   });
