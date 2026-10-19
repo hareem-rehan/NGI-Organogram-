@@ -70,7 +70,7 @@ import {
   type OrganogramNode,
 } from "@/lib/domain/organogram";
 import type { DropVerdict } from "@/lib/domain/organogram-drag";
-import { snapMoveToRow, type CardOffset } from "@/lib/domain/organogram-card-offsets";
+import type { CardOffset } from "@/lib/domain/organogram-card-offsets";
 import { addPositionPrefill } from "@/lib/domain/add-position-prefill";
 import { reorderDepartmentsAction } from "@/app/(app)/departments/actions";
 import { reorderJobFamiliesAction } from "@/app/(app)/career-framework/actions";
@@ -247,6 +247,8 @@ export function OrganogramView({
     affectedCount: number;
     /** "position" only: the new head's department, when it differs from the card's (it joins it). */
     joinsDepartmentName?: string;
+    /** "position" only: the head's sub-division the card takes, when it differs ("" = none). */
+    takesSubdivisionName?: string;
   }
   // A refused drag-drop (onto itself or a subordinate), shown under the
   // arrange-mode hint until the next drag.
@@ -442,6 +444,8 @@ export function OrganogramView({
         setMoveIntent({
           joinsDepartmentName:
             head && head.departmentId !== child.departmentId ? head.departmentName : undefined,
+          takesSubdivisionName:
+            head && head.jobFamilyId !== child.jobFamilyId ? (head.jobFamilyName ?? "") : undefined,
           childId,
           kind: verdict.kind,
           parentId: verdict.kind === "position" ? verdict.targetPositionId : verdict.departmentId,
@@ -483,45 +487,6 @@ export function OrganogramView({
       return null;
     },
     []
-  );
-
-  // Arrange mode: a card let go on empty space moves there with its whole
-  // branch — every card below it (shown or folded away) shifts by the same
-  // amount, so the branch keeps its shape (client request, D62). Shown at
-  // once, saved for everyone in one go, one Undo step; put back if refused.
-  const handleMoveBranch = useCallback(
-    (rootId: string, dx: number, rawDy: number) => {
-      if (!data) return;
-      const dy = snapMoveToRow(data.cardOffsets[rootId]?.dy ?? 0, rawDy);
-      if (Math.round(dx) === 0 && Math.round(dy) === 0) return;
-      setDropNotice(null);
-      const branch = branchIds(data.nodes, rootId);
-      const previous: Record<string, CardOffset | undefined> = {};
-      const moves = branch.map((nodeKey) => {
-        const current = data.cardOffsets[nodeKey];
-        previous[nodeKey] = current;
-        return { nodeKey, dx: (current?.dx ?? 0) + dx, dy: (current?.dy ?? 0) + dy };
-      });
-      setData((current) => {
-        if (!current) return current;
-        const cardOffsets = { ...current.cardOffsets };
-        for (const move of moves) cardOffsets[move.nodeKey] = { dx: move.dx, dy: move.dy };
-        return { ...current, cardOffsets };
-      });
-      void (async () => {
-        const result = await saveCardPositionsAction({ moves });
-        if (!result.ok) {
-          await restoreOffsets(previous);
-          setDropNotice(result.error);
-          return;
-        }
-        pushUndo({
-          label: branch.length > 1 ? `Move ${branch.length} cards` : "Move card",
-          run: () => restoreOffsets(previous),
-        });
-      })();
-    },
-    [data, restoreOffsets, pushUndo]
   );
 
   // A card that has just been re-attached somewhere else should land in its
@@ -650,7 +615,8 @@ export function OrganogramView({
     (
       kind: "department" | "subdivision" | "position",
       orderedIds: string[],
-      previousOrderedIds: string[]
+      previousOrderedIds: string[],
+      movedNodeId: string
     ) => {
       setDropNotice(null);
       const save = (ids: string[]) =>
@@ -665,6 +631,9 @@ export function OrganogramView({
           setDropNotice(result.error);
           return;
         }
+        // A reordered card lands in its new slot with its branch: any free
+        // move (D62) it had is cleared, and put back by Undo.
+        const previousOffsets = kind === "position" ? await clearBranchPlacement(movedNodeId) : {};
         pushUndo({
           label:
             kind === "department"
@@ -674,14 +643,19 @@ export function OrganogramView({
                 : "Reorder positions",
           run: async () => {
             const back = await save(previousOrderedIds);
+            if (!back.ok) return back.error;
+            const error =
+              Object.keys(previousOffsets).length > 0
+                ? await restoreOffsets(previousOffsets)
+                : null;
             refreshAfterMutation();
-            return back.ok ? null : back.error;
+            return error;
           },
         });
         refreshAfterMutation();
       })();
     },
-    [refreshAfterMutation, pushUndo]
+    [refreshAfterMutation, pushUndo, clearBranchPlacement, restoreOffsets]
   );
 
   const confirmMove = useCallback(() => {
@@ -1247,11 +1221,12 @@ export function OrganogramView({
 
       {arrangeMode ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Arrange mode — drag a card to any empty spot and let go: it moves there with everything
-          below it (everyone sees it). Let go on top of a card next to it in the same row to swap
-          their places, or on another card or a department heading to change who it reports to.
-          Department and sub-division boxes move left or right along their row. The card under the
-          pointer is outlined before you let go. Use{" "}
+          Arrange mode — drag a card left or right along its row to put it in a new place: the
+          others make room and everything below it moves along. Let go on top of a card next to it
+          to swap their places, or on another card or a department heading to change who it reports
+          to. Drag it well above or below its row to place it there freely, with everything below it
+          (everyone sees it). Department and sub-division boxes move left or right along their row.
+          The card under the pointer is outlined before you let go. Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
           the trash icon to delete, and click a card to edit it.
         </p>
@@ -1419,7 +1394,6 @@ export function OrganogramView({
                 onInvalidDrop={setDropNotice}
                 onReorderBoxes={handleReorderBoxes}
                 cardOffsets={data.cardOffsets}
-                onMoveBranch={handleMoveBranch}
                 textStyles={previewTextStyles}
                 onEditStyle={canManage ? (nodeKey) => setStyleTarget(nodeKey) : undefined}
                 onEditCard={handleEditCard}
@@ -1518,7 +1492,13 @@ export function OrganogramView({
                 } Levels are kept; a sub-division from the old department is cleared. This move can't be reversed with Undo.`
               : `${moveIntent.childTitle} will report to ${moveIntent.parentTitle}${
                   moveIntent.joinsDepartmentName
-                    ? ` and join ${moveIntent.joinsDepartmentName}, with everything beneath it (levels are kept; a sub-division from the old department is cleared)`
+                    ? ` and join ${moveIntent.joinsDepartmentName}, with everything beneath it (levels are kept)`
+                    : ""
+                }${
+                  moveIntent.takesSubdivisionName !== undefined
+                    ? moveIntent.takesSubdivisionName
+                      ? `, and take its sub-division, ${moveIntent.takesSubdivisionName}`
+                      : ", and leave its sub-division, like its new head"
                     : ""
                 }.${
                   moveIntent.affectedCount > 0

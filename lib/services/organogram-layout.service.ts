@@ -21,26 +21,14 @@ import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service"
  */
 
 /**
- * Placements saved before moving came back as "move the card with its whole
- * branch" (D62) are ignored: they were single cards left away from their
- * branch (D38), switched off at 14:40 UTC on 19 Oct 2026 (D61). Anything
- * saved after this moment was saved by D62.
+ * Cards are no longer placed by hand (client request, 2026-10-20,
+ * docs/DECISIONS.md D64): a drop reorders a card in its row, so the chart is
+ * always the automatic layout and expanding/collapsing can't scatter moved
+ * cards. Every saved offset (D38, D62) is ignored on screen and in exports;
+ * Reset positions still deletes the rows.
  */
-export const BRANCH_MOVES_SINCE = new Date("2026-10-19T14:45:00Z");
-
-/**
- * Every saved card/box offset for the company (D62), keyed by chart node id —
- * where HR moved a card and its branch to. Shared by the screen and exports.
- */
-export async function listCardOffsets(
-  companyId: string,
-  db: DbClient = prisma
-): Promise<Record<string, CardOffset>> {
-  const rows = await db.organogramCardOffset.findMany({
-    where: { companyId, updatedAt: { gt: BRANCH_MOVES_SINCE } },
-    select: { nodeKey: true, dx: true, dy: true },
-  });
-  return Object.fromEntries(rows.map((r) => [r.nodeKey, { dx: r.dx, dy: r.dy }]));
+export async function listCardOffsets(_companyId: string): Promise<Record<string, CardOffset>> {
+  return {};
 }
 
 /** The node key must name a card that really exists in this company. */
@@ -63,9 +51,8 @@ async function assertNodeKeyInCompany(nodeKey: string, companyId: string, db: Db
 export const MAX_CARD_MOVES = 1000;
 
 /**
- * Saves where cards were moved (D62): a card dragged to a free spot and every
- * card below it, by the same amount, in one transaction. A zero offset
- * (moved back exactly onto its automatic spot) removes the row. Purely
+ * Since D64 only removes rows: a zero offset (back onto the automatic spot)
+ * deletes the card's saved placement; any real offset is refused. Purely
  * visual — never a reporting line or a level.
  */
 export async function saveCardOffsets(
@@ -75,6 +62,13 @@ export async function saveCardOffsets(
   },
   db: DbClient = prisma
 ): Promise<void> {
+  if (input.moves.some((move) => Math.round(move.dx) !== 0 || Math.round(move.dy) !== 0)) {
+    // D64: a drop reorders instead. Moving back onto the automatic spot
+    // (a zero offset) still just removes the row.
+    throw new DomainValidationError(
+      "Cards aren't placed by hand any more — drag a card along its row to reorder it."
+    );
+  }
   if (input.moves.length > MAX_CARD_MOVES) {
     throw new DomainValidationError(`At most ${MAX_CARD_MOVES} cards can be moved at once.`);
   }

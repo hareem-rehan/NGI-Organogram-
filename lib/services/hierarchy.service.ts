@@ -677,11 +677,68 @@ async function moveBranchIntoDepartment(
   return changed;
 }
 
+/**
+ * A card dropped under a new head takes that head's sub-division (client
+ * request, 2026-10-20): otherwise the chart draws the card's own sub-division
+ * as a new box between them. Its career track becomes the head's
+ * sub-division's track for the same IC/Manager ladder, if there is one.
+ * Returns the positions that changed.
+ */
+async function adoptHeadSubdivision(
+  tx: DbClient,
+  input: {
+    companyId: string;
+    actor?: AuditActor;
+    positionIds: string[];
+    jobFamilyId: string | null;
+  }
+): Promise<string[]> {
+  const rows = await tx.position.findMany({
+    where: { id: { in: input.positionIds }, companyId: input.companyId },
+  });
+  const changed: string[] = [];
+  for (const row of rows) {
+    if (row.jobFamilyId === input.jobFamilyId) continue;
+    const track =
+      input.jobFamilyId && row.ladderKind
+        ? await tx.careerTrack.findFirst({
+            where: {
+              companyId: input.companyId,
+              jobFamilyId: input.jobFamilyId,
+              kind: row.ladderKind,
+            },
+            select: { id: true },
+          })
+        : null;
+    const updated = await tx.position.update({
+      where: { id: row.id },
+      data: { jobFamilyId: input.jobFamilyId, careerTrackId: track?.id ?? null },
+    });
+    await recordAuditEvent(
+      {
+        companyId: input.companyId,
+        actor: input.actor ?? "SYSTEM",
+        action: "UPDATED",
+        category: "POSITION",
+        entityType: "Position",
+        entityId: row.id,
+        entityDisplayReference: row.positionCode,
+        before: row,
+        after: updated,
+        metadata: { adoptedHeadSubdivision: true },
+      },
+      tx
+    );
+    changed.push(row.id);
+  }
+  return changed;
+}
+
 export interface MovePositionUnderHeadResult {
   position: Position;
   /** The head it reported to before (null only for the root, which can't move). */
   previousHeadPositionId: string | null;
-  /** Positions that changed department with it (empty when the head is in the same department). */
+  /** Positions whose department or sub-division changed with it, as they were before. */
   departmentChanges: BranchDepartmentSnapshot[];
 }
 
@@ -691,7 +748,9 @@ export interface MovePositionUnderHeadResult {
  * head is in another department the position and its whole branch join the
  * head's department too, so the chart (which draws a report from another
  * department under its own department's box) shows it right under the head
- * (client request, 2026-10-20). One transaction.
+ * (client request, 2026-10-20). The position, and those below it that were
+ * in its sub-division, take the head's sub-division (no new sub-division box
+ * appears between them). One transaction.
  */
 export async function movePositionUnderHead(
   input: MovePositionInput & { newParentPositionId: string },
@@ -703,6 +762,18 @@ export async function movePositionUnderHead(
     const branchIds = await headOneBranchIds(input.positionId, input.companyId, tx);
     await movePosition(input, tx);
     const head = await findPositionById(input.newParentPositionId, input.companyId, tx);
+    // Who was in the moved card's sub-division before anything changed: they
+    // follow it into the head's sub-division below.
+    const originalRows = await tx.position.findMany({
+      where: { id: { in: [...branchIds] }, companyId: input.companyId },
+      select: {
+        id: true,
+        departmentId: true,
+        jobGradeId: true,
+        jobFamilyId: true,
+        careerTrackId: true,
+      },
+    });
     const departmentChanges =
       head && head.departmentId !== before.departmentId
         ? await moveBranchIntoDepartment(tx, {
@@ -712,6 +783,30 @@ export async function movePositionUnderHead(
             departmentId: head.departmentId,
           })
         : [];
+    if (head) {
+      const sameSubdivision = originalRows
+        .filter((row) => row.jobFamilyId === before.jobFamilyId)
+        .map((row) => row.id);
+      const adopted = await adoptHeadSubdivision(tx, {
+        companyId: input.companyId,
+        actor: input.actor,
+        positionIds: sameSubdivision,
+        jobFamilyId: head.jobFamilyId,
+      });
+      // One snapshot per position, as it was before the move.
+      const snapshotted = new Set(departmentChanges.map((c) => c.positionId));
+      for (const id of adopted) {
+        if (snapshotted.has(id)) continue;
+        const row = originalRows.find((r) => r.id === id)!;
+        departmentChanges.push({
+          positionId: row.id,
+          departmentId: row.departmentId,
+          jobGradeId: row.jobGradeId,
+          jobFamilyId: row.jobFamilyId,
+          careerTrackId: row.careerTrackId,
+        });
+      }
+    }
     const position = await findPositionById(input.positionId, input.companyId, tx);
     return {
       position: position!,

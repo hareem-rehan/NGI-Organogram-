@@ -72,10 +72,14 @@ describe("movePositionUnderHead", () => {
     await expectNoViolations(org.company.id);
   });
 
-  it("onto a head in the same department: only the reporting line changes", async () => {
+  it("onto a head in the same sub-division: only the reporting line changes", async () => {
     const org = await buildOrg();
     const other = await makeChildPosition(org.company.id, org.eng.id, org.cto.id, 2, {
       title: "Other",
+    });
+    await testPrisma.position.update({
+      where: { id: other.id },
+      data: { jobFamilyId: org.uiux.id },
     });
 
     const result = await movePositionUnderHead({
@@ -88,6 +92,69 @@ describe("movePositionUnderHead", () => {
     const junior = await row(org.junior.id);
     expect(junior.primaryReportsToPositionId).toBe(other.id);
     expect(junior.jobFamilyId).toBe(org.uiux.id);
+  });
+
+  it("takes the new head's sub-division, with the reports that shared its own — no new sub-division box", async () => {
+    const org = await buildOrg();
+    const backend = await testPrisma.jobFamily.create({
+      data: { companyId: org.company.id, departmentId: org.eng.id, name: "Backend", code: "BE" },
+    });
+    const beTrack = await testPrisma.careerTrack.create({
+      data: { companyId: org.company.id, jobFamilyId: backend.id, kind: "IC", name: "BE IC" },
+    });
+    const lead = await makeChildPosition(org.company.id, org.eng.id, org.cto.id, 2, {
+      title: "Backend Lead",
+    });
+    await testPrisma.position.update({
+      where: { id: lead.id },
+      data: { jobFamilyId: backend.id },
+    });
+    // Designer and Junior are UI/UX on the IC ladder; Junior's report is in
+    // another sub-division and keeps it.
+    await testPrisma.position.updateMany({
+      where: { id: { in: [org.designer.id, org.junior.id] } },
+      data: { ladderKind: "IC" },
+    });
+    const qa = await testPrisma.jobFamily.create({
+      data: { companyId: org.company.id, departmentId: org.eng.id, name: "QA", code: "QA" },
+    });
+    const tester = await makeChildPosition(org.company.id, org.eng.id, org.junior.id, 4, {
+      title: "Tester",
+    });
+    await testPrisma.position.update({ where: { id: tester.id }, data: { jobFamilyId: qa.id } });
+    const before = await Promise.all([org.designer.id, org.junior.id, tester.id].map(row));
+
+    const result = await movePositionUnderHead({
+      companyId: org.company.id,
+      positionId: org.designer.id,
+      newParentPositionId: lead.id,
+    });
+
+    const designer = await row(org.designer.id);
+    const junior = await row(org.junior.id);
+    const testerAfter = await row(tester.id);
+    expect(designer.jobFamilyId).toBe(backend.id);
+    expect(designer.careerTrackId).toBe(beTrack.id);
+    expect(junior.jobFamilyId).toBe(backend.id);
+    expect(testerAfter.jobFamilyId).toBe(qa.id);
+    expect(result.departmentChanges.map((c) => c.positionId).sort()).toEqual(
+      [org.designer.id, org.junior.id].sort()
+    );
+    await expectNoViolations(org.company.id);
+
+    await undoMovePositionUnderHead({
+      companyId: org.company.id,
+      positionId: org.designer.id,
+      previousHeadPositionId: result.previousHeadPositionId!,
+      departmentChanges: result.departmentChanges,
+    });
+    const after = await Promise.all([org.designer.id, org.junior.id, tester.id].map(row));
+    const pick = (p: (typeof before)[number]) => ({
+      head: p.primaryReportsToPositionId,
+      family: p.jobFamilyId,
+      track: p.careerTrackId,
+    });
+    expect(after.map(pick)).toEqual(before.map(pick));
   });
 
   it("Undo puts back the head, department, sub-division and career track", async () => {
