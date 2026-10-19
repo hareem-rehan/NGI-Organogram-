@@ -3,7 +3,7 @@
 import { memo } from "react";
 import { occupantCardView, occupantNamesOf } from "@/lib/domain/organogram-occupants";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight, Plus, Scan, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, Plus, Scan, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -692,9 +692,17 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             event.stopPropagation();
             onToggleNames?.(node.positionId);
           }}
-          className="nodrag nopan mx-2 block cursor-pointer text-left text-[0.923em] leading-[1.3] font-semibold underline-offset-2 opacity-80 hover:underline hover:opacity-100"
+          // A small pill tinted with the card's own text colour, so it reads
+          // as a control on any card fill (client request, 2026-10-19). Its
+          // line box matches a name line, so the card's size is unchanged.
+          className="nodrag nopan focus-visible:ring-ring mx-2 inline-flex w-fit cursor-pointer items-center gap-0.5 self-start rounded-full bg-[color-mix(in_srgb,currentColor_14%,transparent)] px-1.5 text-[0.846em] leading-[1.418] font-semibold tracking-wide outline-none hover:bg-[color-mix(in_srgb,currentColor_24%,transparent)] focus-visible:ring-2"
         >
           {occupantView.toggle}
+          {namesExpanded ? (
+            <ChevronUp aria-hidden="true" className="size-[1em]" />
+          ) : (
+            <ChevronDown aria-hidden="true" className="size-[1em]" />
+          )}
         </button>
       ) : null}
       {/* Footer: how many roles sit under it (the expand control) on the
