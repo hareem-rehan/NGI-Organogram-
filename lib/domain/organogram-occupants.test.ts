@@ -23,12 +23,12 @@ describe("occupantCardView (on-screen card, expandable)", () => {
     expect(occupantCardView(["Ali"], false)).toEqual({ names: ["Ali"], toggle: null });
     expect(occupantCardView([], false)).toEqual({ names: [], toggle: null });
   });
-  it("closed: the first name and a '+N Show Names' toggle, from two people up", () => {
+  it("closed: no name, just '+N Show Names' (N = everyone), from two people up", () => {
     expect(occupantCardView(["Ali", "Sara"], false)).toEqual({
-      names: ["Ali"],
-      toggle: "+1 Show Names",
+      names: [],
+      toggle: "+2 Show Names",
     });
-    expect(occupantCardView(five, false)).toEqual({ names: ["Ali"], toggle: "+4 Show Names" });
+    expect(occupantCardView(five, false)).toEqual({ names: [], toggle: "+5 Show Names" });
   });
   it("opened: every name and a 'Hide Names' toggle", () => {
     expect(occupantCardView(five, true)).toEqual({ names: five, toggle: "Hide Names" });

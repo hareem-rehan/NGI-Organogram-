@@ -163,6 +163,23 @@ describe("EmployeeFormDialog", () => {
     expect(createEmployeeActionMock).not.toHaveBeenCalled();
   });
 
+  it("clicking Create before the check answers still catches a used code, shown once", async () => {
+    checkEmployeeCodeActionMock.mockResolvedValue({
+      ok: true,
+      data: { employeeCode: "EMP001", available: false },
+    });
+    const user = userEvent.setup();
+    render(<EmployeeFormDialog open onOpenChange={() => {}} employee={null} onSaved={() => {}} />);
+
+    await user.type(screen.getByLabelText(/first name/i), "Ada");
+    await user.type(screen.getByLabelText(/last name/i), "Lovelace");
+    await user.type(screen.getByLabelText(/employee code/i), "EMP001");
+    await user.click(screen.getByRole("button", { name: /create employee/i }));
+
+    expect(await screen.findAllByText(/already in use/i)).toHaveLength(1);
+    expect(createEmployeeActionMock).not.toHaveBeenCalled();
+  });
+
   it("does not flag an employee's own unchanged code when editing", async () => {
     const user = userEvent.setup();
     render(

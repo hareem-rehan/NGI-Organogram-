@@ -4,7 +4,6 @@ import {
   CARD_WIDTH,
   MAX_TITLE_LINES,
   cardSizeFor,
-  equalizeRowHeights,
   MAX_EXPANDED_CARD_WIDTH,
   measureTextWidth,
   wrapToWidth,
@@ -105,45 +104,7 @@ describe("cardSizeFor", () => {
   });
 });
 
-describe("equalizeRowHeights", () => {
-  it("gives cards on the same row the row's tallest height, and keeps widths", () => {
-    const sizes = new Map([
-      ["a", { width: 188, height: 53, titleLines: 1 }],
-      ["b", { width: 240, height: 71, titleLines: 1 }],
-      ["c", { width: 188, height: 53, titleLines: 1 }],
-    ]);
-    const positions = new Map([
-      ["a", { x: 0, y: 100 }],
-      ["b", { x: 240, y: 100 }],
-      ["c", { x: 0, y: 300 }],
-    ]);
-    const out = equalizeRowHeights(positions, sizes);
-    expect(out.get("a")).toEqual({ width: 188, height: 71, titleLines: 1 });
-    expect(out.get("b")!.height).toBe(71);
-    expect(out.get("c")!.height).toBe(53);
-  });
-});
-
 describe("expanded names (user request, 2026-10-19)", () => {
-  it("an expanded card is drawn at its own size; its row keeps its usual height", () => {
-    const usual = new Map([
-      ["open", { width: 188, height: 71, titleLines: 1 }],
-      ["b", { width: 188, height: 53, titleLines: 1 }],
-    ]);
-    const positions = new Map([
-      ["open", { x: 0, y: 100 }],
-      ["b", { x: 240, y: 100 }],
-    ]);
-    const out = equalizeRowHeights(
-      positions,
-      usual,
-      new Map([["open", { width: 220, height: 160, titleLines: 1 }]])
-    );
-    expect(out.get("open")).toEqual({ width: 220, height: 160, titleLines: 1 });
-    // The neighbour still matches the row as it was with the card closed.
-    expect(out.get("b")!.height).toBe(71);
-  });
-
   it("widens the card for a long name, up to a cap", () => {
     const base = { title: "Tech Lead", departmentName: "Engineering", roleCount: 0 };
     const short = cardSizeFor({ ...base, occupantLines: 6, expandedOccupantNames: ["Ali"] });

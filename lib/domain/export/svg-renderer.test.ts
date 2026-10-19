@@ -739,7 +739,7 @@ describe("renderOrganogramSvg — sub-division grouping card", () => {
   });
 });
 
-describe("role title vs names on exported cards (client request, 2026-10-19)", () => {
+describe("names on exported cards (client request, 2026-10-19)", () => {
   const svgFor = (bold: boolean | undefined) =>
     renderOrganogramSvg(
       [
@@ -762,10 +762,13 @@ describe("role title vs names on exported cards (client request, 2026-10-19)", (
   const weightOf = (svg: string, text: string) =>
     new RegExp(`font-weight="(\\d+)"[^>]*>${text}<`).exec(svg)?.[1];
 
-  it.each([undefined, false, true])("title stays bold and names regular (Bold = %s)", (bold) => {
-    const svg = svgFor(bold);
-    expect(weightOf(svg, "Associate Director")).toBe("800");
-    expect(weightOf(svg, "Shahid Ali")).toBe("400");
+  it.each([undefined, false, true])("names stay regular whatever the Bold setting (%s)", (bold) => {
+    expect(weightOf(svgFor(bold), "Shahid Ali")).toBe("400");
+  });
+
+  it("the title follows the Bold setting (regular when Bold is off)", () => {
+    expect(weightOf(svgFor(false), "Associate Director")).toBe("400");
+    expect(weightOf(svgFor(undefined), "Associate Director")).toBe("800");
   });
 });
 
@@ -879,7 +882,7 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
     expect(footerY!).toBeLessThan(rect(svg).height);
   });
 
-  it("gives every card on a row the row's tallest height", () => {
+  it("sizes each card to its own text, even on a shared row (client request, 2026-10-19)", () => {
     const svg = renderAt(
       [
         node({ positionId: "a", title: "CFO" }),
@@ -899,7 +902,8 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
       (m) => m[1]
     );
     expect(heights).toHaveLength(2);
-    expect(heights[0]).toBe(heights[1]);
+    // The CFO card has no name line, so it is shorter than its neighbour.
+    expect(Number(heights[0])).toBeLessThan(Number(heights[1]));
   });
 
   it("centres a department card's name and role count inside it", () => {

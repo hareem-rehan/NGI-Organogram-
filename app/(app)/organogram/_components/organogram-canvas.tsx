@@ -24,12 +24,7 @@ import {
 } from "@/app/(app)/organogram/_lib/elk-layout";
 import { computeLayoutClusters } from "@/lib/domain/organogram-layout-clusters";
 import { organogramCardSize } from "@/app/(app)/organogram/_lib/card-size";
-import {
-  equalizeRowHeights,
-  DEFAULT_CARD_SIZE,
-  sizeLookup,
-  type CardSize,
-} from "@/lib/domain/organogram-card-size";
+import { DEFAULT_CARD_SIZE, sizeLookup, type CardSize } from "@/lib/domain/organogram-card-size";
 import { effectiveTextStyle, type TextStyle } from "@/lib/domain/organogram-text-style";
 import {
   placeCards,
@@ -234,14 +229,10 @@ function CanvasInner({
     () => (expandedSizes.size === 0 ? usualSizes : new Map([...usualSizes, ...expandedSizes])),
     [usualSizes, expandedSizes]
   );
-  // Cards on one row share the row's tallest height, so rows stay aligned.
-  // An expanded card grows past its row without changing any other card; the
-  // rows below still move down to make room for it (the layout uses
-  // `naturalSizes`).
-  const cardSizes = useMemo(
-    () => equalizeRowHeights(positions, usualSizes, expandedSizes),
-    [positions, usualSizes, expandedSizes]
-  );
+  // Every card is as tall as its own text (client request, 2026-10-19): a
+  // row's cards share their top edge (alignRows) but are no longer stretched
+  // to the row's tallest card, so a short title leaves no empty space.
+  const cardSizes = naturalSizes;
   const sizeOf = useMemo(() => sizeLookup(cardSizes), [cardSizes]);
   const sizesKey = useMemo(
     () => [...naturalSizes].map(([id, s]) => `${id}:${s.width}x${s.height}`).join(","),

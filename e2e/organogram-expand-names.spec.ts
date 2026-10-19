@@ -4,7 +4,7 @@ import { seedAuthenticatedSession } from "./support/seed-session";
 import { seedSharedPositionChart } from "./support/department-layout-fixtures";
 
 /**
- * A card held by several people (D56) shows one name and "Show names";
+ * A card held by several people (D56) shows no name, only "+5 Show Names";
  * clicking it opens every name: the card grows to fit, the chart makes room
  * below, and nothing else changes (user request, 2026-10-19).
  */
@@ -49,7 +49,10 @@ test.describe("Organogram — expandable names on a card", () => {
     await page.locator(".react-flow").scrollIntoViewIfNeeded();
     await page.waitForTimeout(700);
 
-    await expect(shared.getByText(`Haris Ali ${suffix}`)).toHaveCount(0);
+    await expect(shared.getByText(`Ghulam Nabi ${suffix}`)).toHaveCount(0);
+    await expect(shared.getByRole("button", { name: /show all 5 names/i })).toHaveText(
+      /\+5 Show Names/
+    );
     const before = {
       shared: (await shared.boundingBox())!,
       neighbour: (await neighbour.boundingBox())!,
