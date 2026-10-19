@@ -135,6 +135,35 @@ export const movePositionToDepartmentSchema = z
   })
   .strict();
 
+/** Organogram: drop a card onto another card (joins that head's department too). */
+export const movePositionUnderHeadSchema = z
+  .object({
+    positionId: z.string().uuid(),
+    newParentPositionId: z.string().uuid(),
+  })
+  .strict();
+
+/** Undo of the above: the previous head and each moved position's department fields as they were. */
+export const undoMovePositionUnderHeadSchema = z
+  .object({
+    positionId: z.string().uuid(),
+    previousHeadPositionId: z.string().uuid(),
+    departmentChanges: z
+      .array(
+        z
+          .object({
+            positionId: z.string().uuid(),
+            departmentId: z.string().uuid(),
+            jobGradeId: z.string().uuid().nullable(),
+            jobFamilyId: z.string().uuid().nullable(),
+            careerTrackId: z.string().uuid().nullable(),
+          })
+          .strict()
+      )
+      .max(1000),
+  })
+  .strict();
+
 export const positionStatusChangeSchema = z
   .object({
     positionId: z.string().uuid(),

@@ -528,11 +528,7 @@ export async function movePositionToDepartment(
     }
 
     // The branch that moves along: everyone below the position through head 1.
-    const subtree = await getPositionSubtree(input.positionId, input.companyId, tx);
-    const branchIds = new Set<string>([input.positionId]);
-    for (const node of subtree) {
-      if (node.parentId !== null && branchIds.has(node.parentId)) branchIds.add(node.id);
-    }
+    const branchIds = await headOneBranchIds(input.positionId, input.companyId, tx);
 
     // The department's top position, ignoring the branch being moved in.
     const members = await tx.position.findMany({
@@ -575,36 +571,231 @@ export async function movePositionToDepartment(
     }
 
     // Department change for the whole branch.
-    const branchRows = await tx.position.findMany({
-      where: { id: { in: [...branchIds] }, companyId: input.companyId },
-      include: {
-        jobGrade: { select: { code: true, departmentId: true } },
-        jobFamily: { select: { departmentId: true } },
+    const changed = await moveBranchIntoDepartment(tx, {
+      companyId: input.companyId,
+      actor: input.actor,
+      branchIds: [...branchIds],
+      departmentId: input.departmentId,
+    });
+    const departmentChangedCount = changed.length;
+
+    const final = await findPositionById(input.positionId, input.companyId, tx);
+    return { position: final!, newHeadPositionId, departmentChangedCount };
+  });
+}
+
+/** A position and everyone below it through head 1. */
+async function headOneBranchIds(
+  positionId: string,
+  companyId: string,
+  tx: DbClient
+): Promise<Set<string>> {
+  const subtree = await getPositionSubtree(positionId, companyId, tx);
+  const branchIds = new Set<string>([positionId]);
+  for (const node of subtree) {
+    if (node.parentId !== null && branchIds.has(node.parentId)) branchIds.add(node.id);
+  }
+  return branchIds;
+}
+
+/** What a position's department-scoped fields were before its branch moved department, so Undo can put them back. */
+export interface BranchDepartmentSnapshot {
+  positionId: string;
+  departmentId: string;
+  jobGradeId: string | null;
+  jobFamilyId: string | null;
+  careerTrackId: string | null;
+}
+
+/**
+ * Moves every position in `branchIds` into `departmentId` (D29's rules):
+ * department-scoped job levels are re-mapped to the same code in the new
+ * department, and a sub-division (with its career track) that doesn't
+ * belong there is cleared. Each change is audited. Returns the positions
+ * that changed, as they were before.
+ */
+async function moveBranchIntoDepartment(
+  tx: DbClient,
+  input: { companyId: string; actor?: AuditActor; branchIds: string[]; departmentId: string }
+): Promise<BranchDepartmentSnapshot[]> {
+  const branchRows = await tx.position.findMany({
+    where: { id: { in: input.branchIds }, companyId: input.companyId },
+    include: {
+      jobGrade: { select: { code: true, departmentId: true } },
+      jobFamily: { select: { departmentId: true } },
+    },
+  });
+  const changed: BranchDepartmentSnapshot[] = [];
+  for (const row of branchRows) {
+    if (row.departmentId === input.departmentId) continue;
+    const { jobGrade, jobFamily, ...before } = row;
+    const jobGradeId =
+      jobGrade && jobGrade.departmentId !== null && jobGrade.departmentId !== input.departmentId
+        ? (
+            await ensureJobGradeByCode(
+              input.companyId,
+              input.departmentId,
+              jobGrade.code,
+              undefined,
+              tx
+            )
+          ).id
+        : row.jobGradeId;
+    const familyStays = jobFamily !== null && jobFamily.departmentId === input.departmentId;
+    const updated = await tx.position.update({
+      where: { id: row.id },
+      data: {
+        departmentId: input.departmentId,
+        jobGradeId,
+        ...(familyStays ? {} : { jobFamilyId: null, careerTrackId: null }),
       },
     });
-    let departmentChangedCount = 0;
-    for (const row of branchRows) {
-      if (row.departmentId === input.departmentId) continue;
-      const { jobGrade, jobFamily, ...before } = row;
-      const jobGradeId =
-        jobGrade && jobGrade.departmentId !== null && jobGrade.departmentId !== input.departmentId
-          ? (
-              await ensureJobGradeByCode(
-                input.companyId,
-                input.departmentId,
-                jobGrade.code,
-                undefined,
-                tx
-              )
-            ).id
-          : row.jobGradeId;
-      const familyStays = jobFamily !== null && jobFamily.departmentId === input.departmentId;
+    await recordAuditEvent(
+      {
+        companyId: input.companyId,
+        actor: input.actor ?? "SYSTEM",
+        action: "UPDATED",
+        category: "POSITION",
+        entityType: "Position",
+        entityId: row.id,
+        entityDisplayReference: row.positionCode,
+        before,
+        after: updated,
+        metadata: { movedIntoDepartmentId: input.departmentId },
+      },
+      tx
+    );
+    changed.push({
+      positionId: row.id,
+      departmentId: row.departmentId,
+      jobGradeId: row.jobGradeId,
+      jobFamilyId: row.jobFamilyId,
+      careerTrackId: row.careerTrackId,
+    });
+  }
+
+  return changed;
+}
+
+export interface MovePositionUnderHeadResult {
+  position: Position;
+  /** The head it reported to before (null only for the root, which can't move). */
+  previousHeadPositionId: string | null;
+  /** Positions that changed department with it (empty when the head is in the same department). */
+  departmentChanges: BranchDepartmentSnapshot[];
+}
+
+/**
+ * The organogram's "drop a card onto another card" move. The position
+ * reports to the new head (all of `movePosition`'s rules), and when that
+ * head is in another department the position and its whole branch join the
+ * head's department too, so the chart (which draws a report from another
+ * department under its own department's box) shows it right under the head
+ * (client request, 2026-10-20). One transaction.
+ */
+export async function movePositionUnderHead(
+  input: MovePositionInput & { newParentPositionId: string },
+  db: DbClient = prisma
+): Promise<MovePositionUnderHeadResult> {
+  return withTransaction(db, async (tx) => {
+    const before = await findPositionById(input.positionId, input.companyId, tx);
+    if (!before) throw new NotFoundError("Position", input.positionId);
+    const branchIds = await headOneBranchIds(input.positionId, input.companyId, tx);
+    await movePosition(input, tx);
+    const head = await findPositionById(input.newParentPositionId, input.companyId, tx);
+    const departmentChanges =
+      head && head.departmentId !== before.departmentId
+        ? await moveBranchIntoDepartment(tx, {
+            companyId: input.companyId,
+            actor: input.actor,
+            branchIds: [...branchIds],
+            departmentId: head.departmentId,
+          })
+        : [];
+    const position = await findPositionById(input.positionId, input.companyId, tx);
+    return {
+      position: position!,
+      previousHeadPositionId: before.primaryReportsToPositionId,
+      departmentChanges,
+    };
+  });
+}
+
+/**
+ * Undo of `movePositionUnderHead`: back under the previous head, and each
+ * listed position's department, job level, sub-division and career track as
+ * they were. The snapshot comes from the client, so every id is checked
+ * against the company (and a sub-division against its department, a career
+ * track against its sub-division) before anything is written.
+ */
+export async function undoMovePositionUnderHead(
+  input: {
+    companyId: string;
+    actor?: AuditActor;
+    positionId: string;
+    previousHeadPositionId: string;
+    departmentChanges: BranchDepartmentSnapshot[];
+  },
+  db: DbClient = prisma
+): Promise<Position> {
+  return withTransaction(db, async (tx) => {
+    await movePosition(
+      {
+        companyId: input.companyId,
+        actor: input.actor,
+        positionId: input.positionId,
+        newParentPositionId: input.previousHeadPositionId,
+      },
+      tx
+    );
+    for (const snap of input.departmentChanges) {
+      const row = await findPositionById(snap.positionId, input.companyId, tx);
+      if (!row) throw new NotFoundError("Position", snap.positionId);
+      const department = await findDepartmentById(snap.departmentId, input.companyId, tx);
+      if (!department) throw new NotFoundError("Department", snap.departmentId);
+      if (
+        snap.jobGradeId &&
+        !(await tx.jobGrade.findFirst({
+          where: { id: snap.jobGradeId, companyId: input.companyId },
+          select: { id: true },
+        }))
+      ) {
+        throw new NotFoundError("Job level", snap.jobGradeId);
+      }
+      if (
+        snap.jobFamilyId &&
+        !(await tx.jobFamily.findFirst({
+          where: {
+            id: snap.jobFamilyId,
+            companyId: input.companyId,
+            departmentId: snap.departmentId,
+          },
+          select: { id: true },
+        }))
+      ) {
+        throw new NotFoundError("Sub-division", snap.jobFamilyId);
+      }
+      if (
+        snap.careerTrackId &&
+        (!snap.jobFamilyId ||
+          !(await tx.careerTrack.findFirst({
+            where: {
+              id: snap.careerTrackId,
+              companyId: input.companyId,
+              jobFamilyId: snap.jobFamilyId,
+            },
+            select: { id: true },
+          })))
+      ) {
+        throw new NotFoundError("Career track", snap.careerTrackId);
+      }
       const updated = await tx.position.update({
         where: { id: row.id },
         data: {
-          departmentId: input.departmentId,
-          jobGradeId,
-          ...(familyStays ? {} : { jobFamilyId: null, careerTrackId: null }),
+          departmentId: snap.departmentId,
+          jobGradeId: snap.jobGradeId,
+          jobFamilyId: snap.jobFamilyId,
+          careerTrackId: snap.careerTrackId,
         },
       });
       await recordAuditEvent(
@@ -616,17 +807,15 @@ export async function movePositionToDepartment(
           entityType: "Position",
           entityId: row.id,
           entityDisplayReference: row.positionCode,
-          before,
+          before: row,
           after: updated,
-          metadata: { movedIntoDepartmentId: input.departmentId },
+          metadata: { undoneDepartmentMove: true },
         },
         tx
       );
-      departmentChangedCount++;
     }
-
-    const final = await findPositionById(input.positionId, input.companyId, tx);
-    return { position: final!, newHeadPositionId, departmentChangedCount };
+    const position = await findPositionById(input.positionId, input.companyId, tx);
+    return position!;
   });
 }
 

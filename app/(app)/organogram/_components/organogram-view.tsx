@@ -35,8 +35,9 @@ import {
   listDepartmentOptionsAction,
   listJobGradeOptionsAction,
   listPositionCareerOptionsAction,
-  movePositionAction,
   movePositionToDepartmentAction,
+  movePositionUnderHeadAction,
+  undoMovePositionUnderHeadAction,
 } from "@/app/(app)/positions/actions";
 import type { PositionCareerOptions } from "@/app/(app)/positions/actions";
 import { OrganogramCanvas } from "@/app/(app)/organogram/_components/organogram-canvas";
@@ -244,6 +245,8 @@ export function OrganogramView({
     childTitle: string;
     parentTitle: string;
     affectedCount: number;
+    /** "position" only: the new head's department, when it differs from the card's (it joins it). */
+    joinsDepartmentName?: string;
   }
   // A refused drag-drop (onto itself or a subordinate), shown under the
   // arrange-mode hint until the next drag.
@@ -432,7 +435,13 @@ export function OrganogramView({
           );
           return;
         }
+        const head =
+          verdict.kind === "position"
+            ? data?.nodes.find((n) => n.positionId === verdict.targetPositionId)
+            : undefined;
         setMoveIntent({
+          joinsDepartmentName:
+            head && head.departmentId !== child.departmentId ? head.departmentName : undefined,
           childId,
           kind: verdict.kind,
           parentId: verdict.kind === "position" ? verdict.targetPositionId : verdict.departmentId,
@@ -680,21 +689,16 @@ export function OrganogramView({
     setMovePending(true);
     setMoveError(null);
     void (async () => {
-      // The REAL head before the move (the chart may show a department box
-      // as its parent), so the move can be undone exactly.
-      const before =
-        moveIntent.kind === "position"
-          ? await listAllPositionsAction().then((r) =>
-              r.ok ? r.data.find((p) => p.id === moveIntent.childId) : undefined
-            )
-          : undefined;
+      // The server reports the REAL head before the move (the chart may show
+      // a department box as its parent) and any department change, so the
+      // move can be undone exactly.
       const result =
         moveIntent.kind === "department"
           ? await movePositionToDepartmentAction({
               positionId: moveIntent.childId,
               departmentId: moveIntent.parentId,
             })
-          : await movePositionAction({
+          : await movePositionUnderHeadAction({
               positionId: moveIntent.childId,
               newParentPositionId: moveIntent.parentId,
             });
@@ -706,15 +710,18 @@ export function OrganogramView({
       const previousOffsets = await clearBranchPlacement(moveIntent.childId);
       moveDialog.setOpen(false);
       setMoveIntent(null);
-      const previousHeadId = before?.primaryReportsToPositionId;
-      if (moveIntent.kind === "position" && previousHeadId) {
+      const moved =
+        moveIntent.kind === "position" && "departmentChanges" in result.data ? result.data : null;
+      const previousHeadId = moved?.previousHeadPositionId;
+      if (moved && previousHeadId) {
         const childId = moveIntent.childId;
         pushUndo({
           label: `Re-attach ${moveIntent.childTitle}`,
           run: async () => {
-            const back = await movePositionAction({
+            const back = await undoMovePositionUnderHeadAction({
               positionId: childId,
-              newParentPositionId: previousHeadId,
+              previousHeadPositionId: previousHeadId,
+              departmentChanges: moved.departmentChanges,
             });
             if (!back.ok) return back.error;
             const error =
@@ -1509,7 +1516,11 @@ export function OrganogramView({
                     ? ` The ${moveIntent.affectedCount} position${moveIntent.affectedCount === 1 ? "" : "s"} beneath it move${moveIntent.affectedCount === 1 ? "s" : ""} along, keep${moveIntent.affectedCount === 1 ? "s" : ""} their reporting lines, and join ${moveIntent.parentTitle} too.`
                     : ""
                 } Levels are kept; a sub-division from the old department is cleared. This move can't be reversed with Undo.`
-              : `${moveIntent.childTitle} will report to ${moveIntent.parentTitle}.${
+              : `${moveIntent.childTitle} will report to ${moveIntent.parentTitle}${
+                  moveIntent.joinsDepartmentName
+                    ? ` and join ${moveIntent.joinsDepartmentName}, with everything beneath it (levels are kept; a sub-division from the old department is cleared)`
+                    : ""
+                }.${
                   moveIntent.affectedCount > 0
                     ? ` The ${moveIntent.affectedCount} position${moveIntent.affectedCount === 1 ? "" : "s"} beneath it move${moveIntent.affectedCount === 1 ? "s" : ""} along and keep${moveIntent.affectedCount === 1 ? "s" : ""} their reporting lines; levels are recalculated.`
                     : ""
