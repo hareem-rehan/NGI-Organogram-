@@ -93,6 +93,12 @@ interface OrganogramCanvasProps {
   onLayoutError: () => void;
   /** Bumped by the parent's Reset/Fit toolbar actions to trigger an imperative fitView(). */
   fitViewSignal: number;
+  /**
+   * Bumped by the view right before it reloads the chart after an Arrange
+   * change: the next re-layout keeps the current zoom and position instead
+   * of re-framing the chart (client report, 2026-10-19).
+   */
+  holdViewSignal?: number;
   departmentLegendEntries: readonly DepartmentLegendEntry[];
   /** Which dimension colours the cards, and (in family mode) the per-family colours + legend. */
   colorMode: OrganogramColorMode;
@@ -168,6 +174,7 @@ function CanvasInner({
   onSelect,
   onLayoutError,
   fitViewSignal,
+  holdViewSignal = 0,
   departmentLegendEntries,
   colorMode,
   departmentColorById,
@@ -252,6 +259,10 @@ function CanvasInner({
   // not re-framed: the clicked card stays where it was on screen, and the
   // chart shifts around it (see the layout effect).
   const keepAnchorRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const holdViewRef = useRef(false);
+  useEffect(() => {
+    if (holdViewSignal > 0) holdViewRef.current = true;
+  }, [holdViewSignal]);
   const keepOnScreen = useCallback(
     (positionId: string) => {
       const at = placedPositions.get(positionId);
@@ -394,6 +405,8 @@ function CanvasInner({
         const anchor = keepAnchorRef.current;
         keepAnchorRef.current = null;
         const anchorAt = anchor ? computed.get(anchor.id) : undefined;
+        const holdView = holdViewRef.current;
+        holdViewRef.current = false;
         if (anchor && anchorAt) {
           const width = (naturalSizesRef.current.get(anchor.id) ?? DEFAULT_CARD_SIZE).width;
           const { x, y, zoom } = getViewport();
@@ -404,6 +417,8 @@ function CanvasInner({
           });
           return;
         }
+        // Reloaded after an Arrange change: leave the view exactly as it is.
+        if (holdView) return;
         const centerId = centerOnNodeIdRef.current;
         const centerPos = centerId ? computed.get(centerId) : undefined;
         requestAnimationFrame(() => {
@@ -631,7 +646,12 @@ function CanvasInner({
           target.primaryReportsToPositionId === dragged.primaryReportsToPositionId
             ? departmentOrderAfterDrop(row, draggedId, groupIdOf(target))
             : orderAfterDropAt(siblings, draggedId, node.position.x + sizeOf(node.id).width / 2);
-        if (next.some((id, i) => id !== row[i])) onReorderBoxes?.(kind, next, row);
+        if (next.some((id, i) => id !== row[i])) {
+          // Keep the boxes' parent where it is on screen, so the boxes are
+          // seen swapping places instead of the whole chart jumping.
+          if (dragged.primaryReportsToPositionId) keepOnScreen(dragged.primaryReportsToPositionId);
+          onReorderBoxes?.(kind, next, row);
+        }
         return;
       }
 
@@ -662,6 +682,7 @@ function CanvasInner({
       positions,
       placedPositions,
       sizeOf,
+      keepOnScreen,
     ]
   );
 
