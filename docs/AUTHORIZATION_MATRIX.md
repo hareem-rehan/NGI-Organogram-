@@ -28,6 +28,7 @@ Flat, named permission set (`lib/auth/permissions.ts`'s `PERMISSIONS`/`Permissio
 | `employees:manage`   | Create/edit employees, manage position assignments                                                           |
 | `imports:execute`    | Run CSV/Excel import                                                                                         |
 | `exports:execute`    | Run PDF/PNG/CSV export                                                                                       |
+| `organogram:share`   | Create and turn off view-only organogram links (D60)                                                         |
 | `audit:view`         | View the audit log                                                                                           |
 | `users:manage`       | Manage user accounts and roles — via `scripts/provision-user.ts` (Phase 3) or the `/users` web UI (Phase 12) |
 | `settings:manage`    | Manage system configuration                                                                                  |
@@ -46,6 +47,7 @@ Flat, named permission set (`lib/auth/permissions.ts`'s `PERMISSIONS`/`Permissio
 | `employees:manage`   |   ❌   |    ✅     |  ✅   |
 | `imports:execute`    |   ❌   |    ✅     |  ✅   |
 | `exports:execute`    |   ❌   |    ✅     |  ✅   |
+| `organogram:share`   |   ❌   |    ✅     |  ✅   |
 | `audit:view`         |   ❌   |    ✅     |  ✅   |
 | `users:manage`       |   ❌   |    ❌     |  ✅   |
 | `settings:manage`    |   ❌   |    ❌     |  ✅   |
@@ -133,3 +135,5 @@ A `User.status = "DISABLED"` row is blocked regardless of role — an `ADMIN` se
 - **Adding a role**: this is a bigger change — it touches the Prisma `UserRole` enum (new migration), `ROLE_PERMISSIONS`, `scripts/provision-user.ts`'s `VALID_ROLES`, this document, and `docs/DECISIONS.md` (another explicit C14-style amendment, not a silent addition).
 - **Adding a server action/mutation (Phase 4+)**: it must call `requirePermission`/`requireActiveUser`/`getAuthorizedCompanyContext` from `lib/auth/current-user.ts`, never read `auth()` directly — this keeps every authorization decision routed through one auditable module (`docs/adr/0012...` Consequences).
 - **The in-app user-management UI** (`/users`, Phase 12) exists — see `docs/adr/0014-web-based-user-administration.md` for why it's safe alongside ADR-0011's original "auto-provisioning grants VIEWER only" restriction (unchanged). Any FUTURE additional administrative surface (e.g. a public API) must independently re-derive ADR-0014's safety argument — it does not follow automatically just because this one exists.
+
+**View-only organogram links (D60).** Creating, listing and turning off links (`app/(app)/organogram/share-actions.ts`) each call `requirePermission("organogram:share")` (HR_EDITOR/ADMIN); `companyId` always comes from the session. The link itself is the one route that needs **no** session: `/share/<token>` lives outside the signed-in `(app)` group, and its two server actions (`app/share/actions.ts`: chart data and export) take only the token, re-resolved on every call — an unknown, expired or turned-off token gets the same "not available" answer. A viewer gets the link's own company's chart with employee record ids removed (no links to employee pages), can export at most once per 15 seconds per link (no export job is stored), and can't reach any other action or page.

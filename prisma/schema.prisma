@@ -208,6 +208,7 @@ model Company {
   jobFamilyLevelTitles  JobFamilyLevelTitle[]
   organogramCardOffsets OrganogramCardOffset[]
   organogramTextStyles  OrganogramTextStyle[]
+  organogramShareLinks  OrganogramShareLink[]
   positions             Position[]
   employees             Employee[]
   positionAssignments   PositionAssignment[]
@@ -1057,4 +1058,29 @@ model OrganogramTextStyle {
   @@unique([companyId, nodeKey])
   @@index([companyId])
   @@map("organogram_text_styles")
+}
+
+/// A view-only link to the company organogram that anyone with the URL can
+/// open without signing in (docs/DECISIONS.md D60). The token is the whole
+/// credential: 32 random bytes, base64url. It is stored as issued so HR can
+/// copy the link again later; it reveals nothing the chart itself doesn't.
+/// A link stops working once `expiresAt` passes or `revokedAt` is set.
+model OrganogramShareLink {
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @db.Uuid
+  token           String    @unique
+  /// Optional note for HR, e.g. "Board pack" — never shown to viewers.
+  label           String?
+  createdByUserId String?   @db.Uuid
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  /// Throttles viewer exports (one per link every few seconds).
+  lastExportAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("organogram_share_links")
 }

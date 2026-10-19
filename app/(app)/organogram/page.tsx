@@ -24,6 +24,7 @@ export default async function OrganogramPage() {
           canManage={hasPermission(user, "positions:manage")}
           canViewEmployeeDetails={hasPermission(user, "employees:view")}
           canExport={hasPermission(user, "exports:execute")}
+          canShare={hasPermission(user, "organogram:share")}
         />
       </Suspense>
     </div>

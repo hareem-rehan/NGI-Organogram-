@@ -135,10 +135,29 @@ export interface RequestExportInput {
  * recalculation of hierarchy or layout (organogram-hierarchy-safety
  * skill / docs/adr/0013).
  */
-export async function requestExport(input: RequestExportInput): Promise<ExportJob> {
+/** Everything an export needs before its file is drawn: validated options, the laid-out SVG and labels. */
+interface PreparedExport {
+  resolved: ResolvedExportOptions;
+  svgResult: ReturnType<typeof renderOrganogramSvg>;
+  scopeLabel: string;
+  nodeCount: number;
+  baseFilename: string;
+  companyName: string;
+  effectiveDate: string;
+}
+
+/**
+ * Validates the options, reads the chart, lays it out and draws the SVG,
+ * checking the PNG size budget — shared by signed-in exports (which then
+ * store a job) and view-only share-link exports (D60, which don't).
+ */
+async function prepareExport(
+  companyId: string,
+  options: ExportOptionsInput
+): Promise<PreparedExport> {
   let resolved: ResolvedExportOptions;
   try {
-    resolved = resolveExportOptions(input.options);
+    resolved = resolveExportOptions(options);
   } catch (error) {
     if (error instanceof ExportOptionsError) {
       throw new DomainValidationError(error.message);
@@ -148,7 +167,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
 
   // The CHART's read, not the full-company one: an exported file must be
   // the same organogram the user was looking at when they pressed Export.
-  const organogram = await getOrganogramChartData({ companyId: input.companyId });
+  const organogram = await getOrganogramChartData({ companyId });
 
   const subgraph = buildExportSubgraph(organogram.nodes, organogram.edges, {
     scope: resolved.scope,
@@ -182,7 +201,6 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
   }
 
   const scopeLabel = scopeLabelFor(resolved, organogram.nodes);
-  const expiresAt = new Date(Date.now() + EXPORT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
   // Layout and SVG rendering happen BEFORE the ExportJob row is created
   // (Phase 13.1, DEF-010 remediation, Step 9.6: "do not queue a PNG job
@@ -320,6 +338,96 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     }
   }
 
+  return {
+    resolved,
+    svgResult,
+    scopeLabel,
+    nodeCount: subgraph.nodes.length,
+    baseFilename: `organogram-${sanitizeForFilename(organogram.company.code)}-${sanitizeForFilename(scopeLabel)}-${organogram.company.effectiveDate}`,
+    companyName: organogram.company.name,
+    effectiveDate: organogram.company.effectiveDate,
+  };
+}
+
+/** A drawn export file. */
+export interface RenderedExportFile {
+  buffer: Buffer;
+  filename: string;
+  contentType: string;
+  format: "PDF" | "PNG";
+  pageCount: number | null;
+}
+
+/** Rasterizes / paginates a prepared export into its PNG or PDF file. */
+async function renderExportFile(prepared: PreparedExport): Promise<RenderedExportFile> {
+  const { resolved, svgResult, scopeLabel, baseFilename } = prepared;
+  if (resolved.format === "PNG") {
+    let png;
+    try {
+      png = await renderSvgToPng(
+        svgResult.svg,
+        svgResult.totalWidth,
+        svgResult.totalHeight,
+        resolved.pngScale
+      );
+    } catch (error) {
+      if (error instanceof PngSizeError) {
+        throw new DomainValidationError(`${error.message}`);
+      }
+      throw error;
+    }
+    return {
+      buffer: png.buffer,
+      filename: `${baseFilename}.png`,
+      contentType: "image/png",
+      format: "PNG",
+      pageCount: null,
+    };
+  }
+
+  let pdf;
+  try {
+    pdf = await renderOrganogramPdf(svgResult, resolved.pageSize, resolved.pdfLayoutMode, {
+      companyName: prepared.companyName,
+      scopeLabel,
+      effectiveDate: prepared.effectiveDate,
+      generatedAtLabel: new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC",
+    });
+  } catch (error) {
+    if (error instanceof PdfPageLimitError) {
+      throw new DomainValidationError(error.message);
+    }
+    throw error;
+  }
+  return {
+    buffer: pdf.buffer,
+    filename: `${baseFilename}.pdf`,
+    contentType: "application/pdf",
+    format: "PDF",
+    pageCount: pdf.pageCount,
+  };
+}
+
+/**
+ * A view-only share-link export (D60): the same file a signed-in export
+ * produces, returned directly instead of stored as a job (a link viewer
+ * has no user and no job history). The caller has already resolved the
+ * link and throttled the request.
+ */
+export async function renderExportForCompany(
+  companyId: string,
+  options: ExportOptionsInput
+): Promise<RenderedExportFile & { nodeCount: number }> {
+  const prepared = await prepareExport(companyId, options);
+  const file = await renderExportFile(prepared);
+  return { ...file, nodeCount: prepared.nodeCount };
+}
+
+export async function requestExport(input: RequestExportInput): Promise<ExportJob> {
+  const prepared = await prepareExport(input.companyId, input.options);
+  const { resolved, scopeLabel } = prepared;
+  const expiresAt = new Date(Date.now() + EXPORT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
   const job = await createExportJob({
     companyId: input.companyId,
     requestedByUserId: input.userId,
@@ -330,7 +438,7 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     expiresAt,
   });
 
-  await updateExportJob(job.id, { status: "PROCESSING", nodeCount: subgraph.nodes.length });
+  await updateExportJob(job.id, { status: "PROCESSING", nodeCount: prepared.nodeCount });
 
   const actor = { userId: input.userId, displayName: null, email: null };
   await recordAuditEvent({
@@ -342,70 +450,17 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
     entityId: job.id,
     correlationId: job.id,
     exportJobId: job.id,
-    metadata: { format: resolved.format, scope: resolved.scope, nodeCount: subgraph.nodes.length },
+    metadata: { format: resolved.format, scope: resolved.scope, nodeCount: prepared.nodeCount },
   });
 
   try {
-    const baseFilename = `organogram-${sanitizeForFilename(organogram.company.code)}-${sanitizeForFilename(scopeLabel)}-${organogram.company.effectiveDate}`;
-
-    if (resolved.format === "PNG") {
-      let png;
-      try {
-        png = await renderSvgToPng(
-          svgResult.svg,
-          svgResult.totalWidth,
-          svgResult.totalHeight,
-          resolved.pngScale
-        );
-      } catch (error) {
-        if (error instanceof PngSizeError) {
-          throw new DomainValidationError(`${error.message}`);
-        }
-        throw error;
-      }
-      const completed = await updateExportJob(job.id, {
-        status: "COMPLETED",
-        generatedFile: new Uint8Array(png.buffer),
-        generatedFilename: `${baseFilename}.png`,
-        fileSize: png.buffer.length,
-        pageCount: null,
-        completedAt: new Date(),
-      });
-      await recordAuditEvent({
-        companyId: input.companyId,
-        actor,
-        action: "EXPORT_COMPLETED",
-        category: "EXPORT",
-        entityType: "ExportJob",
-        entityId: completed.id,
-        correlationId: job.id,
-        exportJobId: completed.id,
-        metadata: { format: "PNG", fileSize: png.buffer.length },
-      });
-      return completed;
-    }
-
-    let pdf;
-    try {
-      pdf = await renderOrganogramPdf(svgResult, resolved.pageSize, resolved.pdfLayoutMode, {
-        companyName: organogram.company.name,
-        scopeLabel,
-        effectiveDate: organogram.company.effectiveDate,
-        generatedAtLabel: new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC",
-      });
-    } catch (error) {
-      if (error instanceof PdfPageLimitError) {
-        throw new DomainValidationError(error.message);
-      }
-      throw error;
-    }
-
+    const file = await renderExportFile(prepared);
     const completed = await updateExportJob(job.id, {
       status: "COMPLETED",
-      generatedFile: new Uint8Array(pdf.buffer),
-      generatedFilename: `${baseFilename}.pdf`,
-      fileSize: pdf.buffer.length,
-      pageCount: pdf.pageCount,
+      generatedFile: new Uint8Array(file.buffer),
+      generatedFilename: file.filename,
+      fileSize: file.buffer.length,
+      pageCount: file.pageCount,
       completedAt: new Date(),
     });
     await recordAuditEvent({
@@ -417,7 +472,10 @@ export async function requestExport(input: RequestExportInput): Promise<ExportJo
       entityId: completed.id,
       correlationId: job.id,
       exportJobId: completed.id,
-      metadata: { format: "PDF", fileSize: pdf.buffer.length, pageCount: pdf.pageCount },
+      metadata:
+        file.format === "PNG"
+          ? { format: "PNG", fileSize: file.buffer.length }
+          : { format: "PDF", fileSize: file.buffer.length, pageCount: file.pageCount },
     });
     return completed;
   } catch (error) {

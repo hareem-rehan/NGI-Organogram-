@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, Download, Plus, Undo2 } from "lucide-react";
+import { AlertTriangle, Download, Plus, Share2, Undo2 } from "lucide-react";
 import type { CareerTrack, Department, JobFamily, JobGrade, Position } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,8 @@ import type { PositionCareerOptions } from "@/app/(app)/positions/actions";
 import { OrganogramCanvas } from "@/app/(app)/organogram/_components/organogram-canvas";
 import { OrganogramDetailsPanel } from "@/app/(app)/organogram/_components/organogram-details-panel";
 import { OrganogramExportDialog } from "@/app/(app)/organogram/_components/organogram-export-dialog";
+import { ShareLinksDialog } from "@/app/(app)/organogram/_components/share-links-dialog";
+import { getSharedOrganogramAction } from "@/app/share/actions";
 import { OrganogramFilterDrawer } from "@/app/(app)/organogram/_components/organogram-filter-drawer";
 import { OrganogramFocusBar } from "@/app/(app)/organogram/_components/organogram-focus-bar";
 import { OrganogramOutlineView } from "@/app/(app)/organogram/_components/organogram-outline-view";
@@ -91,6 +93,15 @@ interface OrganogramViewProps {
   canManage: boolean;
   canViewEmployeeDetails: boolean;
   canExport: boolean;
+  /** May create and turn off view-only links (docs/DECISIONS.md D60). */
+  canShare?: boolean;
+  /**
+   * Opened through a view-only link (D60): the chart is read through the
+   * link's token, and only viewing tools are offered — no filters, no
+   * editing, no employee links (the page passes canManage /
+   * canViewEmployeeDetails false).
+   */
+  shareToken?: string;
 }
 
 /**
@@ -143,6 +154,8 @@ export function OrganogramView({
   canManage,
   canViewEmployeeDetails,
   canExport,
+  canShare = false,
+  shareToken,
 }: OrganogramViewProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -152,6 +165,7 @@ export function OrganogramView({
   const [error, setError] = useState<string | null>(null);
   const [layoutFailed, setLayoutFailed] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   // URL is the single source of truth for view/focus/filter state (Step
   // 11 "avoid contradictory duplicated state") — derived via useMemo,
@@ -276,21 +290,26 @@ export function OrganogramView({
   // `silent`: reload the data in place after an Arrange change, without the
   // loading screen — unmounting the chart would lose the view (zoom, scroll)
   // and jump back to the overview (client report, 2026-10-19).
-  const refresh = useCallback((options?: { silent?: boolean }) => {
-    if (!options?.silent) setLoading(true);
-    setError(null);
-    setLayoutFailed(false);
-    void (async () => {
-      const result = await getOrganogramAction();
-      setLoading(false);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setData(result.data);
-      setSelectedId(null);
-    })();
-  }, []);
+  const refresh = useCallback(
+    (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
+      setError(null);
+      setLayoutFailed(false);
+      void (async () => {
+        const result = shareToken
+          ? await getSharedOrganogramAction({ token: shareToken })
+          : await getOrganogramAction();
+        setLoading(false);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setData(result.data);
+        setSelectedId(null);
+      })();
+    },
+    [shareToken]
+  );
 
   // Load (or reload) the Add/Edit Position form's option data. Managers only;
   // the four reads each re-authorize server-side. Returns the loaded options
@@ -1031,6 +1050,19 @@ export function OrganogramView({
   }, [urlState, pathname]);
 
   if (loading) return <LoadingState label="Loading organization chart…" />;
+  // A view-only link turned off (or expired) while the page was open: say so
+  // plainly instead of offering a retry that can't succeed (D60).
+  if (shareToken && error) {
+    return (
+      <section
+        role="status"
+        className="border-border bg-muted mx-auto mt-8 flex max-w-md flex-col gap-2 rounded-lg border p-6 text-center"
+      >
+        <p className="text-foreground text-lg font-semibold">This link isn&apos;t available</p>
+        <p className="text-muted-foreground text-sm">{error}</p>
+      </section>
+    );
+  }
   if (error || !data)
     return (
       <ErrorState description={error ?? "Organization chart unavailable."} onRetry={refresh} />
@@ -1105,12 +1137,25 @@ export function OrganogramView({
           showPlanned={urlState.planned}
           onSelectResult={handleSearchSelect}
         />
-        <OrganogramFilterDrawer
-          nodes={positionNodes}
-          filters={urlState.filters}
-          onFiltersChange={handleFiltersChange}
-          matchCount={filterMatchIds.size}
-        />
+        {shareToken ? null : (
+          <OrganogramFilterDrawer
+            nodes={positionNodes}
+            filters={urlState.filters}
+            onFiltersChange={handleFiltersChange}
+            matchCount={filterMatchIds.size}
+          />
+        )}
+        {canShare && !shareToken ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setShareDialogOpen(true)}
+          >
+            <Share2 aria-hidden="true" className="size-4" />
+            Share
+          </Button>
+        ) : null}
         {canExport ? (
           <Button
             type="button"
@@ -1378,7 +1423,12 @@ export function OrganogramView({
             filters: urlState.filters,
             showPlanned: urlState.planned,
           }}
+          shareToken={shareToken}
         />
+      ) : null}
+
+      {canShare && !shareToken ? (
+        <ShareLinksDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
       ) : null}
 
       {/* Arrange-mode management dialogs (managers only). Rendered once the

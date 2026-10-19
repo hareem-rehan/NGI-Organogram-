@@ -19,6 +19,8 @@ export const PERMISSIONS = [
   "career:manage",
   "imports:execute",
   "exports:execute",
+  /** Create and turn off view-only organogram links (docs/DECISIONS.md D60). */
+  "organogram:share",
   "audit:view",
   "users:manage",
   "settings:manage",
@@ -47,6 +49,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "career:manage",
     "imports:execute",
     "exports:execute",
+    "organogram:share",
     "audit:view",
   ],
   VIEWER: [

@@ -28,6 +28,7 @@ describe("schema and migration constraints", () => {
       "job_grades",
       "level_mapping_entries",
       "organogram_card_offsets",
+      "organogram_share_links",
       "organogram_text_styles",
       "position_assignments",
       "positions",
