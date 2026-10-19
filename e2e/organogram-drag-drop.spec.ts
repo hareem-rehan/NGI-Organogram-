@@ -107,7 +107,9 @@ test.describe("Organogram — drag and drop", () => {
     expect(branch.departmentId).toBe(engTop.departmentId);
   });
 
-  test("refuses a drop onto the card's own subordinate, saying why", async ({ page }) => {
+  test("a card let go on its own branch just moves (with the branch) — it never reports to its own report (D62)", async ({
+    page,
+  }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: /arrange/i }).click();
     await expect(card(page, `Engineering Director 1 ${suffix}`)).toBeVisible();
@@ -118,10 +120,10 @@ test.describe("Organogram — drag and drop", () => {
       card(page, `Engineering Director 1 ${suffix}`)
     );
 
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(
       page.getByRole("alert").filter({ hasText: /reports \(directly or indirectly\)/ })
-    ).toBeVisible();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    ).toHaveCount(0);
     const lead = await readPositionByTitle(companyId, `Engineering Lead 1 ${suffix}`);
     const director = await readPositionByTitle(companyId, `Engineering Director 1 ${suffix}`);
     expect(lead.primaryReportsToPositionId).not.toBe(director.id);

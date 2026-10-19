@@ -16,7 +16,7 @@ import {
   getOrganogramAction,
   reorderPositionsAction,
   resetCardPositionsAction,
-  saveCardPositionAction,
+  saveCardPositionsAction,
   saveTextStyleAction,
 } from "@/app/(app)/organogram/actions";
 import { TextStylePanel } from "@/app/(app)/organogram/_components/text-style-panel";
@@ -434,9 +434,11 @@ export function OrganogramView({
         const cleared = await clearCardPositionsAction({ nodeKeys: toClear });
         if (!cleared.ok) return cleared.error;
       }
-      for (const [nodeKey, offset] of Object.entries(previous)) {
-        if (!offset) continue;
-        const saved = await saveCardPositionAction({ nodeKey, dx: offset.dx, dy: offset.dy });
+      const toSave = Object.entries(previous).flatMap(([nodeKey, offset]) =>
+        offset ? [{ nodeKey, dx: offset.dx, dy: offset.dy }] : []
+      );
+      if (toSave.length > 0) {
+        const saved = await saveCardPositionsAction({ moves: toSave });
         if (!saved.ok) return saved.error;
       }
       setData((current) => {
@@ -451,6 +453,58 @@ export function OrganogramView({
       return null;
     },
     []
+  );
+
+  // Arrange mode: a card let go on empty space moves there with its whole
+  // branch — every card below it (shown or folded away) shifts by the same
+  // amount, so the branch keeps its shape (client request, D62). Shown at
+  // once, saved for everyone in one go, one Undo step; put back if refused.
+  const handleMoveBranch = useCallback(
+    (rootId: string, dx: number, dy: number) => {
+      if (!data || (Math.round(dx) === 0 && Math.round(dy) === 0)) return;
+      setDropNotice(null);
+      const childrenOf = new Map<string, string[]>();
+      for (const node of data.nodes) {
+        const parent = node.primaryReportsToPositionId;
+        if (!parent) continue;
+        childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), node.positionId]);
+      }
+      const branch: string[] = [];
+      const seen = new Set<string>();
+      const stack = [rootId];
+      while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        branch.push(id);
+        stack.push(...(childrenOf.get(id) ?? []));
+      }
+      const previous: Record<string, CardOffset | undefined> = {};
+      const moves = branch.map((nodeKey) => {
+        const current = data.cardOffsets[nodeKey];
+        previous[nodeKey] = current;
+        return { nodeKey, dx: (current?.dx ?? 0) + dx, dy: (current?.dy ?? 0) + dy };
+      });
+      setData((current) => {
+        if (!current) return current;
+        const cardOffsets = { ...current.cardOffsets };
+        for (const move of moves) cardOffsets[move.nodeKey] = { dx: move.dx, dy: move.dy };
+        return { ...current, cardOffsets };
+      });
+      void (async () => {
+        const result = await saveCardPositionsAction({ moves });
+        if (!result.ok) {
+          await restoreOffsets(previous);
+          setDropNotice(result.error);
+          return;
+        }
+        pushUndo({
+          label: branch.length > 1 ? `Move ${branch.length} cards` : "Move card",
+          run: () => restoreOffsets(previous),
+        });
+      })();
+    },
+    [data, restoreOffsets, pushUndo]
   );
 
   // A card that has just been re-attached somewhere else should land in its
@@ -1170,11 +1224,11 @@ export function OrganogramView({
 
       {arrangeMode ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Arrange mode — drag any card or box left or right along its row to change its place;
-          everything under it moves along and the others make room (everyone sees it). Let go with
-          the pointer over another card to change who a position reports to, or over a department
-          heading to move it into that department; its whole branch moves with it. The card under
-          the pointer is outlined before you let go. Use{" "}
+          Arrange mode — drag a card to any empty spot and let go: it moves there with everything
+          below it (everyone sees it). Let go on top of a card next to it in the same row to swap
+          their places, or on another card or a department heading to change who it reports to.
+          Department and sub-division boxes move left or right along their row. The card under the
+          pointer is outlined before you let go. Use{" "}
           <Plus aria-hidden="true" className="inline size-3.5 align-text-bottom" /> to add a report,
           the trash icon to delete, and click a card to edit it.
         </p>
@@ -1342,6 +1396,7 @@ export function OrganogramView({
                 onInvalidDrop={setDropNotice}
                 onReorderBoxes={handleReorderBoxes}
                 cardOffsets={data.cardOffsets}
+                onMoveBranch={handleMoveBranch}
                 textStyles={previewTextStyles}
                 onEditStyle={canManage ? (nodeKey) => setStyleTarget(nodeKey) : undefined}
                 onEditCard={handleEditCard}

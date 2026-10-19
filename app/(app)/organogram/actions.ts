@@ -13,12 +13,14 @@ import {
   clearCardOffsets,
   resetCardOffsets,
   saveCardOffset,
+  saveCardOffsets,
   saveTextStyle,
 } from "@/lib/services/organogram-layout.service";
 import {
   clearCardOffsetsSchema,
   clearTextStyleSchema,
   saveCardOffsetSchema,
+  saveCardOffsetsSchema,
   saveTextStyleSchema,
 } from "@/lib/validation/organogram-layout";
 
@@ -45,6 +47,19 @@ export async function saveCardPositionAction(input: unknown): Promise<ActionResu
     const user = await requirePermission("positions:manage");
     const values = saveCardOffsetSchema.parse(input);
     await saveCardOffset({ companyId: user.companyId, ...values });
+    return null;
+  });
+}
+
+/**
+ * A card moved to a free spot together with its whole branch (D62): every
+ * moved card's new offset, saved in one go. Purely visual.
+ */
+export async function saveCardPositionsAction(input: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await requirePermission("positions:manage");
+    const { moves } = saveCardOffsetsSchema.parse(input);
+    await saveCardOffsets({ companyId: user.companyId, moves });
     return null;
   });
 }

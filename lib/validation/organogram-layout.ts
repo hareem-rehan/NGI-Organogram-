@@ -22,6 +22,20 @@ export const saveCardOffsetSchema = z
   .strict();
 export type SaveCardOffsetValues = z.infer<typeof saveCardOffsetSchema>;
 
+/** A card moved with its whole branch (D62): every card's new offset, at once. */
+export const saveCardOffsetsSchema = z
+  .object({
+    moves: z
+      .array(z.object({ nodeKey: nodeKeySchema, dx: offsetSchema, dy: offsetSchema }).strict())
+      .min(1)
+      .max(1000)
+      .refine(
+        (moves) => new Set(moves.map((m) => m.nodeKey)).size === moves.length,
+        "Each card may appear only once."
+      ),
+  })
+  .strict();
+
 /** Clear the given cards' offsets (e.g. after a card is re-attached elsewhere). */
 export const clearCardOffsetsSchema = z
   .object({ nodeKeys: z.array(nodeKeySchema).min(1).max(1000) })

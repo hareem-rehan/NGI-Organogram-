@@ -383,7 +383,7 @@ describe("OrganogramView", () => {
     const arrange = await screen.findByRole("button", { name: /^arrange$/i });
     await user.click(arrange);
 
-    expect(screen.getByText(/let go with the pointer over another card/i)).toBeInTheDocument();
+    expect(screen.getByText(/drag a card to any empty spot and let go/i)).toBeInTheDocument();
     // The form options are loaded lazily on first entry, re-authorized server-side.
     await waitFor(() => expect(listDepartmentOptionsAction).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: /arranging/i })).toBeInTheDocument();
