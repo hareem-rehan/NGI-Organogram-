@@ -7,6 +7,7 @@ import {
   orderAfterDropAt,
   parseCardNodeKey,
   placeCards,
+  resolveGroupOverlaps,
   reorderWithinSlots,
 } from "./organogram-card-offsets";
 
@@ -152,5 +153,54 @@ describe("isGroupingNodeKey (D55)", () => {
     expect(isGroupingNodeKey(`subdiv:${A}:${B}`)).toBe(true);
     expect(isGroupingNodeKey(A)).toBe(false);
     expect(isGroupingNodeKey("not-a-key")).toBe(false);
+  });
+});
+
+describe("resolveGroupOverlaps (D62)", () => {
+  const size = { width: 100, height: 50 };
+  it("moves a group that lands on another card aside as one piece, keeping its shape", () => {
+    const positions = new Map([
+      ["other", { x: 0, y: 0 }],
+      ["head", { x: 30, y: 0 }], // overlaps "other"
+      ["child", { x: 30, y: 100 }],
+    ]);
+    const out = resolveGroupOverlaps(positions, [["head", "child"]], size, 20);
+    const head = out.get("head")!;
+    const child = out.get("child")!;
+    // No overlap with the static card any more…
+    expect(head.x >= 0 + 100 + 10 || head.x + 100 <= 0 - 10).toBe(true);
+    // …and the branch kept its shape (same shift for both).
+    expect(child.x - head.x).toBe(0);
+    expect(child.y - head.y).toBe(100);
+    expect(out.get("other")).toEqual({ x: 0, y: 0 });
+  });
+
+  it("leaves a group alone when it overlaps nothing", () => {
+    const positions = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 500, y: 0 }],
+      ["b1", { x: 500, y: 100 }],
+    ]);
+    expect(resolveGroupOverlaps(positions, [["b", "b1"]], size, 20)).toEqual(positions);
+  });
+});
+
+describe("placeCards groups cards by their shared shift (D62)", () => {
+  it("cards moved together stay together when nudged", () => {
+    const positions = new Map([
+      ["static", { x: 300, y: 0 }],
+      ["head", { x: 0, y: 0 }],
+      ["child", { x: 0, y: 100 }],
+    ]);
+    // The branch was moved right by 300 — onto the static card.
+    const out = placeCards(
+      positions,
+      { head: { dx: 300, dy: 0 }, child: { dx: 300, dy: 0 } },
+      { width: 100, height: 50 },
+      20
+    );
+    expect(out.get("child")!.x).toBe(out.get("head")!.x);
+    expect(out.get("static")).toEqual({ x: 300, y: 0 });
+    expect(out.get("head")!.x).not.toBe(300);
   });
 });

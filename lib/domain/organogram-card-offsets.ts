@@ -177,6 +177,70 @@ export function resolveOverlaps(
   return out;
 }
 
+/**
+ * Like resolveOverlaps, but cards moved together — the same saved shift, i.e.
+ * one branch moved as a whole (D62) — step aside as ONE rigid group, so the
+ * branch keeps its shape instead of single cards being pushed out of it.
+ */
+export function resolveGroupOverlaps(
+  positions: ReadonlyMap<string, { x: number; y: number }>,
+  groups: readonly (readonly string[])[],
+  size: CardSizeSource,
+  gap: number
+): Map<string, { x: number; y: number }> {
+  const out = new Map(positions);
+  const sizeOf = typeof size === "function" ? size : () => size;
+  const overlaps = (
+    aId: string,
+    a: { x: number; y: number },
+    bId: string,
+    b: { x: number; y: number }
+  ) => {
+    const sa = sizeOf(aId);
+    const sb = sizeOf(bId);
+    return (
+      a.x < b.x + sb.width + gap / 2 &&
+      b.x < a.x + sa.width + gap / 2 &&
+      a.y < b.y + sb.height + gap / 2 &&
+      b.y < a.y + sa.height + gap / 2
+    );
+  };
+
+  for (const group of groups) {
+    const members = group.filter((id) => out.has(id));
+    if (members.length === 0) continue;
+    const inGroup = new Set(members);
+    let shift = { x: 0, y: 0 };
+    const at = (id: string) => {
+      const p = out.get(id)!;
+      return { x: p.x + shift.x, y: p.y + shift.y };
+    };
+    for (let attempt = 0; attempt < 60; attempt++) {
+      let hit: { member: string; other: string; q: { x: number; y: number } } | null = null;
+      for (const member of members) {
+        const p = at(member);
+        for (const [other, q] of out) {
+          if (inGroup.has(other) || !overlaps(member, p, other, q)) continue;
+          hit = { member, other, q };
+          break;
+        }
+        if (hit) break;
+      }
+      if (!hit) break;
+      const p = at(hit.member);
+      if (attempt < 30) {
+        const left = hit.q.x - sizeOf(hit.member).width - gap - p.x;
+        const right = hit.q.x + sizeOf(hit.other).width + gap - p.x;
+        shift = { x: shift.x + (Math.abs(left) <= Math.abs(right) ? left : right), y: shift.y };
+      } else {
+        shift = { x: shift.x, y: shift.y + (hit.q.y + sizeOf(hit.other).height + gap - p.y) };
+      }
+    }
+    for (const member of members) out.set(member, at(member));
+  }
+  return out;
+}
+
 /** Automatic positions + saved offsets, with no two cards overlapping. */
 export function placeCards(
   positions: ReadonlyMap<string, { x: number; y: number }>,
@@ -185,6 +249,13 @@ export function placeCards(
   gap: number
 ): Map<string, { x: number; y: number }> {
   const placed = applyCardOffsets(positions, offsets);
-  const moved = [...positions.keys()].filter((id) => offsets[id]);
-  return resolveOverlaps(placed, moved, size, gap);
+  // Cards sharing a shift were moved together (one branch, D62).
+  const groups = new Map<string, string[]>();
+  for (const id of positions.keys()) {
+    const offset = offsets[id];
+    if (!offset) continue;
+    const key = `${Math.round(offset.dx)},${Math.round(offset.dy)}`;
+    groups.set(key, [...(groups.get(key) ?? []), id]);
+  }
+  return resolveGroupOverlaps(placed, [...groups.values()], size, gap);
 }

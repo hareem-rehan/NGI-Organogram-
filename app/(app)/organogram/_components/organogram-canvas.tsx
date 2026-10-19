@@ -148,6 +148,11 @@ interface OrganogramCanvasProps {
    * Cards without one sit where the layout puts them.
    */
   cardOffsets?: Readonly<Record<string, CardOffset>>;
+  /**
+   * A card let go on empty space (D62): move it — and, in the view, its whole
+   * branch — by this much from where it was drawn.
+   */
+  onMoveBranch?: (positionId: string, dx: number, dy: number) => void;
   /** Card text styles: chart-wide plus per-card overrides (D41). */
   textStyles?: { chart: TextStyle; cards: Readonly<Record<string, TextStyle>> };
   /** "Aa" on a card (Arrange mode): edit that one card's text style. */
@@ -182,6 +187,7 @@ function CanvasInner({
   onInvalidDrop,
   onReorderBoxes,
   cardOffsets = NO_OFFSETS,
+  onMoveBranch,
   textStyles,
   onEditStyle,
   onEditCard,
@@ -544,6 +550,18 @@ function CanvasInner({
       if (!isPlainPosition) return null;
       const target = targetUnderPointer(event, dragged);
       if (!target) return null;
+      // Over the dragged card's own branch: that branch moves with it, so
+      // letting go there is a move (D62), never "report to your own report".
+      if (dragDescendantsRef.current.has(target.positionId)) return null;
+      // A sibling card (same head on the chart) is a reorder, not a new head:
+      // dropping onto it swaps their places, like boxes (D61, client report
+      // 2026-10-19). Reporting to a sibling is set from the Positions page.
+      if (
+        (target.kind ?? "position") === "position" &&
+        target.primaryReportsToPositionId === draggedNode!.primaryReportsToPositionId
+      ) {
+        return null;
+      }
       return {
         targetId: target.positionId,
         verdict: judgeDrop(dragged.id, target, dragDescendantsRef.current),
@@ -593,12 +611,24 @@ function CanvasInner({
 
       // A position dropped ONTO a card or department heading is re-attached
       // there (its branch moves with it); a refused drop says why and snaps
-      // back.
+      // back. Dropped ONTO a sibling it swaps places (below). Let go on empty
+      // space, it moves there with its whole branch (D62).
       if ((dragged.kind ?? "position") === "position") {
         const judged = judgeDropFor(event, node);
         if (judged) {
           if (judged.verdict.valid) onReparent?.(node.id, judged.verdict);
           else onInvalidDrop?.(judged.verdict.reason);
+          return;
+        }
+        const target = targetUnderPointer(event, node);
+        const ontoSibling =
+          target &&
+          !dragDescendantsRef.current.has(target.positionId) &&
+          (target.kind ?? "position") === "position" &&
+          target.primaryReportsToPositionId === dragged.primaryReportsToPositionId;
+        if (!ontoSibling) {
+          const from = placedPositions.get(node.id);
+          if (from) onMoveBranch?.(node.id, node.position.x - from.x, node.position.y - from.y);
           return;
         }
       }
@@ -630,9 +660,10 @@ function CanvasInner({
       if (siblings.length < 2) return;
       const row = siblings.map((sibling) => sibling.id);
       const draggedId = orderIdOf(dragged);
-      const target = kind === "position" ? null : targetUnderPointer(event, node);
+      const target = targetUnderPointer(event, node);
       const next =
-        target?.kind === kind &&
+        target &&
+        (target.kind ?? "position") === kind &&
         target.primaryReportsToPositionId === dragged.primaryReportsToPositionId
           ? departmentOrderAfterDrop(row, draggedId, orderIdOf(target))
           : orderAfterDropAt(siblings, draggedId, node.position.x + sizeOf(node.id).width / 2);
@@ -656,6 +687,7 @@ function CanvasInner({
       placedPositions,
       sizeOf,
       keepOnScreen,
+      onMoveBranch,
     ]
   );
 

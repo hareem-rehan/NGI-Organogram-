@@ -21,15 +21,26 @@ import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service"
  */
 
 /**
- * Saved hand placements, keyed by chart node id. Since D61 no card is placed
- * by hand any more — departments, sub-divisions and positions all reorder
- * within their row instead — so placements saved before then are ignored on
- * screen and in exports (the rows stay until "Reset positions" clears them).
- * Kept as a function so the chart and export keep one shape.
+ * Placements saved before moving came back as "move the card with its whole
+ * branch" (D62) are ignored: they were single cards left away from their
+ * branch (D38), switched off at 14:40 UTC on 19 Oct 2026 (D61). Anything
+ * saved after this moment was saved by D62.
  */
-export async function listCardOffsets(companyId: string): Promise<Record<string, CardOffset>> {
-  void companyId;
-  return {};
+export const BRANCH_MOVES_SINCE = new Date("2026-10-19T14:45:00Z");
+
+/**
+ * Every saved card/box offset for the company (D62), keyed by chart node id —
+ * where HR moved a card and its branch to. Shared by the screen and exports.
+ */
+export async function listCardOffsets(
+  companyId: string,
+  db: DbClient = prisma
+): Promise<Record<string, CardOffset>> {
+  const rows = await db.organogramCardOffset.findMany({
+    where: { companyId, updatedAt: { gt: BRANCH_MOVES_SINCE } },
+    select: { nodeKey: true, dx: true, dy: true },
+  });
+  return Object.fromEntries(rows.map((r) => [r.nodeKey, { dx: r.dx, dy: r.dy }]));
 }
 
 /** The node key must name a card that really exists in this company. */
@@ -48,19 +59,80 @@ async function assertNodeKeyInCompany(nodeKey: string, companyId: string, db: Db
   }
 }
 
+/** Most cards one move may save — a whole branch, bounded. */
+export const MAX_CARD_MOVES = 1000;
+
 /**
- * Saves where HR dropped a card. A zero offset (dragged back exactly onto its
- * automatic spot) removes the row instead of storing a no-op.
+ * Saves where cards were moved (D62): a card dragged to a free spot and every
+ * card below it, by the same amount, in one transaction. A zero offset
+ * (moved back exactly onto its automatic spot) removes the row. Purely
+ * visual — never a reporting line or a level.
  */
+export async function saveCardOffsets(
+  input: {
+    companyId: string;
+    moves: readonly { nodeKey: string; dx: number; dy: number }[];
+  },
+  db: DbClient = prisma
+): Promise<void> {
+  if (input.moves.length > MAX_CARD_MOVES) {
+    throw new DomainValidationError(`At most ${MAX_CARD_MOVES} cards can be moved at once.`);
+  }
+  // Every card must belong to this company: checked in three queries, not
+  // one per card (a branch can be large; staging is far from the database).
+  const positionIds = new Set<string>();
+  const departmentIds = new Set<string>();
+  const familyIds = new Set<string>();
+  for (const move of input.moves) {
+    const parsed = parseCardNodeKey(move.nodeKey);
+    if (!parsed) throw new DomainValidationError("Unknown chart card.");
+    if (parsed.kind === "position") positionIds.add(parsed.positionId);
+    else if (parsed.kind === "department") departmentIds.add(parsed.departmentId);
+    else {
+      positionIds.add(parsed.leadPositionId);
+      familyIds.add(parsed.jobFamilyId);
+    }
+  }
+  const [positions, departments, families] = await Promise.all([
+    db.position.count({ where: { companyId: input.companyId, id: { in: [...positionIds] } } }),
+    db.department.count({ where: { companyId: input.companyId, id: { in: [...departmentIds] } } }),
+    db.jobFamily.count({ where: { companyId: input.companyId, id: { in: [...familyIds] } } }),
+  ]);
+  if (
+    positions !== positionIds.size ||
+    departments !== departmentIds.size ||
+    families !== familyIds.size
+  ) {
+    throw new CrossCompanyError("One or more chart cards do not exist in this company.");
+  }
+
+  const rounded = input.moves.map((m) => ({
+    nodeKey: m.nodeKey,
+    dx: Math.round(m.dx),
+    dy: Math.round(m.dy),
+  }));
+  await withTransaction(db, async (tx) => {
+    // Replace the moved cards' rows; a zero offset just leaves none.
+    await tx.organogramCardOffset.deleteMany({
+      where: { companyId: input.companyId, nodeKey: { in: rounded.map((m) => m.nodeKey) } },
+    });
+    const kept = rounded.filter((m) => m.dx !== 0 || m.dy !== 0);
+    if (kept.length > 0) {
+      await tx.organogramCardOffset.createMany({
+        data: kept.map((m) => ({ companyId: input.companyId, ...m })),
+      });
+    }
+  });
+}
+
+/** One card's offset — the same as moving just that card. */
 export async function saveCardOffset(
   input: { companyId: string; nodeKey: string; dx: number; dy: number },
   db: DbClient = prisma
 ): Promise<void> {
-  // No hand placement since D61: drag a card or box along its row instead.
-  void input;
-  void db;
-  throw new DomainValidationError(
-    "Cards can't be placed by hand any more; drag a card along its row to reorder it instead."
+  await saveCardOffsets(
+    { companyId: input.companyId, moves: [{ nodeKey: input.nodeKey, dx: input.dx, dy: input.dy }] },
+    db
   );
 }
 

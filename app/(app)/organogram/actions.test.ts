@@ -7,6 +7,7 @@ const { requirePermissionMock, getOrganogramChartDataMock, layoutMock, positionO
     getOrganogramChartDataMock: vi.fn(),
     layoutMock: {
       saveCardOffset: vi.fn(),
+      saveCardOffsets: vi.fn(),
       clearCardOffsets: vi.fn(),
       resetCardOffsets: vi.fn(),
       saveTextStyle: vi.fn(),
@@ -31,6 +32,7 @@ import {
   reorderPositionsAction,
   resetCardPositionsAction,
   saveCardPositionAction,
+  saveCardPositionsAction,
   saveTextStyleAction,
 } from "./actions";
 
@@ -238,5 +240,50 @@ describe("reorderPositionsAction (D61)", () => {
     expect((await reorderPositionsAction({ orderedPositionIds: ["nope"] })).ok).toBe(false);
     expect((await reorderPositionsAction({ orderedPositionIds: [] })).ok).toBe(false);
     expect(positionOrderMock.reorderPositions).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveCardPositionsAction (D62 — a card moved with its branch)", () => {
+  afterEach(() => vi.clearAllMocks());
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+
+  it("needs positions:manage and saves every card's offset for the caller's company", async () => {
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    layoutMock.saveCardOffsets.mockResolvedValue(undefined);
+    const moves = [
+      { nodeKey: A, dx: 10, dy: 20 },
+      { nodeKey: B, dx: 10, dy: 20 },
+    ];
+
+    const result = await saveCardPositionsAction({ moves });
+
+    expect(result.ok).toBe(true);
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    expect(layoutMock.saveCardOffsets).toHaveBeenCalledWith({
+      companyId: "company-trusted",
+      moves,
+    });
+  });
+
+  it("rejects a VIEWER, duplicate cards, empty or unbounded moves before saving", async () => {
+    requirePermissionMock.mockRejectedValueOnce(new ForbiddenError());
+    expect((await saveCardPositionsAction({ moves: [{ nodeKey: A, dx: 1, dy: 1 }] })).ok).toBe(
+      false
+    );
+
+    requirePermissionMock.mockResolvedValue(ADMIN_USER);
+    for (const moves of [
+      [],
+      [
+        { nodeKey: A, dx: 1, dy: 1 },
+        { nodeKey: A, dx: 2, dy: 2 },
+      ],
+      [{ nodeKey: A, dx: 1e9, dy: 0 }],
+      [{ nodeKey: "not-a-card", dx: 1, dy: 1 }],
+    ]) {
+      expect((await saveCardPositionsAction({ moves })).ok).toBe(false);
+    }
+    expect(layoutMock.saveCardOffsets).not.toHaveBeenCalled();
   });
 });
