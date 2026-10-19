@@ -28,6 +28,7 @@ export const EXPECTED_MIGRATIONS: readonly string[] = [
   "20261001120000_organogram_card_offsets",
   "20261002120000_organogram_text_styles",
   "20261014120000_multiple_occupants_per_position",
+  "20261019120000_organogram_share_links",
 ];
 
 /**

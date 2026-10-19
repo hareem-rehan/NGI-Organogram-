@@ -10,6 +10,15 @@ const { getOrganogramActionMock, searchParamsMock, saveTextStyleMock, clearTextS
     clearTextStyleMock: vi.fn(async () => ({ ok: true, data: null })),
   }));
 
+vi.mock("@/app/share/actions", () => ({
+  getSharedOrganogramAction: vi.fn(),
+  exportSharedOrganogramAction: vi.fn(),
+}));
+vi.mock("@/app/(app)/organogram/share-actions", () => ({
+  listShareLinksAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+  createShareLinkAction: vi.fn(),
+  revokeShareLinkAction: vi.fn(),
+}));
 vi.mock("@/app/(app)/organogram/actions", () => ({
   getOrganogramAction: getOrganogramActionMock,
   saveTextStyleAction: saveTextStyleMock,

@@ -12,6 +12,7 @@ import {
   requestExportAction,
   type SafeExportJob,
 } from "@/app/(app)/organogram/export-actions";
+import { exportSharedOrganogramAction, type SharedExportFile } from "@/app/share/actions";
 import type { OrganogramFilterState } from "@/lib/domain/organogram-filters";
 import type { OrganogramNode } from "@/lib/domain/organogram";
 import type { DescendantDepth } from "@/lib/domain/organogram-focus";
@@ -41,6 +42,12 @@ interface OrganogramExportDialogProps {
     filters: OrganogramFilterState;
     showPlanned: boolean;
   };
+  /**
+   * Set on a view-only link (docs/DECISIONS.md D60): the file is generated
+   * through the link and handed back directly — a link viewer has no user,
+   * so no export job is stored.
+   */
+  shareToken?: string;
 }
 
 function toExportFilterState(filters: OrganogramFilterState): ExportFilterState {
@@ -60,7 +67,9 @@ function formatFileSize(bytes: number): string {
 }
 
 /** The filename is deliberately NOT part of the download button's label — a generated name like `organogram-DEV-LOCAL-Full-Company-2026-09-03.pdf` overflows the dialog on a `whitespace-nowrap` button. It belongs in the file summary above it, where it can truncate. */
-function describeExportFile(job: SafeExportJob): string {
+function describeExportFile(
+  job: Pick<SafeExportJob, "format" | "pageCount" | "fileSize" | "nodeCount">
+): string {
   return [
     job.format,
     job.pageCount ? `${job.pageCount} page${job.pageCount === 1 ? "" : "s"}` : null,
@@ -102,6 +111,7 @@ export function OrganogramExportDialog({
   departmentEntries,
   currentColorMode,
   currentContext,
+  shareToken,
 }: OrganogramExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>("PDF");
   const [colorMode, setColorMode] = useState<ExportColorMode>(currentColorMode);
@@ -119,6 +129,8 @@ export function OrganogramExportDialog({
 
   const [phase, setPhase] = useState<"form" | "generating" | "done" | "error">("form");
   const [job, setJob] = useState<SafeExportJob | null>(null);
+  // A view-only link's file, returned straight away (no stored job).
+  const [sharedFile, setSharedFile] = useState<SharedExportFile | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -132,6 +144,7 @@ export function OrganogramExportDialog({
     if (!open) return;
     setPhase("form");
     setJob(null);
+    setSharedFile(null);
     setErrorMessage(null);
     setScope(currentContext.view === "full" ? "FULL_COMPANY" : "CURRENT_VIEW");
     setSelectedPositionId(currentContext.positionId);
@@ -170,7 +183,7 @@ export function OrganogramExportDialog({
   async function handleGenerate() {
     setPhase("generating");
     setErrorMessage(null);
-    const result = await requestExportAction({
+    const options = {
       format,
       scope,
       selectedPositionId:
@@ -187,7 +200,19 @@ export function OrganogramExportDialog({
       includeMetadata,
       includeConfidentialityLabel,
       colorMode,
-    });
+    };
+    if (shareToken) {
+      const shared = await exportSharedOrganogramAction({ token: shareToken, options });
+      if (!shared.ok) {
+        setErrorMessage(shared.error);
+        setPhase("error");
+        return;
+      }
+      setSharedFile(shared.data);
+      setPhase("done");
+      return;
+    }
+    const result = await requestExportAction(options);
     if (!result.ok) {
       setErrorMessage(result.error);
       setPhase("error");
@@ -203,6 +228,10 @@ export function OrganogramExportDialog({
   }
 
   async function handleDownload() {
+    if (sharedFile) {
+      triggerBrowserDownload(sharedFile.base64, sharedFile.filename, sharedFile.contentType);
+      return;
+    }
     if (!job) return;
     setDownloading(true);
     const result = await downloadExportFileAction({ jobId: job.id });
@@ -220,7 +249,7 @@ export function OrganogramExportDialog({
         title="Export organization chart"
         description="Generates a PDF or PNG of the organogram, rendered server-side from the same hierarchy shown here."
       >
-        {phase === "done" && job ? (
+        {phase === "done" && (job || sharedFile) ? (
           <div className="flex flex-col gap-4">
             <p className="text-foreground text-sm">Your export is ready.</p>
 
@@ -231,11 +260,13 @@ export function OrganogramExportDialog({
               <div className="min-w-0 flex-1">
                 <p
                   className="text-foreground truncate text-sm font-medium"
-                  title={job.generatedFilename ?? undefined}
+                  title={(sharedFile?.filename ?? job?.generatedFilename) || undefined}
                 >
-                  {job.generatedFilename ?? `${job.format} export`}
+                  {sharedFile?.filename ?? job?.generatedFilename ?? `${job?.format} export`}
                 </p>
-                <p className="text-muted-foreground text-xs">{describeExportFile(job)}</p>
+                <p className="text-muted-foreground text-xs">
+                  {describeExportFile(sharedFile ?? job!)}
+                </p>
               </div>
             </div>
 

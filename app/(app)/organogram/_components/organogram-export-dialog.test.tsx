@@ -2,11 +2,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const { requestExportActionMock, downloadExportFileActionMock } = vi.hoisted(() => ({
-  requestExportActionMock: vi.fn(),
-  downloadExportFileActionMock: vi.fn(),
-}));
+const { requestExportActionMock, downloadExportFileActionMock, exportSharedActionMock } =
+  vi.hoisted(() => ({
+    requestExportActionMock: vi.fn(),
+    downloadExportFileActionMock: vi.fn(),
+    exportSharedActionMock: vi.fn(),
+  }));
 
+vi.mock("@/app/share/actions", () => ({
+  getSharedOrganogramAction: vi.fn(),
+  exportSharedOrganogramAction: exportSharedActionMock,
+}));
 vi.mock("@/app/(app)/organogram/export-actions", () => ({
   requestExportAction: requestExportActionMock,
   downloadExportFileAction: downloadExportFileActionMock,
@@ -156,6 +162,46 @@ describe("OrganogramExportDialog", () => {
     expect(requestExportActionMock).toHaveBeenCalledWith(
       expect.objectContaining({ format: "PDF", scope: "FULL_COMPANY" })
     );
+  });
+
+  it("on a view-only link, exports through the link and offers the file straight away (D60)", async () => {
+    const user = userEvent.setup();
+    exportSharedActionMock.mockResolvedValue({
+      ok: true,
+      data: {
+        filename: "organogram-shared.pdf",
+        contentType: "application/pdf",
+        base64: "UERGIQ==",
+        format: "PDF",
+        fileSize: 4,
+        pageCount: 1,
+        nodeCount: 3,
+      },
+    });
+    render(
+      <OrganogramExportDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        nodes={NODES}
+        departmentEntries={DEPARTMENTS}
+        currentColorMode="department"
+        currentContext={FULL_COMPANY_CONTEXT}
+        shareToken={"t".repeat(43)}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /generate export/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^download$/i })).toBeInTheDocument()
+    );
+    expect(screen.getByText("organogram-shared.pdf")).toBeInTheDocument();
+    expect(exportSharedActionMock).toHaveBeenCalledWith({
+      token: "t".repeat(43),
+      options: expect.objectContaining({ format: "PDF", scope: "FULL_COMPANY" }),
+    });
+    // No signed-in export job is requested from a link.
+    expect(requestExportActionMock).not.toHaveBeenCalled();
   });
 
   it("shows a clear error message when the export request fails, never a raw error", async () => {

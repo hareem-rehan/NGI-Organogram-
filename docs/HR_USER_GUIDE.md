@@ -221,6 +221,20 @@ Open **Organogram** from the menu — this is the automatically-generated chart.
 
   Click **Generate export**, then **Download** once it's ready. There is no separate "print" screen — if you need a physical copy for a meeting, generate a PDF and print it from your PDF viewer.
 
+### 7.1 Sharing a view-only link (HR_EDITOR/ADMIN)
+
+Click **Share** (next to Export) on the Organogram page to give someone outside the app a link to the chart.
+
+- **Anyone with the link** can open it, without an account or signing in. They see only the organogram: no menu and no other pages.
+- **What they can do:** expand and collapse branches, search, click a card to see its details (department, level, sub-division and the people in it), zoom, Fit to View, use the mini-map, and download a PDF or PNG.
+- **What they can't do:** change anything, use Arrange, or open employee records.
+- **Creating a link:** add an optional **label** (only you and your team see it, e.g. "Board pack") and choose how long it works: **7 days**, **30 days** or **until turned off**. Then click **Create link** and **Copy**.
+- **Managing links:** the same dialog lists every link with its status (**Active**, **Expired** or **Turned off**). You can copy an active link again at any time. **Turn off** stops a link immediately for everyone who has it; this can't be undone, so create a new link if needed.
+- **Live data:** the link always shows the current chart, so changes you make appear for viewers too.
+- **Downloads:** viewers can download at most once every 15 seconds per link.
+
+Treat a link like a password: anyone you forward it to can see the chart, including people's names.
+
 ## 8. Bulk-importing data with CSV (HR_EDITOR/ADMIN)
 
 Open **Imports** from the menu. This is for loading many departments, positions, employees, or position assignments at once from a spreadsheet, instead of entering them one by one.
