@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, Download, Plus, Share2, Undo2 } from "lucide-react";
@@ -181,6 +181,8 @@ export function OrganogramView({
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fitViewSignal, setFitViewSignal] = useState(0);
+  // Bumped before an in-place reload after an Arrange change (keeps the view).
+  const [holdViewSignal, setHoldViewSignal] = useState(0);
   const [centerOnNodeId, setCenterOnNodeId] = useState<string | null>(null);
   // Ephemeral view state (not part of the shareable URL contract). Cards
   // colour by department by default; "family" switches to the job-family
@@ -285,8 +287,11 @@ export function OrganogramView({
     [urlState, pathname]
   );
 
-  const refresh = useCallback(() => {
-    setLoading(true);
+  // `silent`: reload the data in place after an Arrange change, without the
+  // loading screen — unmounting the chart would lose the view (zoom, scroll)
+  // and jump back to the overview (client report, 2026-10-19).
+  const refresh = useCallback((options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setError(null);
     setLayoutFailed(false);
     void (async () => {
@@ -341,7 +346,8 @@ export function OrganogramView({
   // Reload both the chart and the form options after a structural change, so
   // the pickers, the edit targets and the drawn tree all reflect the new state.
   const refreshAfterMutation = useCallback(() => {
-    refresh();
+    setHoldViewSignal((n) => n + 1);
+    refresh({ silent: true });
     void loadFormOptions();
   }, [refresh, loadFormOptions]);
 
@@ -772,9 +778,15 @@ export function OrganogramView({
   // view always starts fully expanded within its own already-bounded
   // subgraph (Step 8.8's "focused descendant expansion remains usable"
   // still applies afterward — the user can re-collapse from there).
+  // Reset only when the chart is first loaded or the view/focus changes — not
+  // when the same chart is reloaded after an edit, which would fold away the
+  // branches the user had opened.
+  const collapseScopeRef = useRef<string | null>(null);
   useEffect(() => {
     if (!data) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const scope = `${urlState.view}|${urlState.positionId ?? ""}|${urlState.departmentId ?? ""}`;
+    if (collapseScopeRef.current === scope) return;
+    collapseScopeRef.current = scope;
     setCollapsedIds(urlState.view === "full" ? defaultCollapsedIds(data) : new Set());
   }, [data, urlState.view, urlState.positionId, urlState.departmentId]);
 
@@ -1344,6 +1356,7 @@ export function OrganogramView({
                 onSelect={setSelectedId}
                 onLayoutError={() => setLayoutFailed(true)}
                 fitViewSignal={fitViewSignal}
+                holdViewSignal={holdViewSignal}
                 departmentLegendEntries={departmentLegendEntries}
                 colorMode={colorMode}
                 departmentColorById={departmentColorById}

@@ -4,7 +4,7 @@ import { NODE_WIDTH, computeElkLayout } from "./elk-layout";
 import {
   arrangeBranchesOutward,
   growDirectionFor,
-  keepSavedBoxOrder,
+  inModelOrder,
   layoutBranch,
 } from "./outward-layout";
 
@@ -245,21 +245,15 @@ describe("computeElkLayout — outward branches (end to end)", () => {
   });
 });
 
-describe("keepSavedBoxOrder (D55)", () => {
-  const rank = new Map(["subdiv:a", "subdiv:b", "subdiv:c", "p1"].map((id, i) => [id, i]));
+describe("inModelOrder (D55)", () => {
+  const rank = new Map(["subdiv:a", "subdiv:b", "p1", "p2"].map((id, i) => [id, i]));
   const rankOf = (id: string) => rank.get(id) ?? Number.MAX_SAFE_INTEGER;
-  it("puts sibling boxes back in their saved order", () => {
-    expect(keepSavedBoxOrder(["subdiv:c", "subdiv:a", "subdiv:b"], rankOf)).toEqual([
+  it("puts every sibling — boxes and position cards — in the caller's order", () => {
+    expect(inModelOrder(["p2", "subdiv:b", "p1", "subdiv:a"], rankOf)).toEqual([
       "subdiv:a",
       "subdiv:b",
-      "subdiv:c",
-    ]);
-  });
-  it("leaves position cards where they are, sorting boxes only among their own slots", () => {
-    expect(keepSavedBoxOrder(["subdiv:b", "p1", "subdiv:a"], rankOf)).toEqual([
-      "subdiv:a",
       "p1",
-      "subdiv:b",
+      "p2",
     ]);
   });
 });

@@ -54,7 +54,7 @@ export function layoutBranch(
   _direction: GrowDirection,
   nodeWidth: CardWidth,
   gap: number,
-  /** The caller's order (the saved left-to-right order); see keepSavedBoxOrder. */
+  /** The caller's order (the saved left-to-right order); see inModelOrder. */
   rankOf?: (id: string) => number
 ): { placed: Map<string, Point>; width: number } {
   const widthOf = widthFn(nodeWidth);
@@ -83,8 +83,8 @@ export function layoutBranch(
     else roots.push(id);
   }
   if (rankOf) {
-    for (const [parent, kids] of children) children.set(parent, keepSavedBoxOrder(kids, rankOf));
-    roots.splice(0, roots.length, ...keepSavedBoxOrder(roots, rankOf));
+    for (const [parent, kids] of children) children.set(parent, inModelOrder(kids, rankOf));
+    roots.splice(0, roots.length, ...inModelOrder(roots, rankOf));
   }
 
   // Each subtree is measured once: its total width, where its own card sits
@@ -185,23 +185,16 @@ export function layoutBranch(
   return { placed, width: Math.max(0, cursor - gap) };
 }
 
-/** Department, sub-department and sub-division boxes (D33, D55). */
-function isGroupingBox(id: string): boolean {
-  return id.startsWith("dept:") || id.startsWith("subdiv:");
-}
-
 /**
- * Sibling boxes in their SAVED order (D55). ELK does not always keep the
- * model order for boxes nested inside a department, so a reordered
- * sub-division box could be drawn back in its old slot. The boxes are
- * re-sorted among the slots they hold; position cards keep ELK's order.
+ * Siblings in the caller's order (the projection's order: saved department /
+ * sub-division order, then title and code). ELK's own left-to-right result
+ * depends on the whole graph, so reordering two sub-division boxes could
+ * reshuffle unrelated cards elsewhere (e.g. the managers above them). Fixing
+ * every sibling row to the model order makes a reorder move only the boxes
+ * that were reordered (D55; client report, 2026-10-19).
  */
-export function keepSavedBoxOrder(
-  ids: readonly string[],
-  rankOf: (id: string) => number
-): string[] {
-  const boxes = ids.filter(isGroupingBox).sort((a, b) => rankOf(a) - rankOf(b));
-  return ids.map((id) => (isGroupingBox(id) ? boxes.shift()! : id));
+export function inModelOrder(ids: readonly string[], rankOf: (id: string) => number): string[] {
+  return [...ids].sort((a, b) => rankOf(a) - rankOf(b));
 }
 
 /**

@@ -63,6 +63,17 @@ test.describe("Organogram — sub-division reorder", () => {
     // Name order to start with: Branding, HR Ops, Recruitment.
     expect((await branding.boundingBox())!.x).toBeLessThan((await recruitment.boundingBox())!.x);
 
+    // The boxes' parent and the zoom, to check the view holds (client report).
+    const head = page
+      .locator('[data-testid^="rf__node-"]')
+      .filter({ has: page.getByText(`Head of People ${suffix}`, { exact: true }) });
+    const zoomText = () =>
+      page
+        .getByRole("combobox", { name: "Zoom level" })
+        .evaluate((el) => (el as HTMLSelectElement).selectedOptions[0]?.textContent);
+    const headBefore = (await head.boundingBox())!;
+    const zoomBefore = await zoomText();
+
     // Let Branding go to the right of Recruitment, in empty space.
     const from = (await branding.boundingBox())!;
     const last = (await recruitment.boundingBox())!;
@@ -73,6 +84,16 @@ test.describe("Organogram — sub-division reorder", () => {
 
     await expect.poll(order).toEqual([names[1], names[2], names[0]]);
     expect(await readCardOffsetKeys(companyId)).toEqual([]);
+    // The chart is not reloaded or re-framed: the parent stays where it was,
+    // at the same zoom, and the boxes swap in front of it.
+    await expect(page.getByText(/loading organization chart/i)).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const now = (await head.boundingBox())!;
+        return Math.abs(now.x - headBefore.x) < 2 && Math.abs(now.y - headBefore.y) < 2;
+      })
+      .toBe(true);
+    expect(await zoomText()).toBe(zoomBefore);
     // On screen: Branding is now last, and its lead still sits centred under it.
     await expect
       .poll(async () => {
