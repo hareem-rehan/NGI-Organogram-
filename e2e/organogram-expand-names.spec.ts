@@ -4,7 +4,7 @@ import { seedAuthenticatedSession } from "./support/seed-session";
 import { seedSharedPositionChart } from "./support/department-layout-fixtures";
 
 /**
- * A card held by several people (D56) shows two names and "+N more";
+ * A card held by several people (D56) shows one name and "Show names";
  * clicking it opens every name: the card grows to fit, the chart makes room
  * below, and nothing else changes (user request, 2026-10-19).
  */
@@ -37,7 +37,7 @@ test.describe("Organogram — expandable names on a card", () => {
       .locator('[data-testid^="rf__node-"]')
       .filter({ has: page.getByText(`${title} ${suffix}`, { exact: true }) });
 
-  test("'+3 more' opens every name; the card grows, the chart makes room, nothing else moves", async ({
+  test("'Show names' opens every name; the card grows, the chart makes room, nothing else moves", async ({
     page,
   }) => {
     await page.goto("/organogram");
@@ -56,10 +56,11 @@ test.describe("Organogram — expandable names on a card", () => {
       below: (await below.boundingBox())!,
     };
 
-    await shared.getByRole("button", { name: /show all 5 people/i }).click();
+    await expect(shared.getByText(`Waqas Ansari ${suffix}`)).toHaveCount(0);
+    await shared.getByRole("button", { name: /show all 5 names/i }).click();
 
     await expect(shared.getByText(`Haris Ali ${suffix}`)).toBeVisible();
-    await expect(shared.getByRole("button", { name: /show fewer/i })).toBeVisible();
+    await expect(shared.getByRole("button", { name: /hide names/i })).toBeVisible();
     // Opening the names never opens the details panel.
     await expect(page.getByText("Occupants", { exact: true })).toHaveCount(0);
     await expect
@@ -76,8 +77,8 @@ test.describe("Organogram — expandable names on a card", () => {
     expect(Math.abs(open.neighbour.height - before.neighbour.height)).toBeLessThan(2);
     await page.screenshot({ path: "test-results/expanded-names.png" });
 
-    // "Show fewer" puts everything back.
-    await shared.getByRole("button", { name: /show fewer/i }).click();
+    // "Hide names" puts everything back.
+    await shared.getByRole("button", { name: /hide names/i }).click();
     await expect(shared.getByText(`Haris Ali ${suffix}`)).toHaveCount(0);
     await expect
       .poll(async () => Math.abs((await below.boundingBox())!.y - before.below.y))

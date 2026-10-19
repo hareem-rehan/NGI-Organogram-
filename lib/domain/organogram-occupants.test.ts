@@ -19,17 +19,19 @@ describe("occupantCardLines (D56)", () => {
 
 describe("occupantCardView (on-screen card, expandable)", () => {
   const five = ["Ali", "Sara", "Omar", "Hina", "Zain"];
-  it("shows up to three names and no toggle", () => {
-    expect(occupantCardView(["Ali", "Sara", "Omar"], false)).toEqual({
-      names: ["Ali", "Sara", "Omar"],
-      toggle: null,
+  it("shows the one name and no toggle for a single person", () => {
+    expect(occupantCardView(["Ali"], false)).toEqual({ names: ["Ali"], toggle: null });
+    expect(occupantCardView([], false)).toEqual({ names: [], toggle: null });
+  });
+  it("closed: the first name and a 'Show names' toggle, from two people up", () => {
+    expect(occupantCardView(["Ali", "Sara"], false)).toEqual({
+      names: ["Ali"],
+      toggle: "Show names",
     });
+    expect(occupantCardView(five, false)).toEqual({ names: ["Ali"], toggle: "Show names" });
   });
-  it("collapsed: two names and a '+N more' toggle", () => {
-    expect(occupantCardView(five, false)).toEqual({ names: ["Ali", "Sara"], toggle: "+3 more" });
-  });
-  it("expanded: every name and a 'Show fewer' toggle", () => {
-    expect(occupantCardView(five, true)).toEqual({ names: five, toggle: "Show fewer" });
+  it("opened: every name and a 'Hide names' toggle", () => {
+    expect(occupantCardView(five, true)).toEqual({ names: five, toggle: "Hide names" });
   });
 });
 

@@ -484,8 +484,8 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
   // screen-reader user cannot see that the line is absent.
   const occupantNames = occupantNamesOf(node);
   const occupantName = occupantNames.length > 0 ? occupantNames.join(", ") : null;
-  // Up to three names on the card; with more, two and a "+N more" toggle
-  // that opens them all — the card grows and the chart makes room (D56).
+  // One name on the card; with several people, a "Show names" toggle that
+  // opens them all — the card grows and the chart makes room (D56, D58).
   const occupantView = occupantCardView(occupantNames, namesExpanded);
   // What expanding this card will actually reveal. Once the leadership
   // filter hides some of a manager's reports, that is fewer than the real
@@ -678,8 +678,8 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           aria-expanded={namesExpanded}
           aria-label={
             namesExpanded
-              ? `Show fewer people for ${node.title}`
-              : `Show all ${occupantNames.length} people for ${node.title}`
+              ? `Hide names for ${node.title}`
+              : `Show all ${occupantNames.length} names for ${node.title}`
           }
           onClick={(event) => {
             event.stopPropagation();
