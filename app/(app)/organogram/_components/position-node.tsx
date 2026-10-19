@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { occupantCardLines, occupantNamesOf } from "@/lib/domain/organogram-occupants";
+import { occupantCardView, occupantNamesOf } from "@/lib/domain/organogram-occupants";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight, Plus, Scan, Trash2 } from "lucide-react";
 
@@ -135,6 +135,10 @@ export interface PositionNodeData extends Record<string, unknown> {
    * e.g. it is the dragged card's own subordinate). Absent otherwise.
    */
   dropHint?: "valid" | "invalid";
+  /** Every name is shown and the card grows to fit them (user request, 2026-10-19). */
+  namesExpanded?: boolean;
+  /** Opens or closes the card's full list of names; the chart re-lays out around it. */
+  onToggleNames?: (positionId: string) => void;
 }
 
 /** Ring shown on a card while a dragged card hovers over it (arrange mode). */
@@ -458,6 +462,8 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
     onEdit,
     onAddChild,
     onRequestDelete,
+    namesExpanded = false,
+    onToggleNames,
   } = data;
 
   if (node.kind === "department") return <DepartmentNodeCard data={data} />;
@@ -478,8 +484,9 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
   // screen-reader user cannot see that the line is absent.
   const occupantNames = occupantNamesOf(node);
   const occupantName = occupantNames.length > 0 ? occupantNames.join(", ") : null;
-  // Up to three name lines on the card; the rest as "+N more" (D56).
-  const occupantLines = occupantCardLines(occupantNames);
+  // Up to three names on the card; with more, two and a "+N more" toggle
+  // that opens them all — the card grows and the chart makes room (D56).
+  const occupantView = occupantCardView(occupantNames, namesExpanded);
   // What expanding this card will actually reveal. Once the leadership
   // filter hides some of a manager's reports, that is fewer than the real
   // `directReportCount` — which stays intact on the node for the details
@@ -653,24 +660,36 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             ) : null}
           </div>
         </div>
-        {occupantLines.length > 0 ? (
+        {occupantView.names.length > 0 ? (
           <div className="mt-px">
-            {occupantLines.map((line, index) => (
-              <p
-                key={index}
-                className={cn(
-                  "truncate text-[0.923em] leading-[1.3]",
-                  occupantNames.length > occupantLines.length && index === occupantLines.length - 1
-                    ? "font-semibold opacity-80"
-                    : "font-bold"
-                )}
-              >
-                {line}
+            {occupantView.names.map((name, index) => (
+              <p key={index} className="truncate text-[0.923em] leading-[1.3] font-bold">
+                {name}
               </p>
             ))}
           </div>
         ) : null}
       </button>
+      {occupantView.toggle ? (
+        // A sibling of the card's main button (buttons can't nest): opens or
+        // closes the full list without opening the details panel or Edit.
+        <button
+          type="button"
+          aria-expanded={namesExpanded}
+          aria-label={
+            namesExpanded
+              ? `Show fewer people for ${node.title}`
+              : `Show all ${occupantNames.length} people for ${node.title}`
+          }
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleNames?.(node.positionId);
+          }}
+          className="nodrag nopan mx-2 block cursor-pointer text-left text-[0.923em] leading-[1.3] font-semibold underline-offset-2 opacity-80 hover:underline hover:opacity-100"
+        >
+          {occupantView.toggle}
+        </button>
+      ) : null}
       {/* Footer: how many roles sit under it (the expand control) on the
           left, the level (and sub-division) on the right — one row, so the
           card stays compact (docs/DECISIONS.md D30). */}

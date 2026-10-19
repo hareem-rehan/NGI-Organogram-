@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { occupantCardLines, occupantNamesOf } from "./organogram-occupants";
+import { occupantCardLines, occupantCardView, occupantNamesOf } from "./organogram-occupants";
 
 describe("occupantCardLines (D56)", () => {
   it("names up to three people, one per line", () => {
@@ -14,6 +14,22 @@ describe("occupantCardLines (D56)", () => {
       "Sara",
       "+3 more",
     ]);
+  });
+});
+
+describe("occupantCardView (on-screen card, expandable)", () => {
+  const five = ["Ali", "Sara", "Omar", "Hina", "Zain"];
+  it("shows up to three names and no toggle", () => {
+    expect(occupantCardView(["Ali", "Sara", "Omar"], false)).toEqual({
+      names: ["Ali", "Sara", "Omar"],
+      toggle: null,
+    });
+  });
+  it("collapsed: two names and a '+N more' toggle", () => {
+    expect(occupantCardView(five, false)).toEqual({ names: ["Ali", "Sara"], toggle: "+3 more" });
+  });
+  it("expanded: every name and a 'Show fewer' toggle", () => {
+    expect(occupantCardView(five, true)).toEqual({ names: five, toggle: "Show fewer" });
   });
 });
 

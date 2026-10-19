@@ -13,6 +13,22 @@ export function occupantCardLines(names: readonly string[]): string[] {
   return [...shown, `+${names.length - shown.length} more`];
 }
 
+/**
+ * What a card on screen shows (user request, 2026-10-19): up to three names;
+ * with more, the first two plus a "+N more" toggle. Expanded, every name plus
+ * a "Show fewer" toggle — the card grows to fit and the chart re-lays out
+ * around it. Exports keep the compact `occupantCardLines` form.
+ */
+export function occupantCardView(
+  names: readonly string[],
+  expanded: boolean
+): { names: string[]; toggle: string | null } {
+  if (names.length <= MAX_CARD_OCCUPANT_LINES) return { names: [...names], toggle: null };
+  if (expanded) return { names: [...names], toggle: "Show fewer" };
+  const shown = names.slice(0, MAX_CARD_OCCUPANT_LINES - 1);
+  return { names: shown, toggle: `+${names.length - shown.length} more` };
+}
+
 /** Every holder's name for a node: the full list when known, else the single name. */
 export function occupantNamesOf(node: {
   occupancyStatus: string;

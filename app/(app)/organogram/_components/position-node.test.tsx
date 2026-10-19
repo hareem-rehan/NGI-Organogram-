@@ -609,3 +609,56 @@ describe("PositionNode — text style (D41)", () => {
     expect(document.querySelector("[data-org-deco]")).toBeNull();
   });
 });
+
+describe("PositionNode — several people (expandable names)", () => {
+  const people = [
+    "Ghulam Nabi",
+    "Waqas Ansari",
+    "Zeeshan Rasheed",
+    "Owais Hassan Zaidi",
+    "Haris Ali",
+  ];
+  const shared = () =>
+    makeNode({
+      title: "Principal Software Engineer",
+      occupancyStatus: "occupied",
+      occupantDisplayName: people[0]!,
+      occupantDisplayNames: people,
+    });
+
+  it("shows two names and a '+3 more' button that asks to open the full list", async () => {
+    const onToggleNames = vi.fn();
+    const onSelect = vi.fn();
+    const data = renderNode({ node: shared(), onToggleNames, onSelect });
+    expect(screen.getByText("Ghulam Nabi")).toBeInTheDocument();
+    expect(screen.queryByText("Haris Ali")).toBeNull();
+
+    const more = screen.getByRole("button", { name: /show all 5 people/i });
+    expect(more).toHaveTextContent("+3 more");
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    await userEvent.setup().click(more);
+
+    expect(onToggleNames).toHaveBeenCalledWith(data.node.positionId);
+    // Opening the names never opens the details panel.
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("expanded: lists everyone and offers 'Show fewer'", () => {
+    renderNode({ node: shared(), namesExpanded: true, onToggleNames: vi.fn() });
+    for (const name of people) expect(screen.getByText(name)).toBeInTheDocument();
+    const fewer = screen.getByRole("button", { name: /show fewer people/i });
+    expect(fewer).toHaveTextContent("Show fewer");
+    expect(fewer).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("has no toggle for three people or fewer", () => {
+    renderNode({
+      node: makeNode({
+        occupancyStatus: "occupied",
+        occupantDisplayName: "A",
+        occupantDisplayNames: ["A", "B", "C"],
+      }),
+    });
+    expect(screen.queryByRole("button", { name: /show all/i })).toBeNull();
+  });
+});
