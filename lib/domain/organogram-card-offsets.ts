@@ -259,16 +259,3 @@ export function placeCards(
   }
   return resolveGroupOverlaps(placed, [...groups.values()], size, gap);
 }
-
-/**
- * Moving a card (D62) keeps rows level: when the moved card would end up
- * less than this far above or below its automatic row, it snaps back onto
- * the row, so a sideways drag with a little wobble never leaves a card (and
- * its connector bar) a few pixels off (client report, 2026-10-20).
- */
-export const ROW_SNAP_PX = 24;
-
-/** The vertical shift to apply so the card's saved `currentDy + dy` snaps to its row. */
-export function snapMoveToRow(currentDy: number, dy: number): number {
-  return Math.abs(currentDy + dy) < ROW_SNAP_PX ? 0 - currentDy : dy;
-}

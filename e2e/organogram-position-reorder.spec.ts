@@ -43,7 +43,7 @@ test.describe("Organogram — reorder position cards", () => {
       .locator('[data-testid^="rf__node-"]')
       .filter({ has: page.getByText(`${title} ${suffix}`, { exact: true }) });
 
-  test("a card let go on empty space moves there with everything below it; Undo puts it back (D62)", async ({
+  test("a card let go in empty space, even well below its row, takes that slot with its branch; nothing is placed freely (D64)", async ({
     page,
   }) => {
     await page.goto("/organogram");
@@ -55,30 +55,35 @@ test.describe("Organogram — reorder position cards", () => {
     await page.getByRole("button", { name: /fit to view/i }).click();
     await page.locator(".react-flow").scrollIntoViewIfNeeded();
     await page.waitForTimeout(700);
-
     const p0 = (await principal.boundingBox())!;
-    const r0 = (await report.boundingBox())!;
     const s0 = (await staff.boundingBox())!;
+    const principalWasFirst = p0.x < s0.x;
+
     // Grab it by the title (the middle holds the "Show Names" button) and
-    // let go down and to the left, in empty space.
+    // let go past its sibling and well below the row, in empty space.
+    const targetX = principalWasFirst ? s0.x + s0.width + 40 : s0.x - 40;
     await page.mouse.move(p0.x + 24, p0.y + 12);
     await page.mouse.down();
-    await page.mouse.move(p0.x + 24 - 120, p0.y + 12 + 90, { steps: 20 });
+    await page.mouse.move(targetX, p0.y + 12 + 90, { steps: 25 });
     await page.mouse.up();
 
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect.poll(async () => (await readCardOffsetKeys(companyId)).length).toBe(2);
+    await expect
+      .poll(async () => (await principal.boundingBox())!.x < (await staff.boundingBox())!.x)
+      .toBe(!principalWasFirst);
+    // Back on its row, its report still under it, nothing saved as a placement.
     const p1 = (await principal.boundingBox())!;
-    const r1 = (await report.boundingBox())!;
     const s1 = (await staff.boundingBox())!;
-    // The card and its report moved by the same amount; its sibling stayed.
-    expect(Math.abs(p1.x - p0.x)).toBeGreaterThan(20);
-    expect(Math.abs(r1.x - r0.x - (p1.x - p0.x))).toBeLessThan(2);
-    expect(Math.abs(r1.y - r0.y - (p1.y - p0.y))).toBeLessThan(2);
-    expect(Math.abs(s1.x - s0.x)).toBeLessThan(2);
+    const r1 = (await report.boundingBox())!;
+    expect(Math.abs(p1.y - s1.y)).toBeLessThan(2);
+    expect(r1.y).toBeGreaterThan(p1.y + p1.height);
+    expect(Math.abs(r1.x + r1.width / 2 - (p1.x + p1.width / 2))).toBeLessThan(4);
+    expect(await readCardOffsetKeys(companyId)).toEqual([]);
 
-    await page.getByRole("button", { name: /^undo: move 2 cards/i }).click();
-    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([]);
+    await page.getByRole("button", { name: /^undo: reorder positions/i }).click();
+    await expect
+      .poll(async () => (await principal.boundingBox())!.x < (await staff.boundingBox())!.x)
+      .toBe(principalWasFirst);
   });
 
   test("dropping a card ONTO its sibling swaps their places — no reporting-line change", async ({
@@ -112,9 +117,7 @@ test.describe("Organogram — reorder position cards", () => {
     expect(staffRow.primaryReportsToPositionId).toBe(principalRow.primaryReportsToPositionId);
   });
 
-  test("re-attaching a card from a moved branch, then Undo, puts back its head, its place and every line", async ({
-    page,
-  }) => {
+  test("re-attaching a card, then Undo, puts back its head and every line", async ({ page }) => {
     await page.goto("/organogram");
     await page.getByRole("button", { name: /arrange/i }).click();
     const staff = card(page, "Staff Engineer");
@@ -127,28 +130,6 @@ test.describe("Organogram — reorder position cards", () => {
     const edgeCount = await edges.count();
     const principalRow = await readPositionByTitle(companyId, `Principal Engineer ${suffix}`);
     const reportId = (await readPositionByTitle(companyId, `Senior Engineer ${suffix}`)).id;
-
-    // First move Principal Engineer, and with it Senior Engineer (D62).
-    const principal = card(page, "Principal Engineer");
-    const p0 = (await principal.boundingBox())!;
-    const reportBefore = (await report.boundingBox())!;
-    await page.mouse.move(p0.x + 24, p0.y + 12);
-    await page.mouse.down();
-    await page.mouse.move(p0.x + 24 - 120, p0.y + 12 + 90, { steps: 20 });
-    await page.mouse.up();
-    const branchKeys = [principalRow.id, reportId].sort();
-    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual(branchKeys);
-    // Wait until the report has visibly moved with it before grabbing it.
-    await expect
-      .poll(async () => {
-        const now = (await report.boundingBox())!;
-        return Math.abs(now.x - reportBefore.x) + Math.abs(now.y - reportBefore.y);
-      })
-      .toBeGreaterThan(20);
-    // The moved branch may now sit at the window's edge: frame it again.
-    await page.getByRole("button", { name: /fit to view/i }).click();
-    await page.locator(".react-flow").scrollIntoViewIfNeeded();
-    await page.waitForTimeout(700);
 
     // Senior Engineer (under Principal) let go on Staff Engineer: not a
     // sibling, so it asks to change the reporting line.
@@ -173,8 +154,6 @@ test.describe("Organogram — reorder position cards", () => {
       )
       .not.toBe(principalRow.id);
     await expect(edges).toHaveCount(edgeCount);
-    // It lands in its new place: its own move is cleared, Principal's stays.
-    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([principalRow.id]);
 
     await page.getByRole("button", { name: /^undo: re-attach/i }).click();
     await expect(page.getByText(/^Undid: Re-attach/)).toBeVisible();
@@ -196,10 +175,39 @@ test.describe("Organogram — reorder position cards", () => {
         (els) => els.filter((el) => (el.getAttribute("d") ?? "").includes("NaN")).length
       );
     expect(paths).toBe(0);
-    // And it is back where the branch move had put it.
-    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual(branchKeys);
+  });
 
-    await page.getByRole("button", { name: /^undo: move 2 cards/i }).click();
-    await expect.poll(() => readCardOffsetKeys(companyId)).toEqual([]);
+  test("a card let go along its own row in empty space takes that slot: the others close up, nothing is placed freely", async ({
+    page,
+  }) => {
+    await page.goto("/organogram");
+    await page.getByRole("button", { name: /arrange/i }).click();
+    const principal = card(page, "Principal Engineer");
+    const staff = card(page, "Staff Engineer");
+    await expect(staff).toBeVisible();
+    await page.getByRole("button", { name: /fit to view/i }).click();
+    await page.locator(".react-flow").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(700);
+    const p0 = (await principal.boundingBox())!;
+    const s0 = (await staff.boundingBox())!;
+    const staffWasFirst = s0.x < p0.x;
+    // Past the other card into empty space, on the same row (grabbed by the
+    // title, a few px of vertical wobble).
+    const [from, past] = staffWasFirst ? [s0, p0] : [s0, p0];
+    const targetX = staffWasFirst ? past.x + past.width + 40 : past.x - 40;
+    await page.mouse.move(from.x + 24, from.y + 12);
+    await page.mouse.down();
+    await page.mouse.move(targetX, from.y + 12 + 6, { steps: 25 });
+    await page.mouse.up();
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect
+      .poll(async () => (await staff.boundingBox())!.x < (await principal.boundingBox())!.x)
+      .toBe(!staffWasFirst);
+    // A reorder, not a free placement: no offset saved, and the row is level.
+    expect(await readCardOffsetKeys(companyId)).toEqual([]);
+    const s1 = (await staff.boundingBox())!;
+    const p1 = (await principal.boundingBox())!;
+    expect(Math.abs(s1.y - p1.y)).toBeLessThan(2);
   });
 });

@@ -142,18 +142,15 @@ interface OrganogramCanvasProps {
   onReorderBoxes?: (
     kind: "department" | "subdivision" | "position",
     orderedIds: string[],
-    previousOrderedIds: string[]
+    previousOrderedIds: string[],
+    /** The dragged card or box (its branch's free moves are cleared). */
+    movedNodeId: string
   ) => void;
   /**
    * Saved card offsets from the automatic layout, keyed by node id (D38).
    * Cards without one sit where the layout puts them.
    */
   cardOffsets?: Readonly<Record<string, CardOffset>>;
-  /**
-   * A card let go on empty space (D62): move it — and, in the view, its whole
-   * branch — by this much from where it was drawn.
-   */
-  onMoveBranch?: (positionId: string, dx: number, dy: number) => void;
   /** Card text styles: chart-wide plus per-card overrides (D41). */
   textStyles?: { chart: TextStyle; cards: Readonly<Record<string, TextStyle>> };
   /** "Aa" on a card (Arrange mode): edit that one card's text style. */
@@ -188,7 +185,6 @@ function CanvasInner({
   onInvalidDrop,
   onReorderBoxes,
   cardOffsets = NO_OFFSETS,
-  onMoveBranch,
   textStyles,
   onEditStyle,
   onEditCard,
@@ -621,17 +617,10 @@ function CanvasInner({
           else onInvalidDrop?.(judged.verdict.reason);
           return;
         }
-        const target = targetUnderPointer(event, node);
-        const ontoSibling =
-          target &&
-          !dragDescendantsRef.current.has(target.positionId) &&
-          (target.kind ?? "position") === "position" &&
-          target.primaryReportsToPositionId === dragged.primaryReportsToPositionId;
-        if (!ontoSibling) {
-          const from = placedPositions.get(node.id);
-          if (from) onMoveBranch?.(node.id, node.position.x - from.x, node.position.y - from.y);
-          return;
-        }
+        // Let go anywhere else, it takes the slot among its sibling cards
+        // where it was let go (below) and the others close up: cards are no
+        // longer placed by hand (client request, 2026-10-20, D64), so the
+        // chart stays the automatic layout and collapsing never scatters it.
       }
 
       // Anywhere else along its row, a card or box takes that slot among its
@@ -672,7 +661,7 @@ function CanvasInner({
         // Keep the parent where it is on screen, so the siblings are seen
         // swapping places instead of the whole chart jumping.
         if (dragged.primaryReportsToPositionId) keepOnScreen(dragged.primaryReportsToPositionId);
-        onReorderBoxes?.(kind, next, row);
+        onReorderBoxes?.(kind, next, row, node.id);
       }
     },
     [
@@ -688,7 +677,6 @@ function CanvasInner({
       placedPositions,
       sizeOf,
       keepOnScreen,
-      onMoveBranch,
     ]
   );
 
