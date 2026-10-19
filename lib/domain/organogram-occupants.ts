@@ -15,17 +15,17 @@ export function occupantCardLines(names: readonly string[]): string[] {
 
 /**
  * What a card on screen shows (client request, 2026-10-19): one name; with
- * several people, the first name plus a "Show names" toggle. Opened, every
- * name plus "Hide names" — the card grows to fit and the chart re-lays out
- * around it. Exports keep the compact `occupantCardLines` form.
+ * several people, the first name plus a "+N Show Names" toggle (N = the
+ * people not shown). Opened, every name plus "Hide Names" — the card grows to
+ * fit and the chart re-lays out around it. Exports keep the compact `occupantCardLines` form.
  */
 export function occupantCardView(
   names: readonly string[],
   expanded: boolean
 ): { names: string[]; toggle: string | null } {
   if (names.length <= 1) return { names: [...names], toggle: null };
-  if (expanded) return { names: [...names], toggle: "Hide names" };
-  return { names: names.slice(0, 1), toggle: "Show names" };
+  if (expanded) return { names: [...names], toggle: "Hide Names" };
+  return { names: names.slice(0, 1), toggle: `+${names.length - 1} Show Names` };
 }
 
 /** Every holder's name for a node: the full list when known, else the single name. */

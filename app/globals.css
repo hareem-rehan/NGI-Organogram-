@@ -123,7 +123,9 @@
  * (the inline CSS variables come from position-node.tsx). The card's action
  * buttons hold no p/span text, so "Aa", + and delete never restyle.
  */
-[data-org-weight] :is(p, span) {
+/* The role title and the people's names keep their own weights (title bold,
+   names regular) so they always read apart (client request, 2026-10-19). */
+[data-org-weight] :is(p, span):not([data-org-fixed-weight]) {
   font-weight: var(--org-card-weight) !important;
 }
 [data-org-deco] :is(p, span) {

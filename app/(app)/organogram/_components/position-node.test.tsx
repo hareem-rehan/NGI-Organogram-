@@ -634,7 +634,7 @@ describe("PositionNode — several people (expandable names)", () => {
     expect(screen.queryByText("Waqas Ansari")).toBeNull();
 
     const show = screen.getByRole("button", { name: /show all 5 names/i });
-    expect(show).toHaveTextContent("Show names");
+    expect(show).toHaveTextContent("+4 Show Names");
     expect(show).toHaveAttribute("aria-expanded", "false");
     await userEvent.setup().click(show);
 
@@ -647,7 +647,7 @@ describe("PositionNode — several people (expandable names)", () => {
     renderNode({ node: shared(), namesExpanded: true, onToggleNames: vi.fn() });
     for (const name of people) expect(screen.getByText(name)).toBeInTheDocument();
     const hide = screen.getByRole("button", { name: /hide names/i });
-    expect(hide).toHaveTextContent("Hide names");
+    expect(hide).toHaveTextContent("Hide Names");
     expect(hide).toHaveAttribute("aria-expanded", "true");
   });
 

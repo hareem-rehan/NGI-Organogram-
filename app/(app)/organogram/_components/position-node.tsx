@@ -637,6 +637,7 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
             one click away. */}
         <div className="flex min-w-0 items-start justify-between gap-2">
           <p
+            data-org-fixed-weight=""
             className={cn(
               "min-w-0 text-[1em] leading-[1.2] font-extrabold tracking-tight",
               // One line unless the card is at its widest (D47); a line that
@@ -663,7 +664,13 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
         {occupantView.names.length > 0 ? (
           <div className="mt-px">
             {occupantView.names.map((name, index) => (
-              <p key={index} className="truncate text-[0.923em] leading-[1.3] font-bold">
+              // Names read apart from the bold role title (client request):
+              // regular weight, slightly softer.
+              <p
+                key={index}
+                data-org-fixed-weight=""
+                className="truncate text-[0.923em] leading-[1.3] font-normal opacity-85"
+              >
                 {name}
               </p>
             ))}

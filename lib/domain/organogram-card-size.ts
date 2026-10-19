@@ -235,7 +235,7 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
   const longestName = Math.max(
     0,
     ...(card.expandedOccupantNames ?? []).map((name) =>
-      measureTextWidth(name, f * m.secondaryEm, { bold: true, fontFamily: family })
+      measureTextWidth(name, f * m.secondaryEm, { bold: false, fontFamily: family })
     )
   );
   const width =
