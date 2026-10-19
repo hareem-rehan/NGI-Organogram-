@@ -27,6 +27,12 @@ export const MAX_TITLE_LINES = 3;
 export const MAX_EXPANDED_CARD_WIDTH = 280;
 /** Slack kept on each line for font differences between estimate and screen. */
 const WRAP_SLACK = 4;
+/**
+ * Position-card titles are drawn slightly tightened (Tailwind tracking-tight,
+ * -0.025em) on screen and in exports; sizing measures them the same way, so a
+ * title that fits on one line isn't given a second, empty one.
+ */
+export const POSITION_TITLE_TRACKING_EM = -0.025;
 
 /** Vertical rhythm, in px at the built-in size. Shared by screen and export. */
 export const CARD_METRICS = {
@@ -207,7 +213,15 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
   const m = CARD_METRICS;
   const f = DEFAULT_TITLE_SIZE * (style ? fontScaleOf(style) : 1);
   const family = style?.fontFamily ?? null;
-  const titleFont: MeasureOptions = { bold: true, fontFamily: family };
+  // Measured in the weight it is drawn in: bold, unless the text style turns
+  // bold off — a regular title is narrower, and measuring it as bold reserved
+  // a second line it never used (client report, 2026-10-19).
+  const titleFont: MeasureOptions = { bold: style?.bold !== false, fontFamily: family };
+  // Position titles are also drawn slightly tightened (see the constant).
+  const positionTitleFont: MeasureOptions = {
+    ...titleFont,
+    letterSpacingEm: POSITION_TITLE_TRACKING_EM,
+  };
 
   if (card.kind === "department" || card.kind === "subdivision") {
     const isDepartment = card.kind === "department";
@@ -231,7 +245,7 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
 
   const chrome = 2 * m.border + 2 * m.padX;
   const footerFont = f * m.footerEm;
-  const titleWidth = widthFor(card.title, chrome + (card.badgeWidth ?? 0), f, titleFont);
+  const titleWidth = widthFor(card.title, chrome + (card.badgeWidth ?? 0), f, positionTitleFont);
   const longestName = Math.max(
     0,
     ...(card.expandedOccupantNames ?? []).map((name) =>
@@ -249,7 +263,7 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
     card.title,
     width - chrome - (card.badgeWidth ?? 0) - WRAP_SLACK,
     f,
-    titleFont
+    positionTitleFont
   );
   const height =
     2 * m.border +

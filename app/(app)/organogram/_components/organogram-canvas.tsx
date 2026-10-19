@@ -252,7 +252,7 @@ function CanvasInner({
   // not re-framed: the clicked card stays where it was on screen, and the
   // chart shifts around it (see the layout effect).
   const keepAnchorRef = useRef<{ id: string; x: number; y: number } | null>(null);
-  const toggleNamesExpanded = useCallback(
+  const keepOnScreen = useCallback(
     (positionId: string) => {
       const at = placedPositions.get(positionId);
       if (at) {
@@ -262,6 +262,22 @@ function CanvasInner({
           y: at.y,
         };
       }
+    },
+    [placedPositions, sizeOf]
+  );
+  // Expanding or collapsing a branch keeps the clicked card where it is on
+  // screen, at the same zoom, instead of re-framing the chart (client
+  // request, 2026-10-19).
+  const toggleCollapseInPlace = useCallback(
+    (positionId: string) => {
+      keepOnScreen(positionId);
+      onToggleCollapse(positionId);
+    },
+    [keepOnScreen, onToggleCollapse]
+  );
+  const toggleNamesExpanded = useCallback(
+    (positionId: string) => {
+      keepOnScreen(positionId);
       setNamesExpandedIds((current) => {
         const next = new Set(current);
         if (next.has(positionId)) next.delete(positionId);
@@ -269,7 +285,7 @@ function CanvasInner({
         return next;
       });
     },
-    [placedPositions, sizeOf]
+    [keepOnScreen]
   );
 
   // Where a card is while it is being dragged (transient). Saved placements
@@ -746,7 +762,7 @@ function CanvasInner({
               isSelected: selectedId === node.positionId,
               matchState: matchStateById?.get(node.positionId) ?? "none",
               cardColor: resolveCardColor(node),
-              onToggleCollapse,
+              onToggleCollapse: toggleCollapseInPlace,
               onSelect,
               arrangeMode,
               onEdit: onEditCard,
@@ -781,7 +797,7 @@ function CanvasInner({
       selectedId,
       matchStateById,
       resolveCardColor,
-      onToggleCollapse,
+      toggleCollapseInPlace,
       onSelect,
       arrangeMode,
       onEditCard,
