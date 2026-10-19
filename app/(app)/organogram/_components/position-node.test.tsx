@@ -609,3 +609,56 @@ describe("PositionNode — text style (D41)", () => {
     expect(document.querySelector("[data-org-deco]")).toBeNull();
   });
 });
+
+describe("PositionNode — several people (expandable names)", () => {
+  const people = [
+    "Ghulam Nabi",
+    "Waqas Ansari",
+    "Zeeshan Rasheed",
+    "Owais Hassan Zaidi",
+    "Haris Ali",
+  ];
+  const shared = () =>
+    makeNode({
+      title: "Principal Software Engineer",
+      occupancyStatus: "occupied",
+      occupantDisplayName: people[0]!,
+      occupantDisplayNames: people,
+    });
+
+  it("shows one name and a 'Show names' button that asks to open the full list", async () => {
+    const onToggleNames = vi.fn();
+    const onSelect = vi.fn();
+    const data = renderNode({ node: shared(), onToggleNames, onSelect });
+    expect(screen.getByText("Ghulam Nabi")).toBeInTheDocument();
+    expect(screen.queryByText("Waqas Ansari")).toBeNull();
+
+    const show = screen.getByRole("button", { name: /show all 5 names/i });
+    expect(show).toHaveTextContent("+4 Show Names");
+    expect(show).toHaveAttribute("aria-expanded", "false");
+    await userEvent.setup().click(show);
+
+    expect(onToggleNames).toHaveBeenCalledWith(data.node.positionId);
+    // Opening the names never opens the details panel.
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("opened: lists everyone and offers 'Hide names'", () => {
+    renderNode({ node: shared(), namesExpanded: true, onToggleNames: vi.fn() });
+    for (const name of people) expect(screen.getByText(name)).toBeInTheDocument();
+    const hide = screen.getByRole("button", { name: /hide names/i });
+    expect(hide).toHaveTextContent("Hide Names");
+    expect(hide).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("has no toggle for a single person", () => {
+    renderNode({
+      node: makeNode({
+        occupancyStatus: "occupied",
+        occupantDisplayName: "A",
+        occupantDisplayNames: ["A"],
+      }),
+    });
+    expect(screen.queryByRole("button", { name: /show all/i })).toBeNull();
+  });
+});

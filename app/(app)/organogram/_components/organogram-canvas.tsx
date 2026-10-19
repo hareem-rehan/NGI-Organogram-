@@ -194,9 +194,14 @@ function CanvasInner({
   onRequestDelete,
 }: OrganogramCanvasProps) {
   const [positions, setPositions] = useState<Map<string, LayoutPosition>>(new Map());
+  // Cards whose full list of names is open (user request, 2026-10-19): the
+  // card grows to fit every name and the chart re-lays out around it. A view
+  // choice for this screen only — never saved, never in exports.
+  const [namesExpandedIds, setNamesExpandedIds] = useState<ReadonlySet<string>>(new Set());
   // Each card's own size for its content and text style (D47): only as tall
-  // as its text, wider only when the text needs it.
-  const naturalSizes = useMemo(
+  // as its text, wider only when the text needs it. `usualSizes` ignores
+  // expanded names; `naturalSizes` (what the layout uses) includes them.
+  const usualSizes = useMemo(
     () =>
       new Map<string, CardSize>(
         visibleNodes.map((node) => [
@@ -209,10 +214,33 @@ function CanvasInner({
       ),
     [visibleNodes, textStyles]
   );
+  const expandedSizes = useMemo(
+    () =>
+      new Map<string, CardSize>(
+        visibleNodes
+          .filter((node) => namesExpandedIds.has(node.positionId))
+          .map((node) => [
+            node.positionId,
+            organogramCardSize(
+              node,
+              effectiveTextStyle(textStyles?.chart, textStyles?.cards[node.positionId]),
+              true
+            ),
+          ])
+      ),
+    [visibleNodes, textStyles, namesExpandedIds]
+  );
+  const naturalSizes = useMemo(
+    () => (expandedSizes.size === 0 ? usualSizes : new Map([...usualSizes, ...expandedSizes])),
+    [usualSizes, expandedSizes]
+  );
   // Cards on one row share the row's tallest height, so rows stay aligned.
+  // An expanded card grows past its row without changing any other card; the
+  // rows below still move down to make room for it (the layout uses
+  // `naturalSizes`).
   const cardSizes = useMemo(
-    () => equalizeRowHeights(positions, naturalSizes),
-    [positions, naturalSizes]
+    () => equalizeRowHeights(positions, usualSizes, expandedSizes),
+    [positions, usualSizes, expandedSizes]
   );
   const sizeOf = useMemo(() => sizeLookup(cardSizes), [cardSizes]);
   const sizesKey = useMemo(
@@ -229,11 +257,36 @@ function CanvasInner({
     () => placeCards(positions, cardOffsets, sizeOf, NODE_GAP),
     [positions, cardOffsets, sizeOf]
   );
+  // Opening or closing a card's names re-lays the chart out. The view is
+  // not re-framed: the clicked card stays where it was on screen, and the
+  // chart shifts around it (see the layout effect).
+  const keepAnchorRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const toggleNamesExpanded = useCallback(
+    (positionId: string) => {
+      const at = placedPositions.get(positionId);
+      if (at) {
+        keepAnchorRef.current = {
+          id: positionId,
+          x: at.x + sizeOf(positionId).width / 2,
+          y: at.y,
+        };
+      }
+      setNamesExpandedIds((current) => {
+        const next = new Set(current);
+        if (next.has(positionId)) next.delete(positionId);
+        else next.add(positionId);
+        return next;
+      });
+    },
+    [placedPositions, sizeOf]
+  );
+
   // Where a card is while it is being dragged (transient). Saved placements
   // live in `cardOffsets` (D38). Cleared whenever the visible set changes (a
   // re-layout) or arrange mode turns off.
   const [manualPositions, setManualPositions] = useState<Map<string, LayoutPosition>>(new Map());
-  const { fitView, setCenter, setViewport, getNodes, screenToFlowPosition } = useReactFlow();
+  const { fitView, setCenter, setViewport, getViewport, getNodes, screenToFlowPosition } =
+    useReactFlow();
   // Canvas pane size, for computing the first-open framing directly.
   const paneWidth = useStore((state) => state.width);
   const paneHeight = useStore((state) => state.height);
@@ -329,6 +382,21 @@ function CanvasInner({
       .then((computed) => {
         if (cancelled || requestId !== layoutRequestId.current) return;
         setPositions(computed);
+        // A card's names were opened or closed: keep that card's top centre
+        // where it was on screen instead of re-framing the whole chart.
+        const anchor = keepAnchorRef.current;
+        keepAnchorRef.current = null;
+        const anchorAt = anchor ? computed.get(anchor.id) : undefined;
+        if (anchor && anchorAt) {
+          const width = (naturalSizesRef.current.get(anchor.id) ?? DEFAULT_CARD_SIZE).width;
+          const { x, y, zoom } = getViewport();
+          setViewport({
+            x: x - (anchorAt.x + width / 2 - anchor.x) * zoom,
+            y: y - (anchorAt.y - anchor.y) * zoom,
+            zoom,
+          });
+          return;
+        }
         const centerId = centerOnNodeIdRef.current;
         const centerPos = centerId ? computed.get(centerId) : undefined;
         requestAnimationFrame(() => {
@@ -697,6 +765,8 @@ function CanvasInner({
                 arrangeMode && selectedIds.size > 1 && selectedIds.has(node.positionId),
               textStyle: effectiveTextStyle(textStyles?.chart, textStyles?.cards[node.positionId]),
               size: cardSizes.get(node.positionId),
+              namesExpanded: namesExpandedIds.has(node.positionId),
+              onToggleNames: toggleNamesExpanded,
               onZoomToBranch: zoomToBranch,
               // The root is never deletable from here — deleting it would take
               // the whole company with it. `undefined` hides the control.
@@ -729,6 +799,8 @@ function CanvasInner({
       textStyles,
       cardSizes,
       sizeOf,
+      namesExpandedIds,
+      toggleNamesExpanded,
       zoomToBranch,
       selectedIds,
       onRequestDelete,

@@ -292,3 +292,72 @@ export async function readSubdivisionOrder(companyId: string): Promise<string[]>
     await prisma.$disconnect();
   }
 }
+
+/**
+ * A head with two reports side by side: "Principal Engineer" held by five
+ * people (D56) with a report under it, and a single-holder neighbour — for
+ * the expandable names on a card (user request, 2026-10-19).
+ */
+export async function seedSharedPositionChart(companyId: string, suffix: string): Promise<void> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  await seedJobGradeScale(companyId);
+  const prisma = new PrismaClient();
+  try {
+    const grade = await prisma.jobGrade.findFirstOrThrow({
+      where: { companyId, code: "L15", departmentId: null },
+    });
+    const dept = await prisma.department.create({
+      data: {
+        companyId,
+        name: `Platform ${suffix}`,
+        code: `E2E-SP-${randomBytes(3).toString("hex")}`,
+        color: "#7cc576",
+      },
+    });
+    const make = (title: string, parentId: string | null, level: number) =>
+      prisma.position.create({
+        data: {
+          companyId,
+          departmentId: dept.id,
+          jobGradeId: grade.id,
+          title: `${title} ${suffix}`,
+          positionCode: `E2E-SP-${randomBytes(3).toString("hex")}`,
+          primaryReportsToPositionId: parentId,
+          organizationalLevel: level,
+        },
+      });
+    const head = await make("Platform Head", null, 1);
+    const shared = await make("Principal Engineer", head.id, 2);
+    const neighbour = await make("Staff Engineer", head.id, 2);
+    await make("Senior Engineer", shared.id, 3);
+    const people = [
+      "Ghulam Nabi",
+      "Waqas Ansari",
+      "Zeeshan Rasheed",
+      "Owais Hassan Zaidi",
+      "Haris Ali",
+    ];
+    for (const [index, name] of [...people, "Sana Mir"].entries()) {
+      const [firstName, ...rest] = name.split(" ");
+      const employee = await prisma.employee.create({
+        data: {
+          companyId,
+          employeeCode: `E2E-SP-${randomBytes(3).toString("hex")}`,
+          firstName: firstName!,
+          lastName: `${rest.join(" ")} ${suffix}`,
+        },
+      });
+      await prisma.positionAssignment.create({
+        data: {
+          companyId,
+          employeeId: employee.id,
+          positionId: index < people.length ? shared.id : neighbour.id,
+          isPrimary: true,
+          startDate: new Date(Date.UTC(2024, 0, 1 + index)),
+        },
+      });
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
+}

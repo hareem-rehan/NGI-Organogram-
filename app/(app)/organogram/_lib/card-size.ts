@@ -1,5 +1,5 @@
 import type { OrganogramNode } from "@/lib/domain/organogram";
-import { occupantCardLines, occupantNamesOf } from "@/lib/domain/organogram-occupants";
+import { occupantCardView, occupantNamesOf } from "@/lib/domain/organogram-occupants";
 import { cardSizeFor, type CardSize } from "@/lib/domain/organogram-card-size";
 import type { TextStyle } from "@/lib/domain/organogram-text-style";
 
@@ -12,7 +12,13 @@ const STATUS_BADGE_WIDTH = 66;
  * with a search, and must not re-lay the chart out; the title truncates
  * instead.
  */
-export function organogramCardSize(node: OrganogramNode, style: TextStyle | undefined): CardSize {
+export function organogramCardSize(
+  node: OrganogramNode,
+  style: TextStyle | undefined,
+  /** The card's names are expanded on screen (user request, 2026-10-19). */
+  namesExpanded = false
+): CardSize {
+  const view = occupantCardView(occupantNamesOf(node), namesExpanded);
   const isHeading = node.kind === "department" || node.kind === "subdivision";
   return cardSizeFor(
     {
@@ -20,7 +26,8 @@ export function organogramCardSize(node: OrganogramNode, style: TextStyle | unde
       title: node.title,
       departmentName: node.departmentName,
       occupantName: node.occupancyStatus === "occupied" ? node.occupantDisplayName : null,
-      occupantLines: occupantCardLines(occupantNamesOf(node)).length,
+      occupantLines: view.names.length + (view.toggle ? 1 : 0),
+      expandedOccupantNames: namesExpanded && view.toggle ? view.names : undefined,
       roleCount: isHeading
         ? (node.departmentMemberCount ?? node.displayChildCount ?? node.directReportCount)
         : (node.totalReportCount ?? node.displayChildCount ?? node.directReportCount),

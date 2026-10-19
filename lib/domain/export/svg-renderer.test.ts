@@ -739,6 +739,36 @@ describe("renderOrganogramSvg — sub-division grouping card", () => {
   });
 });
 
+describe("role title vs names on exported cards (client request, 2026-10-19)", () => {
+  const svgFor = (bold: boolean | undefined) =>
+    renderOrganogramSvg(
+      [
+        node({
+          positionId: "p",
+          title: "Associate Director",
+          occupancyStatus: "occupied",
+          occupantDisplayName: "Shahid Ali",
+          occupantDisplayNames: ["Shahid Ali"],
+        }),
+      ],
+      [],
+      new Map([["p", { x: 0, y: 0 }]]),
+      METADATA,
+      {
+        ...BASE_OPTIONS,
+        textStyleByNodeId: new Map([["p", bold === undefined ? {} : { bold, fontSize: 15 }]]),
+      }
+    ).svg;
+  const weightOf = (svg: string, text: string) =>
+    new RegExp(`font-weight="(\\d+)"[^>]*>${text}<`).exec(svg)?.[1];
+
+  it.each([undefined, false, true])("title stays bold and names regular (Bold = %s)", (bold) => {
+    const svg = svgFor(bold);
+    expect(weightOf(svg, "Associate Director")).toBe("800");
+    expect(weightOf(svg, "Shahid Ali")).toBe("400");
+  });
+});
+
 describe("applyTextStyleToCardSvg (D41)", () => {
   const card =
     '<g transform="translate(0, 0)" opacity="1"><rect fill="#111ed4" /><text x="10" y="19" font-size="13" font-weight="800" fill="#ffffff">CEO</text><text x="10" y="80" font-size="10.5" font-weight="600" fill="#ffffff">No roles under</text></g>';

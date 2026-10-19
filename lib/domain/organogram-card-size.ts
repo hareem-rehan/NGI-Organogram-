@@ -23,6 +23,8 @@ export const CARD_WIDTH = 168;
 export const CARD_MIN_WIDTH = CARD_WIDTH;
 /** A title longer than this many lines ends in "…". */
 export const MAX_TITLE_LINES = 3;
+/** Widest a card grows to fit a long name when its names are expanded. */
+export const MAX_EXPANDED_CARD_WIDTH = 280;
 /** Slack kept on each line for font differences between estimate and screen. */
 const WRAP_SLACK = 4;
 
@@ -164,6 +166,11 @@ export interface CardSizeInput {
   occupantName?: string | null;
   /** How many name lines the card shows (D56: up to three); defaults to one when `occupantName` is set. */
   occupantLines?: number;
+  /**
+   * Every name, when the card's names are expanded on screen: the card widens
+   * (up to MAX_EXPANDED_CARD_WIDTH) so the longest one fits on its line.
+   */
+  expandedOccupantNames?: readonly string[];
   /** "N roles under" on a position card; "N roles" on a heading. */
   roleCount: number;
   /** Whether the card shows an expand/collapse chevron. */
@@ -224,7 +231,20 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
 
   const chrome = 2 * m.border + 2 * m.padX;
   const footerFont = f * m.footerEm;
-  const width = widthFor(card.title, chrome + (card.badgeWidth ?? 0), f, titleFont);
+  const titleWidth = widthFor(card.title, chrome + (card.badgeWidth ?? 0), f, titleFont);
+  const longestName = Math.max(
+    0,
+    ...(card.expandedOccupantNames ?? []).map((name) =>
+      measureTextWidth(name, f * m.secondaryEm, { bold: false, fontFamily: family })
+    )
+  );
+  const width =
+    longestName > 0
+      ? Math.max(
+          titleWidth,
+          Math.min(MAX_EXPANDED_CARD_WIDTH, Math.ceil(longestName + chrome + WRAP_SLACK))
+        )
+      : titleWidth;
   const titleLines = linesFor(
     card.title,
     width - chrome - (card.badgeWidth ?? 0) - WRAP_SLACK,
@@ -289,7 +309,13 @@ function linesFor(text: string, width: number, fontSize: number, font: MeasureOp
  */
 export function equalizeRowHeights(
   positions: ReadonlyMap<string, { x: number; y: number }>,
-  sizes: ReadonlyMap<string, CardSize>
+  sizes: ReadonlyMap<string, CardSize>,
+  /**
+   * Cards drawn at their own size instead (expanded names, user request
+   * 2026-10-19). Their row is sized from `sizes` — the card's usual size — so
+   * opening one changes no other card; it just grows past its row.
+   */
+  ownSize: ReadonlyMap<string, CardSize> = new Map()
 ): Map<string, CardSize> {
   const rowHeight = new Map<number, number>();
   const rowOf = (id: string) => Math.round(positions.get(id)?.y ?? Number.NaN);
@@ -301,7 +327,11 @@ export function equalizeRowHeights(
   const out = new Map<string, CardSize>();
   for (const [id, size] of sizes) {
     const row = rowOf(id);
-    out.set(id, Number.isNaN(row) ? size : { ...size, height: rowHeight.get(row) ?? size.height });
+    const own = ownSize.get(id);
+    out.set(
+      id,
+      own ?? (Number.isNaN(row) ? size : { ...size, height: rowHeight.get(row) ?? size.height })
+    );
   }
   return out;
 }

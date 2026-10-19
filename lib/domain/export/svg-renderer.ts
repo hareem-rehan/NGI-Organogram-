@@ -456,7 +456,7 @@ function renderNodeCard(
   });
   titleLines.forEach((line, index) => {
     parts.push(
-      `<text x="${left}" y="${baseline(top + index * lineHeight, lineHeight, f)}" font-size="${round1(f)}" font-weight="800" fill="${textColor}">${escapeXmlText(line)}</text>`
+      `<text x="${left}" y="${baseline(top + index * lineHeight, lineHeight, f)}" font-size="${round1(f)}" font-weight="800" ${FIXED_WEIGHT} fill="${textColor}">${escapeXmlText(line)}</text>`
     );
   });
 
@@ -467,11 +467,12 @@ function renderNodeCard(
   occupantLines.forEach((name, index) => {
     const occupantTop = top + titleLines.length * lineHeight + 1 + index * occupantLineHeight;
     const line = wrapToWidth(name, right - left, occupantSize, 1, {
-      bold: true,
+      bold: false,
       fontFamily: family,
     })[0];
+    // Names in regular weight, apart from the bold role title, as on screen.
     parts.push(
-      `<text x="${left}" y="${baseline(occupantTop, occupantLineHeight, occupantSize)}" font-size="${round1(occupantSize)}" font-weight="700" fill="${textColor}">${escapeXmlText(line ?? "")}</text>`
+      `<text x="${left}" y="${baseline(occupantTop, occupantLineHeight, occupantSize)}" font-size="${round1(occupantSize)}" font-weight="400" ${FIXED_WEIGHT} fill="${textColor}" fill-opacity="0.85">${escapeXmlText(line ?? "")}</text>`
     );
   });
 
@@ -530,6 +531,9 @@ function renderNodeCard(
   return parts.join("");
 }
 
+/** Marks a card text whose weight the text style's Bold setting doesn't change. */
+const FIXED_WEIGHT = `data-fixed-weight="true"`;
+
 /**
  * Applies a card's text style (D41) to its exported SVG: the closest PDF
  * base font, weight, colour, italic and underline/strikethrough. The SIZE is
@@ -538,7 +542,8 @@ function renderNodeCard(
  */
 export function applyTextStyleToCardSvg(cardSvg: string, style: TextStyle | undefined): string {
   if (!style || isEmptyTextStyle(style)) return cardSvg;
-  let out = cardSvg.replace(/font-weight="(\d+)"/g, (_m, weight: string) => {
+  // The role title and names keep their weights (title bold, names regular).
+  let out = cardSvg.replace(/font-weight="(\d+)"(?! data-fixed-weight)/g, (_m, weight: string) => {
     return `font-weight="${fontWeightOf(style, Number(weight))}"`;
   });
   if (style.color) {
