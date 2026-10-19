@@ -8,6 +8,9 @@ import {
   NODE_GAP,
   NODE_HEIGHT,
   NODE_WIDTH,
+  ORG_EDGE_BUS_OFFSET,
+  orgEdgeBusY,
+  sharedBusTops,
 } from "./elk-layout";
 
 describe("computeElkLayout", () => {
@@ -246,5 +249,37 @@ describe("alignRows (D48)", () => {
       () => 50
     );
     expect(placed.get("both")!.y).toBe(placed.get("a1")!.y + 50 + LAYER_GAP);
+  });
+});
+
+describe("one connector bar per head (client report 2026-10-20)", () => {
+  const edges = [
+    { sourcePositionId: "head", targetPositionId: "a" },
+    { sourcePositionId: "head", targetPositionId: "b" },
+    { sourcePositionId: "head", targetPositionId: "up" },
+  ];
+  const bottoms: Record<string, number> = { head: 100 };
+  const tops: Record<string, number> = { a: 200, b: 212, up: 40 };
+
+  it("hangs every report's bar from the highest report below the head", () => {
+    const busTops = sharedBusTops(
+      edges,
+      (id) => bottoms[id],
+      (id) => tops[id]
+    );
+    expect(busTops.get("head")).toBe(200);
+    const barA = orgEdgeBusY(100, 200, busTops.get("head"));
+    const barB = orgEdgeBusY(100, 212, busTops.get("head"));
+    expect(barA).toBe(200 - ORG_EDGE_BUS_OFFSET);
+    expect(barB).toBe(barA); // one bar, not two
+  });
+
+  it("a card moved above its head keeps its own midpoint", () => {
+    expect(orgEdgeBusY(100, 40, 200)).toBe(70);
+  });
+
+  it("without a shared top it is the old per-card bar", () => {
+    expect(orgEdgeBusY(100, 200)).toBe(200 - ORG_EDGE_BUS_OFFSET);
+    expect(orgEdgeBusY(100, 110)).toBe(105);
   });
 });

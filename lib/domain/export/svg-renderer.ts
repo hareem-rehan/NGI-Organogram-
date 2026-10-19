@@ -9,7 +9,7 @@ import {
   type TextStyle,
 } from "@/lib/domain/organogram-text-style";
 import { occupantCardLines, occupantNamesOf } from "@/lib/domain/organogram-occupants";
-import { ORG_EDGE_BUS_OFFSET } from "@/app/(app)/organogram/_lib/elk-layout";
+import { orgEdgeBusY, sharedBusTops } from "@/app/(app)/organogram/_lib/elk-layout";
 import {
   CARD_METRICS,
   CHEVRON_BOX,
@@ -569,15 +569,16 @@ function renderEdgePath(
   source: SvgLayoutPosition,
   sourceSize: CardSize,
   target: SvgLayoutPosition,
-  targetSize: CardSize
+  targetSize: CardSize,
+  busTop: number | undefined
 ): string {
   const sx = round1(source.x + sourceSize.width / 2);
   const sy = source.y + sourceSize.height;
   const tx = round1(target.x + targetSize.width / 2);
   const ty = target.y;
-  // The same connector as on screen (org-chart-edge.tsx): one bar halfway
-  // down the gap above the target row, so siblings' lines coincide exactly.
-  const busY = ty - ORG_EDGE_BUS_OFFSET > sy ? ty - ORG_EDGE_BUS_OFFSET : (sy + ty) / 2;
+  // The same connector as on screen (org-chart-edge.tsx): one shared bar
+  // per head, above its highest report, so siblings' lines coincide exactly.
+  const busY = orgEdgeBusY(sy, ty, busTop);
   const d = `M ${sx} ${sy} L ${sx} ${busY} L ${tx} ${busY} L ${tx} ${ty}`;
   return `<path d="${d}" fill="none" stroke="${EXPORT_COLORS.mutedForeground}" stroke-width="1.5" />`;
 }
@@ -785,6 +786,19 @@ export function renderOrganogramSvg(
     );
   }
 
+  const busTops = sharedBusTops(
+    edges.filter(
+      (edge) => nodesById.has(edge.sourcePositionId) && nodesById.has(edge.targetPositionId)
+    ),
+    (id) => {
+      const pos = positions.get(id);
+      return pos ? pos.y - minY + sizeOf(id).height : undefined;
+    },
+    (id) => {
+      const pos = positions.get(id);
+      return pos ? pos.y - minY : undefined;
+    }
+  );
   const edgesSvg = edges
     .map((edge) => {
       const sourcePos = positions.get(edge.sourcePositionId);
@@ -801,7 +815,8 @@ export function renderOrganogramSvg(
         { x: sourcePos.x - minX, y: sourcePos.y - minY },
         sizeOf(edge.sourcePositionId),
         { x: targetPos.x - minX, y: targetPos.y - minY },
-        sizeOf(edge.targetPositionId)
+        sizeOf(edge.targetPositionId),
+        busTops.get(edge.sourcePositionId)
       );
     })
     .join("");

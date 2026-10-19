@@ -69,7 +69,7 @@ import {
   type OrganogramNode,
 } from "@/lib/domain/organogram";
 import type { DropVerdict } from "@/lib/domain/organogram-drag";
-import type { CardOffset } from "@/lib/domain/organogram-card-offsets";
+import { snapMoveToRow, type CardOffset } from "@/lib/domain/organogram-card-offsets";
 import { addPositionPrefill } from "@/lib/domain/add-position-prefill";
 import { reorderDepartmentsAction } from "@/app/(app)/departments/actions";
 import { reorderJobFamiliesAction } from "@/app/(app)/career-framework/actions";
@@ -481,8 +481,10 @@ export function OrganogramView({
   // amount, so the branch keeps its shape (client request, D62). Shown at
   // once, saved for everyone in one go, one Undo step; put back if refused.
   const handleMoveBranch = useCallback(
-    (rootId: string, dx: number, dy: number) => {
-      if (!data || (Math.round(dx) === 0 && Math.round(dy) === 0)) return;
+    (rootId: string, dx: number, rawDy: number) => {
+      if (!data) return;
+      const dy = snapMoveToRow(data.cardOffsets[rootId]?.dy ?? 0, rawDy);
+      if (Math.round(dx) === 0 && Math.round(dy) === 0) return;
       setDropNotice(null);
       const branch = branchIds(data.nodes, rootId);
       const previous: Record<string, CardOffset | undefined> = {};
