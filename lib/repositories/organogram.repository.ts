@@ -56,6 +56,7 @@ export async function getOrganogramRawData(
         status: true,
         primaryReportsToPositionId: true,
         coReportsToPositionId: true,
+        displayOrder: true,
       },
       take: 2000,
     }),

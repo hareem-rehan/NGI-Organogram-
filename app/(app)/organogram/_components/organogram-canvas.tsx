@@ -29,7 +29,6 @@ import { effectiveTextStyle, type TextStyle } from "@/lib/domain/organogram-text
 import {
   placeCards,
   departmentOrderAfterDrop,
-  isGroupingNodeKey,
   orderAfterDropAt,
   type CardOffset,
 } from "@/lib/domain/organogram-card-offsets";
@@ -140,7 +139,7 @@ interface OrganogramCanvasProps {
    * row in their new order, and the order before.
    */
   onReorderBoxes?: (
-    kind: "department" | "subdivision",
+    kind: "department" | "subdivision" | "position",
     orderedIds: string[],
     previousOrderedIds: string[]
   ) => void;
@@ -149,10 +148,6 @@ interface OrganogramCanvasProps {
    * Cards without one sit where the layout puts them.
    */
   cardOffsets?: Readonly<Record<string, CardOffset>>;
-  /** A card was dropped on empty canvas: its new offset from the automatic spot. */
-  onPlaceCard?: (nodeKey: string, dx: number, dy: number) => void;
-  /** A whole selected group placed at once (one Undo step, D49). Falls back to `onPlaceCard` per card. */
-  onPlaceCards?: (moves: { nodeKey: string; dx: number; dy: number }[]) => void;
   /** Card text styles: chart-wide plus per-card overrides (D41). */
   textStyles?: { chart: TextStyle; cards: Readonly<Record<string, TextStyle>> };
   /** "Aa" on a card (Arrange mode): edit that one card's text style. */
@@ -187,8 +182,6 @@ function CanvasInner({
   onInvalidDrop,
   onReorderBoxes,
   cardOffsets = NO_OFFSETS,
-  onPlaceCard,
-  onPlaceCards,
   textStyles,
   onEditStyle,
   onEditCard,
@@ -587,99 +580,79 @@ function CanvasInner({
       setDropHint(null);
       if (!arrangeMode) return;
 
-      // A selected group is only ever placed, wherever it is let go: reporting
-      // lines never change from a group drag. Department and sub-division
-      // boxes in the group snap back — they are never hand-placed (D55).
+      // No card is ever placed by hand any more (client request,
+      // 2026-10-19, docs/DECISIONS.md D61): a selected group just snaps back.
       if (nodes && nodes.length > 1) {
-        const moves: { nodeKey: string; dx: number; dy: number }[] = [];
-        for (const moved of nodes) {
-          const auto = positions.get(moved.id);
-          if (auto && !isGroupingNodeKey(moved.id)) {
-            moves.push({
-              nodeKey: moved.id,
-              dx: moved.position.x - auto.x,
-              dy: moved.position.y - auto.y,
-            });
-          }
-          releaseDrag(moved.id);
-        }
-        if (onPlaceCards) onPlaceCards(moves);
-        else for (const m of moves) onPlaceCard?.(m.nodeKey, m.dx, m.dy);
+        for (const moved of nodes) releaseDrag(moved.id);
         return;
       }
+      releaseDrag(node.id);
 
       const dragged = nodeById.get(node.id);
-
-      // Placing a card: it stays exactly where it was let go, saved as an
-      // offset from its automatic spot (D38) — only that card moves.
-      const place = () => {
-        const auto = positions.get(node.id);
-        if (auto) onPlaceCard?.(node.id, node.position.x - auto.x, node.position.y - auto.y);
-        releaseDrag(node.id);
-      };
-
-      // A department, sub-department or sub-division box is never placed by
-      // hand (D55): wherever it is let go in its row, it takes that slot
-      // among its siblings — dropped ONTO a sibling box it takes that box's
-      // place (D33) — and the chart is laid out again, so its whole branch
-      // moves with it and it hangs from the one shared line.
-      if (dragged?.kind === "department" || dragged?.kind === "subdivision") {
-        releaseDrag(node.id);
-        const kind = dragged.kind;
-        const groupIdOf = (n: OrganogramNode) =>
-          kind === "department" ? n.departmentId : (n.jobFamilyId ?? "");
-        const siblings = visibleNodes
-          .filter(
-            (n) =>
-              n.kind === kind && n.primaryReportsToPositionId === dragged.primaryReportsToPositionId
-          )
-          .map((n) => {
-            const at = placedPositions.get(n.positionId) ?? { x: 0, y: 0 };
-            return { id: groupIdOf(n), centerX: at.x + sizeOf(n.positionId).width / 2 };
-          })
-          .sort((a, b) => a.centerX - b.centerX);
-        const row = siblings.map((s) => s.id);
-        const draggedId = groupIdOf(dragged);
-        const target = targetUnderPointer(event, node);
-        const next =
-          target?.kind === kind &&
-          target.primaryReportsToPositionId === dragged.primaryReportsToPositionId
-            ? departmentOrderAfterDrop(row, draggedId, groupIdOf(target))
-            : orderAfterDropAt(siblings, draggedId, node.position.x + sizeOf(node.id).width / 2);
-        if (next.some((id, i) => id !== row[i])) {
-          // Keep the boxes' parent where it is on screen, so the boxes are
-          // seen swapping places instead of the whole chart jumping.
-          if (dragged.primaryReportsToPositionId) keepOnScreen(dragged.primaryReportsToPositionId);
-          onReorderBoxes?.(kind, next, row);
-        }
-        return;
-      }
+      if (!dragged) return;
 
       // A position dropped ONTO a card or department heading is re-attached
       // there (its branch moves with it); a refused drop says why and snaps
-      // back. A drop on empty canvas places the card.
-      const judged = judgeDropFor(event, node);
-      if (!judged) {
-        place();
-        return;
+      // back.
+      if ((dragged.kind ?? "position") === "position") {
+        const judged = judgeDropFor(event, node);
+        if (judged) {
+          if (judged.verdict.valid) onReparent?.(node.id, judged.verdict);
+          else onInvalidDrop?.(judged.verdict.reason);
+          return;
+        }
       }
-      if (judged.verdict.valid) onReparent?.(node.id, judged.verdict);
-      else onInvalidDrop?.(judged.verdict.reason);
-      releaseDrag(node.id);
+
+      // Anywhere else along its row, a card or box takes that slot among its
+      // siblings — dropped ONTO a sibling box it takes that box's place (D33)
+      // — and the chart is laid out again, so its whole branch moves with it
+      // and it hangs from the one shared line (D55, D61). Department /
+      // sub-division boxes are ordered by their department / sub-division,
+      // position cards by the position itself.
+      const kind: "department" | "subdivision" | "position" = dragged.kind ?? "position";
+      const orderIdOf = (n: OrganogramNode) =>
+        kind === "department"
+          ? n.departmentId
+          : kind === "subdivision"
+            ? (n.jobFamilyId ?? "")
+            : n.positionId;
+      const siblings = visibleNodes
+        .filter(
+          (n) =>
+            (n.kind ?? "position") === kind &&
+            n.primaryReportsToPositionId === dragged.primaryReportsToPositionId
+        )
+        .map((n) => {
+          const at = placedPositions.get(n.positionId) ?? { x: 0, y: 0 };
+          return { id: orderIdOf(n), centerX: at.x + sizeOf(n.positionId).width / 2 };
+        })
+        .sort((a, b) => a.centerX - b.centerX);
+      if (siblings.length < 2) return;
+      const row = siblings.map((sibling) => sibling.id);
+      const draggedId = orderIdOf(dragged);
+      const target = kind === "position" ? null : targetUnderPointer(event, node);
+      const next =
+        target?.kind === kind &&
+        target.primaryReportsToPositionId === dragged.primaryReportsToPositionId
+          ? departmentOrderAfterDrop(row, draggedId, orderIdOf(target))
+          : orderAfterDropAt(siblings, draggedId, node.position.x + sizeOf(node.id).width / 2);
+      if (next.some((id, i) => id !== row[i])) {
+        // Keep the parent where it is on screen, so the siblings are seen
+        // swapping places instead of the whole chart jumping.
+        if (dragged.primaryReportsToPositionId) keepOnScreen(dragged.primaryReportsToPositionId);
+        onReorderBoxes?.(kind, next, row);
+      }
     },
     [
       arrangeMode,
       onReparent,
       onInvalidDrop,
       onReorderBoxes,
-      onPlaceCard,
-      onPlaceCards,
       releaseDrag,
       judgeDropFor,
       targetUnderPointer,
       nodeById,
       visibleNodes,
-      positions,
       placedPositions,
       sizeOf,
       keepOnScreen,

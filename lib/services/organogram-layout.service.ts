@@ -3,11 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
 import { CrossCompanyError, DomainValidationError } from "@/lib/domain/errors";
-import {
-  isGroupingNodeKey,
-  parseCardNodeKey,
-  type CardOffset,
-} from "@/lib/domain/organogram-card-offsets";
+import { parseCardNodeKey, type CardOffset } from "@/lib/domain/organogram-card-offsets";
 import {
   CHART_STYLE_KEY,
   compactTextStyle,
@@ -25,46 +21,16 @@ import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service"
  */
 
 /**
- * Every saved offset for the company, keyed by chart node id. Offsets left on
- * department / sub-division boxes from before D55 are skipped: those boxes
- * always sit where the automatic layout puts them. So are position cards that
- * were group-dragged together with such a box (their saved shift matches the
- * box's): otherwise they would be left stranded beside the box that snapped
- * back.
+ * Saved hand placements, keyed by chart node id. Since D61 no card is placed
+ * by hand any more — departments, sub-divisions and positions all reorder
+ * within their row instead — so placements saved before then are ignored on
+ * screen and in exports (the rows stay until "Reset positions" clears them).
+ * Kept as a function so the chart and export keep one shape.
  */
-export async function listCardOffsets(
-  companyId: string,
-  db: DbClient = prisma
-): Promise<Record<string, CardOffset>> {
-  const rows = await db.organogramCardOffset.findMany({
-    where: { companyId },
-    select: { nodeKey: true, dx: true, dy: true },
-  });
-  // Only a real move can be told apart from a coincidence.
-  const boxShifts = rows.filter(
-    (r) =>
-      isGroupingNodeKey(r.nodeKey) &&
-      Math.max(Math.abs(r.dx), Math.abs(r.dy)) > 2 * GROUP_SHIFT_TOLERANCE
-  );
-  const movedWithABox = (r: { dx: number; dy: number }) =>
-    boxShifts.some(
-      (b) =>
-        Math.abs(b.dx - r.dx) <= GROUP_SHIFT_TOLERANCE &&
-        Math.abs(b.dy - r.dy) <= GROUP_SHIFT_TOLERANCE
-    );
-  return Object.fromEntries(
-    rows
-      .filter((r) => !isGroupingNodeKey(r.nodeKey) && !movedWithABox(r))
-      .map((r) => [r.nodeKey, { dx: r.dx, dy: r.dy }])
-  );
+export async function listCardOffsets(companyId: string): Promise<Record<string, CardOffset>> {
+  void companyId;
+  return {};
 }
-
-/**
- * How close (px) a card's saved shift must be to an ignored box's for the two
- * to count as one group drag. A group drag saves the same shift for every
- * card, give or take the few pixels the no-overlap nudge (D43) adds.
- */
-const GROUP_SHIFT_TOLERANCE = 8;
 
 /** The node key must name a card that really exists in this company. */
 async function assertNodeKeyInCompany(nodeKey: string, companyId: string, db: DbClient) {
@@ -90,26 +56,12 @@ export async function saveCardOffset(
   input: { companyId: string; nodeKey: string; dx: number; dy: number },
   db: DbClient = prisma
 ): Promise<void> {
-  if (isGroupingNodeKey(input.nodeKey)) {
-    throw new DomainValidationError(
-      "Department and sub-division boxes can't be placed by hand; drag one to reorder it instead."
-    );
-  }
-  await assertNodeKeyInCompany(input.nodeKey, input.companyId, db);
-  const dx = Math.round(input.dx);
-  const dy = Math.round(input.dy);
-  const where = { companyId_nodeKey: { companyId: input.companyId, nodeKey: input.nodeKey } };
-  if (dx === 0 && dy === 0) {
-    await db.organogramCardOffset.deleteMany({
-      where: { companyId: input.companyId, nodeKey: input.nodeKey },
-    });
-    return;
-  }
-  await db.organogramCardOffset.upsert({
-    where,
-    create: { companyId: input.companyId, nodeKey: input.nodeKey, dx, dy },
-    update: { dx, dy },
-  });
+  // No hand placement since D61: drag a card or box along its row instead.
+  void input;
+  void db;
+  throw new DomainValidationError(
+    "Cards can't be placed by hand any more; drag a card along its row to reorder it instead."
+  );
 }
 
 /** Clears the given cards' offsets (a card re-attached elsewhere lands in its new place). */

@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { CrossCompanyError, DomainValidationError } from "@/lib/domain/errors";
+import { DomainValidationError, NotFoundError } from "@/lib/domain/errors";
 import {
   clearCardOffsets,
   listCardOffsets,
   resetCardOffsets,
   saveCardOffset,
 } from "@/lib/services/organogram-layout.service";
+import { reorderPositions } from "@/lib/services/position-order.service";
 import { getOrganogramChartData } from "@/lib/services/organogram.service";
 import { testPrisma } from "./setup";
 import { makeChildPosition, makeCompany, makeDepartment, makeRootPosition } from "./fixtures";
 
-// HR-placed organogram cards (docs/DECISIONS.md D38): offsets are visual only,
-// company-scoped, and never touch reporting lines or levels.
+// Card layout on the organogram. Hand placement (D38) is retired since D61:
+// every card and box reorders along its row instead, with its branch. Old
+// placements are ignored on screen and in exports, and "Reset positions"
+// still clears them.
 
 async function chart() {
   const company = await makeCompany();
@@ -22,100 +25,38 @@ async function chart() {
   return { company, dept, root, child };
 }
 
-describe("organogram card offsets", () => {
-  it("saves, updates and lists a card's offset (rounded to whole pixels)", async () => {
-    const { company, child } = await chart();
-    await saveCardOffset({ companyId: company.id, nodeKey: child.id, dx: 120.4, dy: -30.6 });
-    expect(await listCardOffsets(company.id)).toEqual({ [child.id]: { dx: 120, dy: -31 } });
-
-    await saveCardOffset({ companyId: company.id, nodeKey: child.id, dx: 5, dy: 6 });
-    expect(await listCardOffsets(company.id)).toEqual({ [child.id]: { dx: 5, dy: 6 } });
-    expect(await testPrisma.organogramCardOffset.count()).toBe(1);
-  });
-
-  it("dragging a card back onto its automatic spot removes the saved offset", async () => {
-    const { company, child } = await chart();
-    await saveCardOffset({ companyId: company.id, nodeKey: child.id, dx: 50, dy: 0 });
-    await saveCardOffset({ companyId: company.id, nodeKey: child.id, dx: 0.2, dy: -0.3 });
-    expect(await listCardOffsets(company.id)).toEqual({});
-  });
-
-  it("refuses to place department and sub-division boxes, and ignores old placements (D55)", async () => {
-    const { company, dept, root } = await chart();
-    const family = await testPrisma.jobFamily.create({
-      data: { companyId: company.id, departmentId: dept.id, code: "QA", name: "QA" },
-    });
-    const deptKey = `dept:${dept.id}`;
-    const subdivKey = `subdiv:${root.id}:${family.id}`;
-    await expect(
-      saveCardOffset({ companyId: company.id, nodeKey: deptKey, dx: 10, dy: 0 })
-    ).rejects.toBeInstanceOf(DomainValidationError);
-    await expect(
-      saveCardOffset({ companyId: company.id, nodeKey: subdivKey, dx: 0, dy: 40 })
-    ).rejects.toBeInstanceOf(DomainValidationError);
-
-    // Placements saved before D55 are skipped, so those boxes sit in the
-    // automatic layout on screen and in exports.
-    await testPrisma.organogramCardOffset.createMany({
-      data: [
-        { companyId: company.id, nodeKey: deptKey, dx: 10, dy: 0 },
-        { companyId: company.id, nodeKey: subdivKey, dx: 0, dy: 40 },
-      ],
-    });
-    await saveCardOffset({ companyId: company.id, nodeKey: root.id, dx: 200, dy: 50 });
-    expect(await listCardOffsets(company.id)).toEqual({ [root.id]: { dx: 200, dy: 50 } });
-  });
-
-  it("also skips position cards that were group-dragged with a box (D55)", async () => {
-    const { company, dept, root, child } = await chart();
-    await testPrisma.organogramCardOffset.createMany({
-      data: [
-        // Box and the card dragged with it: the same shift, give or take a nudge.
-        { companyId: company.id, nodeKey: `dept:${dept.id}`, dx: -900, dy: -1 },
-        { companyId: company.id, nodeKey: child.id, dx: -902, dy: 4 },
-        // A card placed on its own keeps its spot.
-        { companyId: company.id, nodeKey: root.id, dx: 120, dy: 0 },
-      ],
-    });
-    expect(await listCardOffsets(company.id)).toEqual({ [root.id]: { dx: 120, dy: 0 } });
-  });
-
-  it("refuses a card from another company, and malformed keys", async () => {
-    const mine = await chart();
-    const theirs = await chart();
-    await expect(
-      saveCardOffset({ companyId: mine.company.id, nodeKey: theirs.child.id, dx: 1, dy: 1 })
-    ).rejects.toBeInstanceOf(CrossCompanyError);
-    await expect(
-      saveCardOffset({
-        companyId: mine.company.id,
-        nodeKey: `dept:${theirs.dept.id}`,
-        dx: 1,
-        dy: 1,
-      })
-      // Box keys are refused outright now (D55), whoever's box it is.
-    ).rejects.toBeInstanceOf(DomainValidationError);
-    await expect(
-      saveCardOffset({ companyId: mine.company.id, nodeKey: "not-a-card", dx: 1, dy: 1 })
-    ).rejects.toBeInstanceOf(DomainValidationError);
+describe("card placement is retired (D61)", () => {
+  it("refuses to place any card or box by hand, saving nothing", async () => {
+    const { company, dept, child } = await chart();
+    for (const nodeKey of [child.id, `dept:${dept.id}`]) {
+      await expect(
+        saveCardOffset({ companyId: company.id, nodeKey, dx: 120, dy: 0 })
+      ).rejects.toBeInstanceOf(DomainValidationError);
+    }
     expect(await testPrisma.organogramCardOffset.count()).toBe(0);
   });
 
-  it("never changes a reporting line or a level", async () => {
+  it("ignores placements saved before D61, on screen and in exports", async () => {
     const { company, child } = await chart();
-    const before = await testPrisma.position.findUniqueOrThrow({ where: { id: child.id } });
-    await saveCardOffset({ companyId: company.id, nodeKey: child.id, dx: 400, dy: 200 });
-    const after = await testPrisma.position.findUniqueOrThrow({ where: { id: child.id } });
-    expect(after.primaryReportsToPositionId).toBe(before.primaryReportsToPositionId);
-    expect(after.organizationalLevel).toBe(before.organizationalLevel);
+    await testPrisma.organogramCardOffset.create({
+      data: { companyId: company.id, nodeKey: child.id, dx: 300, dy: 0 },
+    });
+
+    expect(await listCardOffsets(company.id)).toEqual({});
+    const data = await getOrganogramChartData({ companyId: company.id });
+    expect(data.cardOffsets).toEqual({});
   });
 
-  it("clears only the named cards, and only in this company", async () => {
+  it("clears only the named cards' old placements, and only in this company", async () => {
     const mine = await chart();
     const theirs = await chart();
-    await saveCardOffset({ companyId: mine.company.id, nodeKey: mine.child.id, dx: 1, dy: 1 });
-    await saveCardOffset({ companyId: mine.company.id, nodeKey: mine.root.id, dx: 2, dy: 2 });
-    await saveCardOffset({ companyId: theirs.company.id, nodeKey: theirs.child.id, dx: 3, dy: 3 });
+    await testPrisma.organogramCardOffset.createMany({
+      data: [
+        { companyId: mine.company.id, nodeKey: mine.child.id, dx: 1, dy: 1 },
+        { companyId: mine.company.id, nodeKey: mine.root.id, dx: 2, dy: 2 },
+        { companyId: theirs.company.id, nodeKey: theirs.child.id, dx: 3, dy: 3 },
+      ],
+    });
 
     expect(
       await clearCardOffsets({
@@ -123,30 +64,95 @@ describe("organogram card offsets", () => {
         nodeKeys: [mine.child.id, theirs.child.id],
       })
     ).toBe(1);
-    expect(await listCardOffsets(mine.company.id)).toEqual({ [mine.root.id]: { dx: 2, dy: 2 } });
-    expect(await listCardOffsets(theirs.company.id)).toEqual({
-      [theirs.child.id]: { dx: 3, dy: 3 },
-    });
+    expect(await testPrisma.organogramCardOffset.count()).toBe(2);
   });
 
-  it("reset clears every offset for the company, audited once; a no-op reset is not audited", async () => {
+  it("reset clears every old placement for the company, audited once; a no-op reset is not audited", async () => {
     const { company, root, child } = await chart();
-    await saveCardOffset({ companyId: company.id, nodeKey: root.id, dx: 1, dy: 1 });
-    await saveCardOffset({ companyId: company.id, nodeKey: child.id, dx: 2, dy: 2 });
+    await testPrisma.organogramCardOffset.createMany({
+      data: [
+        { companyId: company.id, nodeKey: root.id, dx: 1, dy: 1 },
+        { companyId: company.id, nodeKey: child.id, dx: 2, dy: 2 },
+      ],
+    });
 
     expect(await resetCardOffsets({ companyId: company.id })).toBe(2);
     expect(await resetCardOffsets({ companyId: company.id })).toBe(0);
-    expect(await listCardOffsets(company.id)).toEqual({});
     const audits = await testPrisma.auditEvent.findMany({
       where: { companyId: company.id, entityType: "OrganogramLayout" },
     });
     expect(audits).toHaveLength(1);
   });
+});
 
-  it("the chart data carries the saved offsets for the screen and the export", async () => {
-    const { company, child } = await chart();
-    await saveCardOffset({ companyId: company.id, nodeKey: child.id, dx: 300, dy: 0 });
-    const data = await getOrganogramChartData({ companyId: company.id });
-    expect(data.cardOffsets).toEqual({ [child.id]: { dx: 300, dy: 0 } });
+describe("reorderPositions (D61)", () => {
+  async function headWithReports() {
+    const { company, dept, root } = await chart();
+    const make = (code: string) =>
+      makeChildPosition(company.id, dept.id, root.id, root.organizationalLevel, {
+        positionCode: code,
+      });
+    const [a, b, c] = [await make("R-A"), await make("R-B"), await make("R-C")];
+    return { company, root, a, b, c };
+  }
+
+  it("saves the new left-to-right order, and the chart shows it", async () => {
+    const { company, a, b, c } = await headWithReports();
+
+    await reorderPositions({ companyId: company.id, orderedPositionIds: [c.id, a.id, b.id] });
+
+    const rows = await testPrisma.position.findMany({
+      where: { id: { in: [a.id, b.id, c.id] } },
+      select: { id: true, displayOrder: true },
+    });
+    const orderOf = new Map(rows.map((r) => [r.id, r.displayOrder]));
+    expect([orderOf.get(c.id), orderOf.get(a.id), orderOf.get(b.id)]).toEqual([1, 2, 3]);
+
+    const { nodes } = await getOrganogramChartData({ companyId: company.id });
+    const shown = nodes
+      .filter((n) => [a.id, b.id, c.id].includes(n.positionId))
+      .map((n) => n.positionId);
+    expect(shown).toEqual([c.id, a.id, b.id]);
+  });
+
+  it("never changes a reporting line or a level, and audits only what moved", async () => {
+    const { company, root, a, b } = await headWithReports();
+    const before = await testPrisma.position.findMany({
+      where: { companyId: company.id },
+      select: { id: true, primaryReportsToPositionId: true, organizationalLevel: true },
+      orderBy: { id: "asc" },
+    });
+
+    await reorderPositions({ companyId: company.id, orderedPositionIds: [b.id, a.id] });
+    await reorderPositions({ companyId: company.id, orderedPositionIds: [b.id, a.id] });
+
+    const after = await testPrisma.position.findMany({
+      where: { companyId: company.id },
+      select: { id: true, primaryReportsToPositionId: true, organizationalLevel: true },
+      orderBy: { id: "asc" },
+    });
+    expect(after).toEqual(before);
+    expect(after.find((p) => p.id === a.id)?.primaryReportsToPositionId).toBe(root.id);
+    const audits = await testPrisma.auditEvent.count({
+      where: { companyId: company.id, entityType: "Position", action: "UPDATED" },
+    });
+    expect(audits).toBe(2); // both moved once; the repeat changed nothing
+  });
+
+  it("refuses a position from another company and changes nothing", async () => {
+    const mine = await headWithReports();
+    const theirs = await headWithReports();
+
+    await expect(
+      reorderPositions({
+        companyId: mine.company.id,
+        orderedPositionIds: [mine.a.id, theirs.a.id],
+      })
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(
+      await testPrisma.position.count({
+        where: { companyId: mine.company.id, displayOrder: { not: null } },
+      })
+    ).toBe(0);
   });
 });

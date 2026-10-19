@@ -1,15 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermissionMock, getOrganogramChartDataMock, layoutMock } = vi.hoisted(() => ({
-  requirePermissionMock: vi.fn(),
-  getOrganogramChartDataMock: vi.fn(),
-  layoutMock: {
-    saveCardOffset: vi.fn(),
-    clearCardOffsets: vi.fn(),
-    resetCardOffsets: vi.fn(),
-    saveTextStyle: vi.fn(),
-  },
-}));
+const { requirePermissionMock, getOrganogramChartDataMock, layoutMock, positionOrderMock } =
+  vi.hoisted(() => ({
+    positionOrderMock: { reorderPositions: vi.fn() },
+    requirePermissionMock: vi.fn(),
+    getOrganogramChartDataMock: vi.fn(),
+    layoutMock: {
+      saveCardOffset: vi.fn(),
+      clearCardOffsets: vi.fn(),
+      resetCardOffsets: vi.fn(),
+      saveTextStyle: vi.fn(),
+    },
+  }));
 
 vi.mock("@/lib/auth/current-user", () => ({
   requirePermission: requirePermissionMock,
@@ -18,6 +20,7 @@ vi.mock("@/lib/services/organogram.service", () => ({
   getOrganogramChartData: getOrganogramChartDataMock,
 }));
 vi.mock("@/lib/services/organogram-layout.service", () => layoutMock);
+vi.mock("@/lib/services/position-order.service", () => positionOrderMock);
 vi.mock("@/lib/server/audit-actor", () => ({ toAuditActor: () => ({ userId: "u_1" }) }));
 
 import { ForbiddenError, UnauthenticatedError } from "@/lib/auth/errors";
@@ -25,6 +28,7 @@ import {
   clearCardPositionsAction,
   clearTextStyleAction,
   getOrganogramAction,
+  reorderPositionsAction,
   resetCardPositionsAction,
   saveCardPositionAction,
   saveTextStyleAction,
@@ -194,5 +198,45 @@ describe("text style actions (D41)", () => {
     requirePermissionMock.mockResolvedValue(ADMIN_USER);
     expect((await saveTextStyleAction(input)).ok).toBe(false);
     expect(layoutMock.saveTextStyle).not.toHaveBeenCalled();
+  });
+});
+
+describe("reorderPositionsAction (D61)", () => {
+  afterEach(() => vi.clearAllMocks());
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+
+  it("needs positions:manage and saves the order for the caller's company", async () => {
+    requirePermissionMock.mockResolvedValue({
+      id: "u_1",
+      role: "HR_EDITOR",
+      companyId: "company-trusted",
+      status: "ACTIVE",
+    });
+    positionOrderMock.reorderPositions.mockResolvedValue(undefined);
+
+    const result = await reorderPositionsAction({ orderedPositionIds: [B, A] });
+
+    expect(result.ok).toBe(true);
+    expect(requirePermissionMock).toHaveBeenCalledWith("positions:manage");
+    expect(positionOrderMock.reorderPositions).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: "company-trusted", orderedPositionIds: [B, A] })
+    );
+  });
+
+  it("rejects a VIEWER, duplicates and malformed ids before saving", async () => {
+    requirePermissionMock.mockRejectedValueOnce(new ForbiddenError());
+    expect((await reorderPositionsAction({ orderedPositionIds: [A] })).ok).toBe(false);
+
+    requirePermissionMock.mockResolvedValue({
+      id: "u_1",
+      role: "ADMIN",
+      companyId: "c",
+      status: "ACTIVE",
+    });
+    expect((await reorderPositionsAction({ orderedPositionIds: [A, A] })).ok).toBe(false);
+    expect((await reorderPositionsAction({ orderedPositionIds: ["nope"] })).ok).toBe(false);
+    expect((await reorderPositionsAction({ orderedPositionIds: [] })).ok).toBe(false);
+    expect(positionOrderMock.reorderPositions).not.toHaveBeenCalled();
   });
 });
