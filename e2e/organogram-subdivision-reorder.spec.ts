@@ -4,6 +4,7 @@ import { seedAuthenticatedSession } from "./support/seed-session";
 import {
   readCardOffsetKeys,
   readSubdivisionOrder,
+  renameSubdivision,
   seedSubdivisionChart,
 } from "./support/department-layout-fixtures";
 
@@ -110,5 +111,21 @@ test.describe("Organogram — sub-division reorder", () => {
 
     await page.getByRole("button", { name: "Undo: Reorder sub-divisions" }).click();
     await expect.poll(order).toEqual(names);
+  });
+
+  test("a long sub-division name is shown in full: the box grows, nothing is cut off with '…'", async ({
+    page,
+  }) => {
+    const long = `Backend (MERN, LAMP, AI/ML, DS, Python, Full Stack) ${suffix}`;
+    await renameSubdivision(companyId, `HR Ops ${suffix}`, long);
+    await page.goto("/organogram");
+    const name = box(page, long).locator("button p").first();
+    await expect(name).toBeVisible();
+    await expect(name).toHaveText(long);
+    // Not clipped: the whole text fits in the box (no line clamp hides any).
+    const clipped = await name.evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+    expect(clipped).toBe(false);
+    expect((await name.boundingBox())!.height).toBeGreaterThan(3 * 14);
+    await renameSubdivision(companyId, long, `HR Ops ${suffix}`);
   });
 });

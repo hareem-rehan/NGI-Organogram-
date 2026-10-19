@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CARD_METRICS,
   CARD_WIDTH,
   MAX_TITLE_LINES,
   cardSizeFor,
@@ -171,4 +172,47 @@ describe("titles measured as they are drawn (client report, 2026-10-19)", () => 
       expect(card(title, { fontFamily: "arial", fontSize: 15, bold: false }).titleLines).toBe(1);
     }
   );
+});
+
+describe("department and sub-division boxes show their whole name (client request, 2026-10-20)", () => {
+  const name = "Backend (MERN, LAMP, AI/ML, DS, Python, Full Stack)";
+
+  it("a long sub-division name wraps onto as many lines as it needs, and the box grows", () => {
+    const short = cardSizeFor({
+      kind: "subdivision",
+      title: "DE",
+      departmentName: "Engineering",
+      roleCount: 14,
+      hasChildren: true,
+    });
+    const long = cardSizeFor({
+      kind: "subdivision",
+      title: name,
+      departmentName: "Engineering",
+      roleCount: 14,
+      hasChildren: true,
+    });
+    expect(long.titleLines).toBeGreaterThan(MAX_TITLE_LINES);
+    expect(long.height).toBeGreaterThan(short.height + (long.titleLines - 1) * 14);
+  });
+
+  it("the wrapped lines hold the whole name, with no '…'", () => {
+    const size = cardSizeFor({
+      kind: "subdivision",
+      title: name,
+      departmentName: "Engineering",
+      roleCount: 14,
+      hasChildren: true,
+    });
+    const m = CARD_METRICS;
+    // The same room the box (and the export) gives the name.
+    const room = size.width - 2 * m.border - 2 * m.headingPadX - m.headingChevron - 4;
+    const lines = wrapToWidth(name, room, 13, size.titleLines, { bold: true });
+    expect(lines.join(" ")).not.toContain("…");
+  });
+
+  it("position cards are unchanged: still at most three title lines", () => {
+    const size = cardSizeFor({ ...position, title: `${name} ${name} ${name}` });
+    expect(size.titleLines).toBe(MAX_TITLE_LINES);
+  });
 });

@@ -371,3 +371,18 @@ export async function seedSharedPositionChart(companyId: string, suffix: string)
     await prisma.$disconnect();
   }
 }
+
+/** Renames one of the company's sub-divisions (by exact name). */
+export async function renameSubdivision(
+  companyId: string,
+  from: string,
+  to: string
+): Promise<void> {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+  const prisma = new PrismaClient();
+  try {
+    await prisma.jobFamily.updateMany({ where: { companyId, name: from }, data: { name: to } });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
