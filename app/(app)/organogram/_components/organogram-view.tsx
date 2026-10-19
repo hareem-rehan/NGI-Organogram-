@@ -290,23 +290,26 @@ export function OrganogramView({
   // `silent`: reload the data in place after an Arrange change, without the
   // loading screen — unmounting the chart would lose the view (zoom, scroll)
   // and jump back to the overview (client report, 2026-10-19).
-  const refresh = useCallback((options?: { silent?: boolean }) => {
-    if (!options?.silent) setLoading(true);
-    setError(null);
-    setLayoutFailed(false);
-    void (async () => {
-      const result = shareToken
-        ? await getSharedOrganogramAction({ token: shareToken })
-        : await getOrganogramAction();
-      setLoading(false);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setData(result.data);
-      setSelectedId(null);
-    })();
-  }, [shareToken]);
+  const refresh = useCallback(
+    (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
+      setError(null);
+      setLayoutFailed(false);
+      void (async () => {
+        const result = shareToken
+          ? await getSharedOrganogramAction({ token: shareToken })
+          : await getOrganogramAction();
+        setLoading(false);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setData(result.data);
+        setSelectedId(null);
+      })();
+    },
+    [shareToken]
+  );
 
   // Load (or reload) the Add/Edit Position form's option data. Managers only;
   // the four reads each re-authorize server-side. Returns the loaded options
