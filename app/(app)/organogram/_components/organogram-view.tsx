@@ -148,6 +148,27 @@ function allCollapsibleIds(data: OrganogramChartData): Set<string> {
   return new Set(data.nodes.filter((n) => n.hasChildren).map((n) => n.positionId));
 }
 
+/** A card and every card below it (by head 1), shown or folded away. */
+function branchIds(nodes: readonly OrganogramNode[], rootId: string): string[] {
+  const childrenOf = new Map<string, string[]>();
+  for (const node of nodes) {
+    const parent = node.primaryReportsToPositionId;
+    if (!parent) continue;
+    childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), node.positionId]);
+  }
+  const branch: string[] = [];
+  const seen = new Set<string>();
+  const stack = [rootId];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    branch.push(id);
+    stack.push(...(childrenOf.get(id) ?? []));
+  }
+  return branch;
+}
+
 /** How many Arrange changes Undo can step back through. */
 const UNDO_LIMIT = 20;
 
@@ -463,22 +484,7 @@ export function OrganogramView({
     (rootId: string, dx: number, dy: number) => {
       if (!data || (Math.round(dx) === 0 && Math.round(dy) === 0)) return;
       setDropNotice(null);
-      const childrenOf = new Map<string, string[]>();
-      for (const node of data.nodes) {
-        const parent = node.primaryReportsToPositionId;
-        if (!parent) continue;
-        childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), node.positionId]);
-      }
-      const branch: string[] = [];
-      const seen = new Set<string>();
-      const stack = [rootId];
-      while (stack.length > 0) {
-        const id = stack.pop()!;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        branch.push(id);
-        stack.push(...(childrenOf.get(id) ?? []));
-      }
+      const branch = branchIds(data.nodes, rootId);
       const previous: Record<string, CardOffset | undefined> = {};
       const moves = branch.map((nodeKey) => {
         const current = data.cardOffsets[nodeKey];
@@ -508,11 +514,20 @@ export function OrganogramView({
   );
 
   // A card that has just been re-attached somewhere else should land in its
-  // new place, not keep the offset it had in the old one.
-  const clearPlacement = useCallback(
-    async (nodeKey: string) => {
-      if (!data?.cardOffsets[nodeKey]) return;
-      await clearCardPositionsAction({ nodeKeys: [nodeKey] });
+  // new place with its branch, not keep the move (D62) it had in the old one.
+  // Returns the offsets cleared, so Undo can put them back.
+  const clearBranchPlacement = useCallback(
+    async (rootId: string): Promise<Record<string, CardOffset>> => {
+      const previous: Record<string, CardOffset> = {};
+      if (!data) return previous;
+      for (const id of branchIds(data.nodes, rootId)) {
+        const offset = data.cardOffsets[id];
+        if (offset) previous[id] = offset;
+      }
+      if (Object.keys(previous).length > 0) {
+        await clearCardPositionsAction({ nodeKeys: Object.keys(previous) });
+      }
+      return previous;
     },
     [data]
   );
@@ -662,7 +677,6 @@ export function OrganogramView({
     if (!moveIntent) return;
     setMovePending(true);
     setMoveError(null);
-    const previousOffset = data?.cardOffsets[moveIntent.childId];
     void (async () => {
       // The REAL head before the move (the chart may show a department box
       // as its parent), so the move can be undone exactly.
@@ -687,7 +701,7 @@ export function OrganogramView({
         setMoveError(result.error);
         return;
       }
-      await clearPlacement(moveIntent.childId);
+      const previousOffsets = await clearBranchPlacement(moveIntent.childId);
       moveDialog.setOpen(false);
       setMoveIntent(null);
       const previousHeadId = before?.primaryReportsToPositionId;
@@ -701,9 +715,10 @@ export function OrganogramView({
               newParentPositionId: previousHeadId,
             });
             if (!back.ok) return back.error;
-            const error = previousOffset
-              ? await restoreOffsets({ [childId]: previousOffset })
-              : null;
+            const error =
+              Object.keys(previousOffsets).length > 0
+                ? await restoreOffsets(previousOffsets)
+                : null;
             refreshAfterMutation();
             return error;
           },
@@ -717,11 +732,10 @@ export function OrganogramView({
       refreshAfterMutation();
     })();
   }, [
-    data,
     moveIntent,
     moveDialog,
     refreshAfterMutation,
-    clearPlacement,
+    clearBranchPlacement,
     pushUndo,
     restoreOffsets,
   ]);

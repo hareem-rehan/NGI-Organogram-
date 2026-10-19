@@ -779,6 +779,12 @@ function CanvasInner({
             position: manualPositions.get(node.positionId) ?? placedPositions.get(node.positionId)!,
             width: sizeOf(node.positionId).width,
             height: sizeOf(node.positionId).height,
+            // The size is known, so say it's measured: without `measured`,
+            // React Flow drops a card's handle positions whenever this list
+            // is rebuilt and draws no connectors until it re-measures, which
+            // after a re-attach + Undo sometimes never happened (every line
+            // vanished, client report 2026-10-20).
+            measured: sizeOf(node.positionId),
             draggable: arrangeMode,
             selected: arrangeMode && selectedIds.has(node.positionId),
             data: {
