@@ -166,26 +166,31 @@ export function EmployeeFormDialog({
   // Check the code while it is typed (after a short pause) and again when
   // the field is left. Only the latest answer counts.
   const codeCheckRef = useRef(0);
-  const checkCode = useCallback(
-    async (raw: string) => {
+  // The "already in use" message for a code, or null when it is free (or
+  // unchanged on edit, or too short to check).
+  const codeTakenMessageFor = useCallback(
+    async (raw: string): Promise<string | null> => {
       const code = raw.trim();
-      const ticket = ++codeCheckRef.current;
       if (code.length < 2 || (isEdit && code.toUpperCase() === employee.employeeCode)) {
-        setCodeTakenMessage(null);
-        return;
+        return null;
       }
       const result = await checkEmployeeCodeAction({
         employeeCode: code,
         ...(isEdit ? { excludeEmployeeId: employee.id } : {}),
       });
-      if (ticket !== codeCheckRef.current || !result.ok) return;
-      setCodeTakenMessage(
-        result.data.available
-          ? null
-          : `Employee code "${result.data.employeeCode}" is already in use. Choose a different code.`
-      );
+      return result.ok && !result.data.available
+        ? `Employee code "${result.data.employeeCode}" is already in use. Choose a different code.`
+        : null;
     },
     [isEdit, employee]
+  );
+  const checkCode = useCallback(
+    async (raw: string) => {
+      const ticket = ++codeCheckRef.current;
+      const message = await codeTakenMessageFor(raw);
+      if (ticket === codeCheckRef.current) setCodeTakenMessage(message);
+    },
+    [codeTakenMessageFor]
   );
   useEffect(() => {
     if (!open) return;
@@ -197,6 +202,13 @@ export function EmployeeFormDialog({
     setFormError(null);
     setAssignmentError(null);
     if (codeTakenMessage) return; // shown under the code field already
+    // Saved before the typing pause ran out? Check now, so a taken code is
+    // reported once, under the field, instead of again by the save.
+    const takenMessage = await codeTakenMessageFor(values.employeeCode);
+    if (takenMessage) {
+      setCodeTakenMessage(takenMessage);
+      return;
+    }
 
     // A chosen position needs a start date (mirrors the server's
     // createEmployeeWithAssignmentSchema refinement) — guard before the

@@ -15,7 +15,6 @@ import {
   CHEVRON_BOX,
   DEFAULT_CARD_SIZE,
   cardSizeFor,
-  equalizeRowHeights,
   gradeFamilyLabel,
   headingNameRowHeight,
   measureTextWidth,
@@ -718,11 +717,8 @@ export function renderOrganogramSvg(
     };
   }
 
-  // Content-sized cards (D47); a row shares its tallest card's height.
-  const sizes = equalizeRowHeights(
-    positions,
-    exportCardSizes(nodes, edges, options.textStyleByNodeId)
-  );
+  // Content-sized cards (D47), each as tall as its own text — as on screen.
+  const sizes = exportCardSizes(nodes, edges, options.textStyleByNodeId);
   const sizeOf = (id: string) => sizes.get(id) ?? DEFAULT_CARD_SIZE;
 
   let minX = Infinity;

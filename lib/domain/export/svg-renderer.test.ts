@@ -882,7 +882,7 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
     expect(footerY!).toBeLessThan(rect(svg).height);
   });
 
-  it("gives every card on a row the row's tallest height", () => {
+  it("sizes each card to its own text, even on a shared row (client request, 2026-10-19)", () => {
     const svg = renderAt(
       [
         node({ positionId: "a", title: "CFO" }),
@@ -902,7 +902,8 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
       (m) => m[1]
     );
     expect(heights).toHaveLength(2);
-    expect(heights[0]).toBe(heights[1]);
+    // The CFO card has no name line, so it is shorter than its neighbour.
+    expect(Number(heights[0])).toBeLessThan(Number(heights[1]));
   });
 
   it("centres a department card's name and role count inside it", () => {

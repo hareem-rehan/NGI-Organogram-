@@ -303,39 +303,6 @@ function linesFor(text: string, width: number, fontSize: number, font: MeasureOp
   return Math.max(1, wrapToWidth(text, width, fontSize, MAX_TITLE_LINES, font).length);
 }
 
-/**
- * Gives every card on the same row (same top y) that row's tallest height,
- * so a row of cards lines up top and bottom. Widths are kept.
- */
-export function equalizeRowHeights(
-  positions: ReadonlyMap<string, { x: number; y: number }>,
-  sizes: ReadonlyMap<string, CardSize>,
-  /**
-   * Cards drawn at their own size instead (expanded names, user request
-   * 2026-10-19). Their row is sized from `sizes` — the card's usual size — so
-   * opening one changes no other card; it just grows past its row.
-   */
-  ownSize: ReadonlyMap<string, CardSize> = new Map()
-): Map<string, CardSize> {
-  const rowHeight = new Map<number, number>();
-  const rowOf = (id: string) => Math.round(positions.get(id)?.y ?? Number.NaN);
-  for (const [id, size] of sizes) {
-    const row = rowOf(id);
-    if (Number.isNaN(row)) continue;
-    rowHeight.set(row, Math.max(rowHeight.get(row) ?? 0, size.height));
-  }
-  const out = new Map<string, CardSize>();
-  for (const [id, size] of sizes) {
-    const row = rowOf(id);
-    const own = ownSize.get(id);
-    out.set(
-      id,
-      own ?? (Number.isNaN(row) ? size : { ...size, height: rowHeight.get(row) ?? size.height })
-    );
-  }
-  return out;
-}
-
 /** Size lookup with a safe standard-card fallback. */
 export function sizeLookup(
   sizes: ReadonlyMap<string, CardSize>
