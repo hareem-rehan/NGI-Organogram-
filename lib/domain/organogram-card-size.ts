@@ -23,6 +23,13 @@ export const CARD_WIDTH = 168;
 export const CARD_MIN_WIDTH = CARD_WIDTH;
 /** A title longer than this many lines ends in "…". */
 export const MAX_TITLE_LINES = 3;
+
+/**
+ * A department or sub-division box shows its whole name: the box grows as
+ * tall as the name needs (client request, 2026-10-20), never "…". This is
+ * only a safety bound for absurdly long names.
+ */
+export const MAX_HEADING_LINES = 12;
 /** Widest a card grows to fit a long name when its names are expanded. */
 export const MAX_EXPANDED_CARD_WIDTH = 280;
 /** Slack kept on each line for font differences between estimate and screen. */
@@ -233,7 +240,7 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
     };
     const chrome = 2 * m.border + 2 * m.headingPadX + (card.hasChildren ? m.headingChevron : 0);
     const width = widthFor(name, chrome, f, nameFont);
-    const titleLines = linesFor(name, width - chrome - WRAP_SLACK, f, nameFont);
+    const titleLines = linesFor(name, width - chrome - WRAP_SLACK, f, nameFont, MAX_HEADING_LINES);
     const height =
       2 * m.border +
       2 * m.headingPadY +
@@ -312,9 +319,15 @@ function widthFor(text: string, chrome: number, fontSize: number, font: MeasureO
   return Math.max(CARD_WIDTH, Math.ceil(longestWord + chrome + WRAP_SLACK));
 }
 
-/** How many lines (1 to MAX_TITLE_LINES) a title wraps onto at this width. */
-function linesFor(text: string, width: number, fontSize: number, font: MeasureOptions): number {
-  return Math.max(1, wrapToWidth(text, width, fontSize, MAX_TITLE_LINES, font).length);
+/** How many lines (1 to `maxLines`) a title wraps onto at this width. */
+function linesFor(
+  text: string,
+  width: number,
+  fontSize: number,
+  font: MeasureOptions,
+  maxLines: number = MAX_TITLE_LINES
+): number {
+  return Math.max(1, wrapToWidth(text, width, fontSize, maxLines, font).length);
 }
 
 /** Size lookup with a safe standard-card fallback. */
