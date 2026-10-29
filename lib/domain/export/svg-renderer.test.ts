@@ -865,6 +865,19 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
     expect(svg).not.toMatch(/…<\/text>/);
   });
 
+  it("renders a borderline single-line title in full (the export has no screen badge-gap)", () => {
+    // "Head of Internal Audit" clipped by a few px on screen (an empty badge
+    // slot's gap); the export draws the title directly at full inner width, so
+    // it shows in full with no "…".
+    const svg = render(node({ positionId: "p1", title: "Head of Internal Audit" }));
+    expect(rect(svg).width).toBe(CARD_WIDTH);
+    const titleLines = [...svg.matchAll(/<text [^>]*font-size="13"[^>]*>([^<]*)<\/text>/g)].map(
+      (m) => m[1]
+    );
+    expect(titleLines.join(" ")).toContain("Head of Internal Audit");
+    expect(titleLines.join("")).not.toContain("…");
+  });
+
   it("keeps the person and footer inside the card at a large text size", () => {
     const svg = render(
       node({
