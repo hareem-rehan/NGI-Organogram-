@@ -263,6 +263,21 @@ describe("PositionNode", () => {
     expect(screen.queryByText("Inactive")).not.toBeInTheDocument();
   });
 
+  it("gives an active position's title the whole row (no empty badge slot shrinking it)", () => {
+    renderNode({ node: makeNode({ positionStatus: "ACTIVE", title: "Head of Internal Audit" }) });
+    const row = screen.getByText("Head of Internal Audit").parentElement!;
+    // Active: the title is the only child of its row — no empty badge slot
+    // reserving the gap and clipping a borderline single-line title.
+    expect(row.children).toHaveLength(1);
+  });
+
+  it("keeps the badge beside the title when the position is not active", () => {
+    renderNode({ node: makeNode({ positionStatus: "PLANNED", title: "Head of Internal Audit" }) });
+    const row = screen.getByText("Head of Internal Audit").parentElement!;
+    expect(row.children).toHaveLength(2); // title + badge slot
+    expect(screen.getByText("Planned")).toBeInTheDocument();
+  });
+
   it('shows "No roles under" and no toggle for a leaf position', () => {
     renderNode({
       node: makeNode({ hasChildren: false, directReportCount: 0, totalReportCount: 0 }),
