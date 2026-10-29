@@ -79,7 +79,7 @@ export function TransferEmployeeDialog({
       options.map((eligible) => ({
         value: eligible.position.id,
         label: eligible.position.title,
-        description: `${eligible.position.positionCode} · ${eligible.departmentName} · Level ${eligible.position.organizationalLevel}`,
+        description: `${eligible.position.positionCode} · ${eligible.departmentName}${eligible.jobFamilyName ? ` · ${eligible.jobFamilyName}` : ""} · Level ${eligible.position.organizationalLevel}`,
       })),
     [options]
   );

@@ -73,7 +73,7 @@ export function AssignPositionDialog({
       options.map((eligible) => ({
         value: eligible.position.id,
         label: eligible.position.title,
-        description: `${eligible.position.positionCode} · ${eligible.departmentName} · Level ${eligible.position.organizationalLevel}`,
+        description: `${eligible.position.positionCode} · ${eligible.departmentName}${eligible.jobFamilyName ? ` · ${eligible.jobFamilyName}` : ""} · Level ${eligible.position.organizationalLevel}`,
       })),
     [options]
   );
@@ -136,7 +136,8 @@ export function AssignPositionDialog({
           <div className="bg-muted rounded-md p-3 text-sm">
             <p className="font-medium">{selected.position.title}</p>
             <p className="text-muted-foreground">
-              {selected.position.positionCode} · {selected.departmentName} · Level{" "}
+              {selected.position.positionCode} · {selected.departmentName}
+              {selected.jobFamilyName ? ` · ${selected.jobFamilyName}` : ""} · Level{" "}
               {selected.position.organizationalLevel} ·{" "}
               {selected.position.status === "ACTIVE"
                 ? "Active"

@@ -864,6 +864,28 @@ describe("Position hierarchy", () => {
       expect(ids).toContain(vacant.id);
     });
 
+    it("returns each position's sub-division, so same-named positions can be told apart", async () => {
+      const company = await makeCompany();
+      const dept = await makeDepartment(company.id);
+      const family = await testPrisma.jobFamily.create({
+        data: { companyId: company.id, departmentId: dept.id, name: "Backend", code: "SUB-BE-T" },
+      });
+      const root = await makeRootPosition(company.id, dept.id, { positionCode: "ROOT-X" });
+      const classified = await makeChildPosition(company.id, dept.id, root.id, 1, {
+        positionCode: "CLS-X",
+        title: "Principal Software Engineer",
+      });
+      await testPrisma.position.update({
+        where: { id: classified.id },
+        data: { jobFamilyId: family.id },
+      });
+
+      const results = await searchEligiblePositions(company.id, undefined, new Date());
+      expect(results.find((r) => r.position.id === classified.id)?.jobFamilyName).toBe("Backend");
+      // A position with no sub-division reports null, so the picker simply omits it.
+      expect(results.find((r) => r.position.id === root.id)?.jobFamilyName).toBeNull();
+    });
+
     it("includes a position whose only assignment has already ended", async () => {
       const company = await makeCompany();
       const dept = await makeDepartment(company.id);

@@ -107,6 +107,9 @@ export async function listOccupiedPositionIds(
 export interface EligiblePosition {
   position: Position;
   departmentName: string;
+  /** Sub-division (job family) name, when the position has one — so a picker
+   * can tell apart same-named positions in different sub-divisions. */
+  jobFamilyName: string | null;
 }
 
 /**
@@ -138,7 +141,10 @@ export async function searchEligiblePositions(
           }
         : {}),
     },
-    include: { department: { select: { name: true } } },
+    include: {
+      department: { select: { name: true } },
+      jobFamily: { select: { name: true } },
+    },
     orderBy: [{ title: "asc" }],
     take: 100,
   });
@@ -146,6 +152,7 @@ export async function searchEligiblePositions(
   return candidates.map((candidate) => ({
     position: candidate,
     departmentName: candidate.department.name,
+    jobFamilyName: candidate.jobFamily?.name ?? null,
   }));
 }
 
