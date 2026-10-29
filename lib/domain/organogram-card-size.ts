@@ -1,9 +1,10 @@
 /**
  * Content-sized organogram cards (docs/DECISIONS.md D47, D49). Every card has
  * the same width (about 24 characters of title per line) and is just tall
- * enough for what it shows: a long title wraps onto more lines (up to three)
- * and the card grows taller instead of wider. Cards on the same row share
- * the row's tallest height so the chart stays aligned.
+ * enough for what it shows: a long title wraps onto as many lines as it needs
+ * and the card grows taller instead of wider — the whole title always shows.
+ * Cards on the same row share the row's tallest height so the chart stays
+ * aligned.
  *
  * One pure function sizes a card for the screen AND the PDF/PNG export, so
  * both draw the same chart. Text width is estimated from Helvetica/Arial
@@ -21,7 +22,7 @@ import {
 export const CARD_WIDTH = 168;
 /** @deprecated Since D49 every card is CARD_WIDTH wide. */
 export const CARD_MIN_WIDTH = CARD_WIDTH;
-/** A title longer than this many lines ends in "…". */
+/** Default wrap bound for `linesFor`; real titles use the fuller bounds below. */
 export const MAX_TITLE_LINES = 3;
 
 /**
@@ -30,6 +31,14 @@ export const MAX_TITLE_LINES = 3;
  * only a safety bound for absurdly long names.
  */
 export const MAX_HEADING_LINES = 12;
+
+/**
+ * A position card shows its whole title too: the card grows as tall as the
+ * title needs rather than ending in "…" at three lines (client request,
+ * 2026-10-29). Shares the headings' generous safety bound for absurdly long
+ * titles, so text is never clipped.
+ */
+export const MAX_POSITION_TITLE_LINES = MAX_HEADING_LINES;
 /** Widest a card grows to fit a long name when its names are expanded. */
 export const MAX_EXPANDED_CARD_WIDTH = 280;
 /** Slack kept on each line for font differences between estimate and screen. */
@@ -270,7 +279,8 @@ export function cardSizeFor(card: CardSizeInput, style?: TextStyle): CardSize {
     card.title,
     width - chrome - (card.badgeWidth ?? 0) - WRAP_SLACK,
     f,
-    positionTitleFont
+    positionTitleFont,
+    MAX_POSITION_TITLE_LINES
   );
   const height =
     2 * m.border +

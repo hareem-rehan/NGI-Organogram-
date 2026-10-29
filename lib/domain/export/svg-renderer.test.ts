@@ -850,7 +850,7 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
     expect(rect(svg).height).toBeGreaterThan(rect(short).height);
   });
 
-  it("ends a title longer than three lines in …", () => {
+  it("shows a title longer than three lines in full, wrapping as tall as it needs", () => {
     const svg = render(
       node({
         positionId: "p1",
@@ -858,9 +858,11 @@ describe("renderOrganogramSvg — content-sized cards (D47)", () => {
           "Associate Director of Strategic Partnerships and Enterprise Client Success Operations",
       })
     );
+    // The whole title shows: it wraps past three lines and never ends in "…"
+    // (client request 2026-10-29).
     expect(rect(svg).width).toBe(CARD_WIDTH);
-    expect(textYs(svg, "13")).toHaveLength(3);
-    expect(svg).toMatch(/…<\/text>/);
+    expect(textYs(svg, "13").length).toBeGreaterThan(3);
+    expect(svg).not.toMatch(/…<\/text>/);
   });
 
   it("keeps the person and footer inside the card at a large text size", () => {

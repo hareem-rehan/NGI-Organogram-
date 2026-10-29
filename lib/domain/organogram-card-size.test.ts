@@ -7,6 +7,7 @@ import {
   cardSizeFor,
   MAX_EXPANDED_CARD_WIDTH,
   measureTextWidth,
+  POSITION_TITLE_TRACKING_EM,
   wrapToWidth,
 } from "./organogram-card-size";
 
@@ -75,12 +76,14 @@ describe("cardSizeFor", () => {
     expect(two.titleLines).toBe(2);
     expect(two.height).toBeGreaterThan(short.height);
 
+    // A very long title wraps onto as many lines as it needs (past three) and
+    // the card grows taller — never ending in "…" (client request 2026-10-29).
     const longest = cardSizeFor({
       ...position,
       title: "Associate Director of Strategic Partnerships and Enterprise Client Success",
     });
     expect(longest.width).toBe(CARD_WIDTH);
-    expect(longest.titleLines).toBe(MAX_TITLE_LINES);
+    expect(longest.titleLines).toBeGreaterThan(MAX_TITLE_LINES);
     expect(longest.height).toBeGreaterThan(two.height);
   });
 
@@ -211,8 +214,18 @@ describe("department and sub-division boxes show their whole name (client reques
     expect(lines.join(" ")).not.toContain("…");
   });
 
-  it("position cards are unchanged: still at most three title lines", () => {
-    const size = cardSizeFor({ ...position, title: `${name} ${name} ${name}` });
-    expect(size.titleLines).toBe(MAX_TITLE_LINES);
+  it("a position card shows its whole title too, wrapping past three lines with no '…'", () => {
+    const title = `${name} ${name} ${name}`;
+    const size = cardSizeFor({ ...position, title });
+    // No longer capped at three lines (client request 2026-10-29).
+    expect(size.titleLines).toBeGreaterThan(MAX_TITLE_LINES);
+    const m = CARD_METRICS;
+    // The same room the card (and the export) gives the title.
+    const room = size.width - 2 * m.border - 2 * m.padX - 4;
+    const lines = wrapToWidth(title, room, 13, size.titleLines, {
+      bold: true,
+      letterSpacingEm: POSITION_TITLE_TRACKING_EM,
+    });
+    expect(lines.join(" ")).not.toContain("…");
   });
 });
