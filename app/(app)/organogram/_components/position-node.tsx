@@ -648,8 +648,13 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
           >
             {node.title}
           </p>
-          <div className="flex shrink-0 items-center gap-1">
-            {node.positionStatus !== "ACTIVE" ? (
+          {/* Only render the status badge (and so incur the row's gap) when
+              there actually is one. An empty slot would still reserve the
+              gap-2 and shrink the title's width below what card-size.ts sized
+              it for, clipping a borderline single-line title (e.g. "Head of
+              Internal Audit"). */}
+          {node.positionStatus !== "ACTIVE" ? (
+            <div className="flex shrink-0 items-center gap-1">
               <Badge
                 variant={node.positionStatus === "PLANNED" ? "outline" : "muted"}
                 // Compact, so it never makes the title row taller than the card allows (D47).
@@ -658,8 +663,8 @@ function PositionNodeComponent({ data }: NodeProps & { data: PositionNodeData })
               >
                 {node.positionStatus === "PLANNED" ? "Planned" : "Inactive"}
               </Badge>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
         {occupantView.names.length > 0 ? (
           <div className="mt-px">
