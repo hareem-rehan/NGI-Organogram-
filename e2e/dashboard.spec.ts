@@ -35,7 +35,10 @@ test.describe("Dashboard and Company Overview (Phase 7)", () => {
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
 
-    await expect(page.getByText(/effective date \d{4}-\d{2}-\d{2}/i)).toBeVisible();
+    // The company name / effective date / timezone line was removed
+    // (client request, 2026-11-02); the refresh time stays.
+    await expect(page.getByText(/effective date/i)).toHaveCount(0);
+    await expect(page.getByText(/last refreshed/i)).toBeVisible();
     await expect(page.getByRole("link", { name: /active employees/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /active positions/i })).toBeVisible();
     await expect(page.getByText("Occupied Positions", { exact: true })).toBeVisible();

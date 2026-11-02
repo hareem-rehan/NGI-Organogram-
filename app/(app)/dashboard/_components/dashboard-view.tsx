@@ -99,17 +99,8 @@ export function DashboardView({ canManage }: DashboardViewProps) {
 
   return (
     <div className="flex flex-col gap-8">
-      <section aria-labelledby="dashboard-company-heading" className="flex flex-col gap-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 id="dashboard-company-heading" className="text-foreground text-lg font-semibold">
-              {company.name}{" "}
-              <span className="text-muted-foreground font-normal">({company.code})</span>
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              Effective date {company.effectiveDate} · Timezone {company.timezone}
-            </p>
-          </div>
+      <section aria-label="Dashboard refresh" className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <div className="flex items-center gap-3">
             <p className="text-muted-foreground text-xs">
               Last refreshed {formatDateTime(company.lastRefreshed)}
