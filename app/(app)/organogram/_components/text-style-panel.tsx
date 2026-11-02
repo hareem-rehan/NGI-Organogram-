@@ -34,6 +34,11 @@ interface TextStylePanelProps {
    * on this fill is swapped for a readable one, exactly as on the chart.
    */
   cardFill?: string | null;
+  /**
+   * Every fill of the card's department and its one automatic text colour
+   * (D67), when the department's cards come in several shades.
+   */
+  cardGroup?: { fills: readonly string[]; text: string } | null;
   /** Called on every change, so the chart previews the style live. */
   onPreview: (style: TextStyle) => void;
   /** Saves; resolves to an error message, or null on success. */
@@ -61,6 +66,7 @@ export function TextStylePanel({
   saved,
   inherited,
   cardFill,
+  cardGroup,
   onPreview,
   onSave,
   onReset,
@@ -85,7 +91,9 @@ export function TextStylePanel({
   const chosenColour = style.color ?? inherited.color ?? null;
   const fill = cardFill ?? null;
   const colourShown = fill
-    ? readableTextColor(chosenColour, fill, cardTextColor(fill))
+    ? cardGroup
+      ? readableTextColor(chosenColour, cardGroup.fills, cardGroup.text)
+      : readableTextColor(chosenColour, fill, cardTextColor(fill))
     : (chosenColour ?? CARD_TEXT_COLOR);
   const swapped = !!fill && !!chosenColour && colourShown !== chosenColour;
   const colourLabel = swapped

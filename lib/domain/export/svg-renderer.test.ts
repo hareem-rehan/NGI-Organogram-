@@ -772,6 +772,19 @@ describe("names on exported cards (client request, 2026-10-19)", () => {
   });
 });
 
+describe("applyTextStyleToCardSvg — one text colour per department (D67)", () => {
+  const shaded = (fill: string) =>
+    `<g transform="translate(0, 0)"><rect fill="${fill}" /><text x="10" y="19" font-weight="800" fill="#2d2d2d">A</text></g>`;
+
+  it("gives a department's deep and light shades the same chosen-or-automatic colour", () => {
+    const group = { fills: ["#6b45c4", "#e2d8fb"], text: "#2d2d2d" };
+    const deep = applyTextStyleToCardSvg(shaded("#6b45c4"), { color: "#ffffff" }, group);
+    const light = applyTextStyleToCardSvg(shaded("#e2d8fb"), { color: "#ffffff" }, group);
+    expect(deep).toContain('<text x="10" y="19" font-weight="800" fill="#2d2d2d"');
+    expect(light).toContain('<text x="10" y="19" font-weight="800" fill="#2d2d2d"');
+  });
+});
+
 describe("applyTextStyleToCardSvg (D41)", () => {
   const card =
     '<g transform="translate(0, 0)" opacity="1"><rect fill="#111ed4" /><text x="10" y="19" font-size="13" font-weight="800" fill="#ffffff">CEO</text><text x="10" y="80" font-size="10.5" font-weight="600" fill="#ffffff">No roles under</text></g>';

@@ -58,7 +58,11 @@ function textStyleProps(style: TextStyle | undefined, cardColor: FamilyColor | n
   // A chosen colour is kept only where it is readable on this card's fill
   // (a neutral card is white); otherwise the automatic readable colour.
   const color = s.color
-    ? readableTextColor(s.color, cardColor?.fill ?? "#ffffff", autoColor ?? CARD_TEXT_COLOR)
+    ? readableTextColor(
+        s.color,
+        cardColor?.groupFills ?? cardColor?.fill ?? "#ffffff",
+        autoColor ?? CARD_TEXT_COLOR
+      )
     : autoColor;
   const family = fontFamilyById(s.fontFamily);
   const decoration = textDecorationOf(s);

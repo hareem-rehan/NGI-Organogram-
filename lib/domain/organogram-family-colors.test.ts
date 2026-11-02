@@ -10,6 +10,7 @@ import {
   CARD_TEXT_COLOR,
   lightTint,
   buildSubdivisionShadeMap,
+  groupTextColor,
   shadeOf,
 } from "./organogram-family-colors";
 
@@ -157,20 +158,32 @@ describe("buildSubdivisionShadeMap (shades of the department colour, 2026-10-02)
       fill: "#4fae2f",
       accent: "#4fae2f",
       text: cardTextColor("#4fae2f"),
+      groupFills: ["#4fae2f"],
     });
   });
 
-  it("keeps text readable on every shade", () => {
-    const map = buildSubdivisionShadeMap(
-      ["a", "b", "c", "d"].map((id) => ({ id, departmentColor: "#1549b2" }))
-    );
-    for (const c of map.values()) {
-      const best = Math.max(
-        contrastRatio(c.fill, "#ffffff"),
-        contrastRatio(c.fill, CARD_TEXT_COLOR)
+  it("gives every shade of a department the SAME text colour (D67)", () => {
+    // A mid purple: per shade, the deep one would take white text and the
+    // light ones dark text — the mix the client reported.
+    for (const hex of ["#1549b2", "#8b5cf6", "#3aa4e8", "#4fae2f"]) {
+      const map = buildSubdivisionShadeMap(
+        ["a", "b", "c", "d"].map((id) => ({ id, departmentColor: hex }))
       );
-      expect(contrastRatio(c.fill, c.text!)).toBe(best);
+      const colors = [...map.values()];
+      expect(new Set(colors.map((c) => c.text)).size).toBe(1);
+      expect(colors[0]!.groupFills).toEqual(colors.map((c) => c.fill));
+      expect(colors[0]!.text).toBe(groupTextColor(colors.map((c) => c.fill)));
     }
+  });
+
+  it("picks the text colour that reads best on the department's worst shade", () => {
+    const fills = ["#6b45c4", "#c4b0f7"];
+    const worst = (t: string) => Math.min(...fills.map((f) => contrastRatio(f, t)));
+    const chosen = groupTextColor(fills);
+    const other = chosen === "#ffffff" ? CARD_TEXT_COLOR : "#ffffff";
+    expect(worst(chosen)).toBeGreaterThanOrEqual(worst(other));
+    expect(groupTextColor(["#0b1d4a"])).toBe("#ffffff");
+    expect(groupTextColor(["#fff6d0"])).toBe(CARD_TEXT_COLOR);
   });
 
   it("falls back to the palette when the department has no colour", () => {
