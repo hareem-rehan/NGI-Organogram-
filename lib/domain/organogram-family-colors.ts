@@ -25,6 +25,12 @@ export interface FamilyColor {
    * a dark fill (an exact department colour can be any shade).
    */
   text?: string;
+  /**
+   * Every fill used by the cards of this colour's department (its
+   * sub-division shades, D67). Text colour is decided across all of them so
+   * a department's cards never mix white and dark text.
+   */
+  groupFills?: readonly string[];
 }
 
 /** The reference palette, most-distinct first. */
@@ -175,13 +181,26 @@ export function buildSubdivisionShadeMap(
   }
   const map = buildFamilyColorMap(uncoloured);
   for (const [hex, ids] of byDepartment) {
-    ids.forEach((id, i) => {
+    const shades = ids.map((_, i) => {
       const t = ids.length === 1 ? 0 : -0.3 + (0.75 * i) / (ids.length - 1);
-      const shade = shadeOf(hex, Math.round(t * 100) / 100);
-      map.set(id, { fill: shade, accent: shade, text: cardTextColor(shade) });
+      return shadeOf(hex, Math.round(t * 100) / 100);
+    });
+    // One text colour for the whole department (D67), not one per shade.
+    const text = groupTextColor(shades);
+    ids.forEach((id, i) => {
+      map.set(id, { fill: shades[i]!, accent: shades[i]!, text, groupFills: shades });
     });
   }
   return map;
+}
+
+/**
+ * White or the dark card text — whichever stays more readable on the WORST of
+ * `fills`, so one colour serves every shade of a department (D67).
+ */
+export function groupTextColor(fills: readonly string[]): string {
+  const worst = (text: string) => Math.min(...fills.map((f) => contrastRatio(f, text)));
+  return worst("#ffffff") > worst(CARD_TEXT_COLOR) ? "#ffffff" : CARD_TEXT_COLOR;
 }
 
 /**

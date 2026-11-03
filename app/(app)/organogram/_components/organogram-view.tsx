@@ -1561,6 +1561,19 @@ export function OrganogramView({
                     : null;
                 })()
           }
+          cardGroup={
+            styleTarget === CHART_STYLE_KEY
+              ? null
+              : (() => {
+                  const node = data.nodes.find((n) => n.positionId === styleTarget);
+                  const color = node
+                    ? chartCardColor(node, colorMode, departmentColorById, familyColorById)
+                    : null;
+                  return color?.groupFills && color.text
+                    ? { fills: color.groupFills, text: color.text }
+                    : null;
+                })()
+          }
           onPreview={setStyleDraft}
           onSave={saveStyle}
           onReset={resetStyle}

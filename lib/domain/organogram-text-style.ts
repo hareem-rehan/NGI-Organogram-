@@ -148,12 +148,19 @@ export function fontWeightOf(style: TextStyle, builtIn: number): number {
  * choice like white on a mid-blue is kept), otherwise whichever of white or
  * the dark card text reads better — so a style set for strong department
  * colours never vanishes on a pale sub-division or neutral card.
+ *
+ * `fill` may be every shade a department's cards use (D67): the chosen
+ * colour is then kept only when it is readable on ALL of them, and otherwise
+ * `auto` — the department's one automatic colour — is used, so every card of
+ * a department shows the same text colour.
  */
 export function readableTextColor(
   chosen: string | null | undefined,
-  fill: string,
+  fill: string | readonly string[],
   auto: string
 ): string {
   if (!chosen) return auto;
-  return contrastRatio(chosen, fill) >= 2.5 ? chosen : cardTextColor(fill);
+  const fills = typeof fill === "string" ? [fill] : fill;
+  if (fills.every((f) => contrastRatio(chosen, f) >= 2.5)) return chosen;
+  return fills.length === 1 ? cardTextColor(fills[0]!) : auto;
 }
