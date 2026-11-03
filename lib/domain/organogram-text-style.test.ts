@@ -80,4 +80,12 @@ describe("readableTextColor (2026-10-02)", () => {
   it("uses the automatic colour when none is chosen", () => {
     expect(readableTextColor(null, "#3aa4e8", "#123456")).toBe("#123456");
   });
+
+  it("decides once for a department's shades: kept on all, or its one automatic colour (D67)", () => {
+    // White reads on the deep shade but not the light one → the department's
+    // automatic colour on BOTH, never white on one and dark on the other.
+    const shades = ["#6b45c4", "#e2d8fb"];
+    expect(readableTextColor("#ffffff", shades, "#2d2d2d")).toBe("#2d2d2d");
+    expect(readableTextColor("#ffffff", ["#6b45c4", "#8b5cf6"], "#2d2d2d")).toBe("#ffffff");
+  });
 });

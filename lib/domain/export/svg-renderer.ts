@@ -381,7 +381,7 @@ function cardColorsFor(
   colorMode: ExportColorMode,
   familyColorById: ReadonlyMap<string, FamilyColor> | undefined,
   departmentColorByName: ReadonlyMap<string, FamilyColor> | undefined
-): { fill: string; accent: string; text: string } {
+): { fill: string; accent: string; text: string; groupFills?: readonly string[] } {
   // Sub-division mode colours ONLY sub-divisions (docs/DECISIONS.md D29):
   // department headings and cards outside any sub-division are neutral.
   if (colorMode === "family") {
@@ -390,7 +390,12 @@ function cardColorsFor(
         ? familyColorById?.get(node.jobFamilyId)
         : undefined;
     return fc
-      ? { fill: fc.fill, accent: fc.accent, text: fc.text ?? EXPORT_COLORS.foreground }
+      ? {
+          fill: fc.fill,
+          accent: fc.accent,
+          text: fc.text ?? EXPORT_COLORS.foreground,
+          groupFills: fc.groupFills,
+        }
       : {
           fill: EXPORT_COLORS.background,
           accent: EXPORT_COLORS.border,
@@ -543,7 +548,11 @@ const FIXED_WEIGHT = `data-fixed-weight="true"`;
  * not applied here: the card renderers lay their text out for it (D45), so
  * larger text wraps and spaces itself instead of overprinting.
  */
-export function applyTextStyleToCardSvg(cardSvg: string, style: TextStyle | undefined): string {
+export function applyTextStyleToCardSvg(
+  cardSvg: string,
+  style: TextStyle | undefined,
+  group?: { fills: readonly string[]; text: string }
+): string {
   if (!style || isEmptyTextStyle(style)) return cardSvg;
   // People's names keep their regular weight, apart from the title.
   let out = cardSvg.replace(/font-weight="(\d+)"(?! data-fixed-weight)/g, (_m, weight: string) => {
@@ -552,7 +561,10 @@ export function applyTextStyleToCardSvg(cardSvg: string, style: TextStyle | unde
   if (style.color) {
     // Kept only where readable on this card's own fill (its first <rect>).
     const fill = /<rect\b[^>]*? fill="(#[0-9a-fA-F]{6})"/.exec(out)?.[1] ?? "#ffffff";
-    const color = readableTextColor(style.color, fill, cardTextColor(fill));
+    // On a department's shaded cards, decided across all its shades (D67).
+    const color = group
+      ? readableTextColor(style.color, group.fills, group.text)
+      : readableTextColor(style.color, fill, cardTextColor(fill));
     out = out.replace(/(<text\b[^>]*?) fill="[^"]*"/g, `$1 fill="${color}"`);
   }
   const groupAttrs = [
@@ -751,9 +763,16 @@ export function renderOrganogramSvg(
       const pos = positions.get(node.positionId);
       if (!pos) return "";
       const at = { x: pos.x - minX, y: pos.y - minY };
+      const colors = cardColorsFor(
+        node,
+        options.colorMode ?? "department",
+        options.familyColorById,
+        options.departmentColorByName
+      );
       return applyTextStyleToCardSvg(
         renderCard(node, at),
-        options.textStyleByNodeId?.get(node.positionId)
+        options.textStyleByNodeId?.get(node.positionId),
+        colors.groupFills ? { fills: colors.groupFills, text: colors.text } : undefined
       );
     })
     .join("");
