@@ -70,12 +70,16 @@ function makeSummary(overrides: Partial<DashboardSummary> = {}): DashboardSummar
 describe("DashboardView", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("renders the company header and summary cards once loaded", async () => {
+  it("renders the summary cards once loaded, without the company name/date line", async () => {
     getDashboardActionMock.mockResolvedValue({ ok: true, data: makeSummary() });
 
     render(<DashboardView canManage={false} />);
 
-    expect(await screen.findByText(/northwind example co\./i)).toBeInTheDocument();
+    expect(await screen.findByText(/last refreshed/i)).toBeInTheDocument();
+    // The company name, code, effective date and timezone line was removed
+    // from the dashboard (client request, 2026-11-02).
+    expect(screen.queryByText(/northwind example co\./i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/effective date/i)).not.toBeInTheDocument();
     // The card's clickable link and its visible value are siblings (a
     // "stretched link" pattern — see dashboard-view.tsx's SummaryCard doc
     // comment for why the value isn't nested inside the <a> itself), so
@@ -195,7 +199,7 @@ describe("DashboardView", () => {
 
     render(<DashboardView canManage={false} />);
 
-    await screen.findByText(/northwind example co\./i);
+    await screen.findByText(/last refreshed/i);
     expect(screen.queryByText("Data quality")).not.toBeInTheDocument();
     expect(screen.queryByText("No active root position")).not.toBeInTheDocument();
   });
@@ -246,8 +250,8 @@ describe("DashboardView", () => {
     render(<DashboardView canManage={false} />);
 
     expect(await screen.findByText(/temporarily unavailable/i)).toBeInTheDocument();
-    // The rest of the page still renders — company header is present.
-    expect(screen.getByText(/northwind example co\./i)).toBeInTheDocument();
+    // The rest of the page still renders.
+    expect(screen.getByText(/last refreshed/i)).toBeInTheDocument();
   });
 
   it("shows Add Department/Position/Employee quick actions for HR_EDITOR/ADMIN", async () => {
@@ -255,7 +259,7 @@ describe("DashboardView", () => {
 
     render(<DashboardView canManage={true} />);
 
-    await screen.findByText(/northwind example co\./i);
+    await screen.findByText(/last refreshed/i);
     expect(screen.getByRole("link", { name: /add department/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /add position/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /add employee/i })).toBeInTheDocument();
@@ -266,7 +270,7 @@ describe("DashboardView", () => {
 
     render(<DashboardView canManage={false} />);
 
-    await screen.findByText(/northwind example co\./i);
+    await screen.findByText(/last refreshed/i);
     expect(screen.getByRole("link", { name: /view departments/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /add department/i })).not.toBeInTheDocument();
   });
@@ -287,7 +291,7 @@ describe("DashboardView", () => {
 
     render(<DashboardView canManage={false} />);
 
-    await screen.findByText(/northwind example co\./i);
+    await screen.findByText(/last refreshed/i);
     expect(screen.queryByText("Vacant Positions")).not.toBeInTheDocument();
     expect(screen.queryByText(/vacancy overview/i)).not.toBeInTheDocument();
     expect(screen.queryByText("40%")).not.toBeInTheDocument();
@@ -308,7 +312,7 @@ describe("DashboardView", () => {
     const user = userEvent.setup();
 
     render(<DashboardView canManage={false} />);
-    await screen.findByText(/northwind example co\./i);
+    await screen.findByText(/last refreshed/i);
     getDashboardActionMock.mockClear();
 
     await user.click(screen.getByRole("button", { name: /refresh/i }));
@@ -316,7 +320,7 @@ describe("DashboardView", () => {
     expect(getDashboardActionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("renders long department and company names without crashing", async () => {
+  it("renders with a very long company name without crashing (the name isn't shown)", async () => {
     getDashboardActionMock.mockResolvedValue({
       ok: true,
       data: makeSummary({
@@ -331,6 +335,7 @@ describe("DashboardView", () => {
     });
 
     render(<DashboardView canManage={false} />);
-    expect(await screen.findByText("A".repeat(150), { exact: false })).toBeInTheDocument();
+    expect(await screen.findByText(/last refreshed/i)).toBeInTheDocument();
+    expect(screen.queryByText("A".repeat(150), { exact: false })).not.toBeInTheDocument();
   });
 });

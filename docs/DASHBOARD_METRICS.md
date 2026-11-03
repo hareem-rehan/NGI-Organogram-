@@ -14,6 +14,8 @@ Conventions used throughout this file:
 
 ## A. Company Summary
 
+**Not shown on the dashboard since 2026-11-02 (client request, D66):** the company name, code, effective date and timezone line at the top. The summary still computes them (the effective date still fixes "today" for every metric); only **Last refreshed** and the Refresh button are shown.
+
 | Metric                 | Meaning                                                      | Calculation                                                     | Included | Excluded | Effective-date behavior | Status handling | Company scoping  | Empty-state                  | Refresh/caching             |
 | ---------------------- | ------------------------------------------------------------ | --------------------------------------------------------------- | -------- | -------- | ----------------------- | --------------- | ---------------- | ---------------------------- | --------------------------- |
 | Company name           | Display name                                                 | `Company.name`                                                  | —        | —        | n/a                     | n/a             | own company only | never empty (required field) | live                        |
