@@ -1,0 +1,235 @@
+# Bitbucket Pipelines: the same checks as .github/workflows/ci.yml, and the
+# manual staging/production deploys of .github/workflows/deploy.yml, since
+# the repository moved to Bitbucket (2026-11-04). Keep the two in step
+# until the GitHub copy is retired.
+#
+# On every pull request and every push to main, five steps run in
+# parallel: format/lint/types/secrets, unit tests, migrations + integration
+# tests, the production build, and the Playwright smoke tests. A pull
+# request is green only when all five pass (Bitbucket fails the pipeline if
+# any step fails, so there is no separate "Quality gate" step). To block
+# merging on red, turn on Repository settings -> Branch restrictions ->
+# main -> "Require passing builds".
+#
+# Every database here is a throwaway Postgres service container, never a
+# shared, staging or production database, and every AUTH_* value is a
+# non-functional placeholder. No secret is needed for these checks.
+#
+# Deploys (Pipelines -> Run pipeline -> custom: deploy-staging /
+# deploy-production) need secured Deployment variables in Repository
+# settings -> Deployments -> Staging / Production: VERCEL_TOKEN,
+# VERCEL_ORG_ID, VERCEL_PROJECT_ID, DATABASE_URL, DIRECT_DATABASE_URL
+# (docs/DEPLOYMENT_RUNBOOK.md). Both run the full checks first.
+
+image: node:20
+
+definitions:
+  caches:
+    # node_modules, reused while package-lock.json is unchanged (skips npm ci).
+    modules:
+      key:
+        files:
+          - package-lock.json
+      path: node_modules
+    # The Playwright image runs a different Node, so its modules are kept apart.
+    modules-e2e:
+      key:
+        files:
+          - package-lock.json
+      path: node_modules
+    nextjs:
+      key:
+        files:
+          - package-lock.json
+      path: .next/cache
+
+  services:
+    postgres:
+      image: postgres:16-alpine
+      variables:
+        POSTGRES_USER: organogram
+        POSTGRES_PASSWORD: organogram_ci_password
+        POSTGRES_DB: organogram_test
+
+  steps:
+    - step: &static
+        name: Format, lint, types, secrets
+        caches: [modules]
+        script:
+          # The CI-only environment of ci.yml's `env:` block (reused below).
+          - &ci-env |
+            export NEXT_PUBLIC_APP_NAME="DotZero Organogram"
+            export DATABASE_URL="postgresql://organogram:organogram_ci_password@localhost:5432/organogram_test?schema=public"
+            export DIRECT_DATABASE_URL="$DATABASE_URL"
+            export NODE_ENV="test"
+            export AUTH_SECRET="ci-only-placeholder-secret-value-not-a-real-secret-32chars"
+            export AUTH_OIDC_ISSUER="https://ci-placeholder.invalid/tenant/v2.0"
+            export AUTH_OIDC_CLIENT_ID="ci-placeholder-client-id"
+            export AUTH_OIDC_CLIENT_SECRET="ci-placeholder-client-secret"
+            export AUTH_ALLOWED_EMAIL_DOMAINS="ci-placeholder.invalid,northwind-example.test"
+            export AUTH_PROVIDER_NAME="CI Placeholder Account"
+            export AUTH_AUTO_PROVISION_VIEWERS="false"
+          # Dependencies (only on a cache miss) and the Prisma client (always: the
+          # client depends on prisma/schema.prisma, which the cache key doesn't cover).
+          - &setup |
+            if [ ! -d node_modules/.bin ]; then npm ci; fi
+            npx prisma generate
+          - npx prisma validate
+          - npm run format:check
+          - npm run lint
+          - npm run typecheck
+          # Informational, as on GitHub (docs/SECURITY_REVIEW.md).
+          - npm audit || true
+          - npm outdated || true
+          - |
+            MATCHES=$(git grep -IlnE \
+              "(AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|OPENSSH|PGP) PRIVATE KEY-----|sk-[a-zA-Z0-9]{20,}|xox[baprs]-[0-9A-Za-z-]{10,}|AIza[0-9A-Za-z_-]{35})" \
+              -- . || true)
+            if [ -n "$MATCHES" ]; then
+              echo "Potential secret pattern(s) found in:"
+              echo "$MATCHES"
+              exit 1
+            fi
+            echo "No secret patterns found."
+
+    - step: &unit
+        name: Unit and component tests
+        caches: [modules]
+        script:
+          - *ci-env
+          - *setup
+          - npm run test:coverage
+        artifacts:
+          - coverage/**
+
+    - step: &integration
+        name: Migrations and integration tests
+        caches: [modules]
+        services: [postgres]
+        script:
+          - *ci-env
+          - *setup
+          - &wait-for-postgres |
+            for i in $(seq 1 30); do
+              node -e "require('net').connect(5432,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))" && break
+              echo "Waiting for Postgres ($i)..."; sleep 2
+            done
+          # A from-scratch migration deploy on every run is itself a
+          # migration rehearsal (docs/DATABASE_RELEASE_RUNBOOK.md).
+          - npx prisma migrate deploy
+          # Smoke run of the checker on the clean, empty database, before any
+          # test writes fixtures that would trip it.
+          - npm run check:integrity
+          - >-
+            npx vitest run --config vitest.integration.config.mts --coverage
+            --exclude 'node_modules/**'
+            --exclude '.next/**'
+            --exclude '**/export-performance.integration.test.ts'
+        artifacts:
+          - coverage-integration/**
+
+    - step: &build
+        name: Production build
+        size: 2x
+        caches: [modules, nextjs]
+        script:
+          - *ci-env
+          - *setup
+          - npm run build
+
+    - step: &e2e
+        name: Playwright smoke tests
+        # Chromium and its OS packages come with the image (same version as
+        # @playwright/test in package.json; bump both together).
+        image: mcr.microsoft.com/playwright:v1.62.1-noble
+        size: 2x
+        caches: [modules-e2e]
+        services: [postgres]
+        script:
+          - *ci-env
+          - export CI="true"
+          - export AUTH_TRUST_HOST="true"
+          - export AUTH_SECRET="ci-e2e-placeholder-secret-value-not-a-real-secret-32ch"
+          - export AUTH_OIDC_ISSUER="https://ci-e2e-placeholder.invalid/tenant/v2.0"
+          - export AUTH_OIDC_CLIENT_ID="ci-e2e-placeholder-client-id"
+          - export AUTH_OIDC_CLIENT_SECRET="ci-e2e-placeholder-client-secret"
+          - export AUTH_ALLOWED_EMAIL_DOMAINS="ci-e2e-placeholder.invalid,northwind-example.test"
+          - *setup
+          - *wait-for-postgres
+          - npx prisma migrate deploy
+          - npm run test:e2e -- --grep-invert "Organogram visual regression"
+        artifacts:
+          - playwright-report/**
+
+pipelines:
+  pull-requests:
+    "**":
+      - parallel: &checks
+          steps:
+            - step: *static
+            - step: *unit
+            - step: *integration
+            - step: *build
+            - step: *e2e
+
+  branches:
+    main:
+      - parallel: *checks
+
+  custom:
+    deploy-staging:
+      - parallel: *checks
+      - step:
+          name: Deploy to staging
+          deployment: staging
+          script:
+            - export TARGET=preview
+            # deploy.yml's deploy job (reused for production); TARGET is
+            # "preview" (staging) or "production".
+            - &deploy |
+              set -e
+              npm ci
+              # Before the deploy, so the new code never meets an old schema.
+              # `migrate deploy` only applies committed migrations; never resets.
+              npx prisma migrate deploy
+              npm install --global vercel@latest
+              vercel pull --yes --environment="$TARGET" --token="$VERCEL_TOKEN"
+              PROD=""; if [ "$TARGET" = "production" ]; then PROD="--prod"; fi
+              vercel build $PROD --token="$VERCEL_TOKEN"
+              url=$(vercel deploy --prebuilt $PROD --token="$VERCEL_TOKEN")
+              echo "Deployed to $url (commit $BITBUCKET_COMMIT)"
+              # The process booted (/api/health), it can reach its database
+              # (/api/health/ready), and the dev sign-in backdoor is absent.
+              for path in /api/health /api/health/ready; do
+                ok=""
+                for i in $(seq 1 10); do
+                  code=$(curl -s -o /dev/null -w "%{http_code}" "$url$path" || true)
+                  if [ "$code" = "200" ]; then ok=1; echo "$path -> 200"; break; fi
+                  echo "$path attempt $i: HTTP $code, retrying in 5s..."; sleep 5
+                done
+                if [ -z "$ok" ]; then echo "$path never returned 200: deployment is NOT healthy."; exit 1; fi
+              done
+              code=$(curl -s -o /dev/null -w "%{http_code}" "$url/dev-sign-in" || true)
+              if [ "$code" != "404" ]; then echo "SECURITY: /dev-sign-in returned HTTP $code, expected 404."; exit 1; fi
+              echo "dev-sign-in correctly returns 404"
+
+    deploy-production:
+      - variables:
+          - name: BACKUP_VERIFIED
+            description: "Type 'yes' to confirm a fresh, restorable backup exists (docs/DEPLOYMENT_RUNBOOK.md section 5)"
+            default: "no"
+      - parallel: *checks
+      - step:
+          name: Deploy to production
+          deployment: production
+          # Pauses until someone with deploy permission clicks Deploy.
+          trigger: manual
+          script:
+            - |
+              if [ "$BACKUP_VERIFIED" != "yes" ]; then
+                echo "Refusing to deploy: BACKUP_VERIFIED was '$BACKUP_VERIFIED', expected 'yes'."
+                exit 1
+              fi
+            - export TARGET=production
+            - *deploy
+            - echo "Rollback reverts CODE only: vercel rollback <previous-url>, or promote the previous deployment in Vercel."

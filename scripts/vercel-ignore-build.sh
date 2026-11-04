@@ -26,7 +26,7 @@ fi
 
 while IFS= read -r file; do
   case "$file" in
-    docs/* | e2e/* | tests/* | .claude/* | .github/* | *.md | *.test.ts | *.test.tsx) ;;
+    docs/* | e2e/* | tests/* | .claude/* | .github/* | bitbucket-pipelines.yml | *.md | *.test.ts | *.test.tsx) ;;
     *)
       echo "App change ($file), building."
       exit 1
