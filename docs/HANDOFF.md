@@ -24,6 +24,24 @@ Project rules live in `CLAUDE.md`. Every product decision is in
 - **Env files are not in git.** Recreate `.env` / `.env.local` / `.env.test`
   from `.env.example`. Never commit any `.env*` file.
 
+## Repository: Bitbucket (since 2026-11-04)
+
+- The code now lives at https://bitbucket.org/nextgeni/replit1 (local
+  remote `origin`). GitHub (`hareem-rehan/NGI-Organogram-`, local remote
+  `github`) is kept as it was.
+- Checks run in **Bitbucket Pipelines** (`bitbucket-pipelines.yml`): the
+  same five as GitHub's `ci.yml` (format/lint/types/secrets, unit,
+  migrations + integration, build, Playwright), on every pull request and
+  push to `main`. Manual deploys are the custom pipelines
+  `deploy-staging` / `deploy-production` (secured Deployment variables:
+  `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `DATABASE_URL`,
+  `DIRECT_DATABASE_URL`).
+- Git over HTTPS uses an Atlassian API token with the fixed username
+  `x-bitbucket-api-token-auth` (scopes read/write:repository:bitbucket).
+- Until Vercel is reconnected to Bitbucket (Vercel -> Settings -> Git),
+  staging still deploys from GitHub: push to `github` too
+  (`git push github main`) for a change to go live.
+
 ## Pull requests and branches
 
 None open apart from this handoff. GitHub has only `main`. The last feature

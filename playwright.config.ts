@@ -39,7 +39,9 @@ export default defineConfig({
   // still fails, just later. e2e/auth.setup.ts additionally warms the
   // heaviest routes once, before any worker starts.
   timeout: process.env.CI ? 60_000 : 30_000,
-  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  reporter: process.env.CI
+    ? [[process.env.GITHUB_ACTIONS ? "github" : "list"], ["html", { open: "never" }]]
+    : "list",
   use: {
     baseURL,
     trace: "on-first-retry",
