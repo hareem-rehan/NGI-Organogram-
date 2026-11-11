@@ -66,7 +66,11 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
     refresh();
   }, [refresh]);
 
-  if (loading) return <LoadingState label="Loading employee…" />;
+  // The spinner is for the first load only. Reloads after a save (Edit Start
+  // Date, Transfer, Remove, ...) keep the page on screen and update it in
+  // place, instead of flashing the whole page away (client report,
+  // 2026-11-11: saving felt slow).
+  if (loading && !payload) return <LoadingState label="Loading employee…" />;
   if (error || !payload)
     return <ErrorState description={error ?? "Employee not found."} onRetry={refresh} />;
 
@@ -83,7 +87,7 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" aria-busy={loading}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-foreground text-2xl font-semibold tracking-tight">
