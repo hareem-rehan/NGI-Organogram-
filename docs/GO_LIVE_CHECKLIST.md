@@ -1,37 +1,41 @@
 # Go-Live Checklist — Dynamic Organogram Manager
 
-Status as of Phase 14 (planning-and-staging-only pass). Checked = verified with real evidence this session; unchecked = genuinely not done, with the reason stated. Per this project's own rule, nothing here is checked on the strength of a plan alone.
+Status as of **2026-11-11** (refreshed with D68; the Phase 14 version described a project with no staging). Checked = verified with real evidence; unchecked = not done yet, with who or what it is waiting on. Nothing is checked on the strength of a plan alone. Steps are in `docs/DEPLOYMENT_RUNBOOK.md`.
 
-- [x] **Phase 13 (as remediated in Phase 13.1) reported READY.** With one disclosed E2E environmental caveat — see `docs/phase-reports/PHASE_13_1_PERFORMANCE_REMEDIATION.md`.
-- [x] **Release commit identified and approved.** `a9357ab` — see `docs/phase-reports/PHASE_14_DEPLOYMENT_AND_GO_LIVE.md`.
-- [ ] **Staging deployment successful.** No real staging environment exists (`docs/DEPLOYMENT_DECISIONS.md`: domains = local only, for now). A local production-mode (`next start`) verification was performed instead and documented honestly as a substitute, not a real staging deployment.
-- [ ] **Staging smoke tests passed (the full 25-item suite).** Not run against a real staging environment for the reason above. A partial local production-mode check (headers, health endpoint, auth-host protection, dashboard, organogram, mobile layout) passed — see the Phase 14 report's verification table. Full CSV import/export/audit-log/user-provisioning/keyboard-accessibility items were not re-walked this phase (already covered extensively at the integration/E2E level in Phase 13.1, against `next dev`, not this production build).
-- [ ] **UAT signed off, or explicit accepted-risk recorded.** No UAT sign-off owner is assigned (explicitly "NAN" per the user) and no staging environment exists for HR testers to use.
-- [x] **Critical defects = 0.** Confirmed via `docs/DEFECT_REGISTER.md` — no Critical-severity row exists.
-- [x] **High defects = 0, or formally accepted.** DEF-004 (dependency audit, High per `npm audit`'s own label) is formally accepted with documented rationale (dev-tooling-only exposure). No other High defect is open.
-- [x] **Security scan reviewed.** `docs/SECURITY_REVIEW.md`, corrected this phase (Cache-Control finding).
-- [x] **Dependency scan reviewed.** DEF-004, accepted.
-- [x] **Accessibility blockers resolved.** DEF-005 fixed in Phase 13; DEF-007 (Low, focus-restoration) accepted as a known, non-blocking issue.
-- [x] **Performance reviewed.** `docs/PERFORMANCE_REPORT.md` + Phase 13.1 addendum — DEF-009 fixed, DEF-010 accepted conditionally.
-- [ ] **Database backup verified.** No managed production/staging database exists to back up. Local dev Postgres backup/restore was rehearsed in Phase 13 (`docs/DATABASE_RELEASE_RUNBOOK.md`) against a disposable database — not the same thing as verifying a real managed-provider backup, which doesn't exist yet.
-- [ ] **Restore procedure confirmed.** Same limitation as above.
-- [x] **Migration rehearsal passed.** `docs/DATABASE_RELEASE_RUNBOOK.md` (Phase 13) — all 5 migrations applied cleanly from scratch against a disposable database.
-- [ ] **Production infrastructure ready.** No Vercel project, managed database, or any other real production resource is provisioned.
-- [ ] **Production secrets configured.** None exist — no real OAuth client secret, no real `AUTH_SECRET` for a production instance.
-- [ ] **SSO configured.** No Google Workspace OAuth application is registered.
-- [ ] **DNS/TLS ready.** No domain is provisioned.
-- [x] **Storage private.** Not applicable by architecture — imports/exports live in PostgreSQL, not a separate bucket; there is no storage surface to secure or misconfigure. See `docs/ENVIRONMENT_MATRIX.md`.
-- [x] **Workers ready / cleanup schedules ready.** Not applicable by architecture — no background-worker/scheduler exists; cleanup is lazy (on next read). See `docs/ENVIRONMENT_MATRIX.md`.
-- [ ] **Monitoring active.** No monitoring/alerting provider decision has been made.
-- [ ] **Alerts tested.** Same — none exist yet.
-- [ ] **Rollback artifact available.** No deployment has ever run, so there is no prior deployed artifact to roll back to.
-- [ ] **Support team informed.** No support/hypercare ownership is assigned (see `docs/HYPERCARE_PLAN.md`, marked TBD throughout).
-- [ ] **Deployment window confirmed.** Not scheduled — no target date has been discussed.
-- [ ] **Deployment approver confirmed.** Explicitly "NAN" per the user.
-- [ ] **Business owner approval recorded.** Not sought this phase, consistent with the "planning and staging only" instruction.
+## Ready in the code (verified 2026-11-11)
+
+- [x] **Production build runs.** `npm run build` + `next start` with production-mode settings: the app boots, `/api/health` and `/api/health/ready` are 200, all 16 migrations recognised.
+- [x] **Sign-in bypass is off by default in production.** `/dev-sign-in` returns 404 unless `AUTH_ALLOW_DEV_SIGN_IN=true`; the preflight and the deploy pipeline both fail if it is reachable.
+- [x] **Security headers on every page.** CSP with per-request nonce, HSTS, X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy (checked on staging and on the local production build). `form-action` also allows the sign-in provider's origin (D68).
+- [x] **Production preflight exists** (`npm run preflight:production`, D68): checks settings, database and live site; prints names, never values.
+- [x] **Production settings template** (`.env.production.example`).
+- [x] **Checks pipeline** on Bitbucket (`bitbucket-pipelines.yml`) — waiting on Pipelines being enabled (below).
+- [x] **Critical/High defects = 0** (`docs/DEFECT_REGISTER.md`; DEF-004 accepted, dev tooling only).
+- [x] **Zero-duration assignment rule consistent** — a same-day start/end is legal in both the app and the integrity check.
+
+## Staging
+
+- [x] **Staging deployed and in use**: https://dotzero-organogram.vercel.app (Vercel + Supabase, 16/16 migrations).
+- [ ] **Real SSO tested on staging.** Waiting on the Google OAuth client (IT). Staging currently uses the sign-in bypass — anyone with the URL is ADMIN — so switch it off as soon as SSO works.
+- [ ] **Staging database password rotated** (exposed 2026-10-20). Owner: you (Supabase + Vercel settings).
+- [ ] **UAT sign-off** by HR on staging. Owner: to be named.
+
+## Production — waiting on accounts and decisions (see the IT request)
+
+- [ ] **Production Supabase project** (separate from staging), region near Sydney to match `vercel.json` (`syd1`).
+- [ ] **Google Workspace OAuth client** with the production redirect URI `https://<domain>/api/auth/callback/company-sso`.
+- [ ] **Production domain** decided and DNS pointed at Vercel.
+- [ ] **Production settings entered in Vercel** (from `.env.production.example`; nobody pastes secrets into chat).
+- [ ] **Migrations applied** to the production database (`prisma migrate deploy`, session pooler).
+- [ ] **Preflight READY** with the production settings, then again with `--url` after deploying.
+- [ ] **First admin provisioned** after real sign-in works (`npm run auth:provision`).
+- [ ] **Backup taken and restored once** (an unrestored backup is an assumption).
+- [ ] **Bitbucket Pipelines enabled** for `nextgeni/replit1` (needs a repo admin).
+- [ ] **Vercel connected to the Bitbucket repo** (Vercel → Settings → Git); until then deploys come from the old GitHub copy.
+- [ ] **Monitoring/alerting** — at least an uptime check on `/api/health/ready`. Provider undecided.
+- [ ] **Real data loaded** (CSV import or copy from staging) — only after SSO works.
+- [ ] **Owners named**: deployment approver, rollback/restore owner, UAT sign-off.
 
 ## Go/No-Go
 
-**No-Go for production**, and correctly so — this phase was not authorized to attempt production deployment, and the majority of the items above genuinely cannot be checked until real infrastructure exists. This is not a failed release-candidate; it's an accurate snapshot of "how far a planning-only pass can honestly get."
-
-When ready to actually pursue go-live, the practical next real-world actions (not code) are: create the Vercel project and connect it to this repository; register the Google Workspace OAuth application; choose and provision a managed PostgreSQL instance; decide a real domain (or confirm local-only stays the plan for longer); and name a deployment approver, UAT sign-off owner, and rollback decision owner. Once those exist, re-run this checklist — most of the currently-unchecked items become straightforward verification passes against real, now-existing infrastructure, not new design work.
+**No-Go until every production item above is checked.** The code side is ready; what remains is accounts, credentials and decisions that only the company can provide. When they arrive, the order is the "Production, in short" line at the top of `docs/DEPLOYMENT_RUNBOOK.md`.

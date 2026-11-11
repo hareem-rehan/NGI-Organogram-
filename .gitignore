@@ -54,3 +54,7 @@ npm-debug.log*
 # Local staging deploy secrets (never commit)
 .env.staging
 .env*
+
+# Templates (no real values) are tracked on purpose.
+!.env.example
+!.env.production.example

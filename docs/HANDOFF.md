@@ -38,6 +38,9 @@ Project rules live in `CLAUDE.md`. Every product decision is in
   `DIRECT_DATABASE_URL`).
 - Git over HTTPS uses an Atlassian API token with the fixed username
   `x-bitbucket-api-token-auth` (scopes read/write:repository:bitbucket).
+- **Going live:** `docs/GO_LIVE_CHECKLIST.md` (current status) and
+  `docs/DEPLOYMENT_RUNBOOK.md` ("Production, in short"). Before and after
+  the first production deploy, run `npm run preflight:production` (D68).
 - Until Vercel is reconnected to Bitbucket (Vercel -> Settings -> Git),
   staging still deploys from GitHub: push to `github` too
   (`git push github main`) for a change to go live.

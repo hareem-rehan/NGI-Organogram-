@@ -4,19 +4,21 @@ Step-by-step instructions to take DotZero Organogram from "runs on a laptop" to 
 
 **Read this first:** sections 1–4 are account-level setup that only a person with your Google and Vercel identities can do. They cannot be automated or delegated — they involve creating accounts and entering credentials. Everything from section 5 onward is ordinary engineering work.
 
-Nothing in this runbook has been executed yet. Every command is written to be run by you, in your own terminal or browser.
+**Status (2026-11-11):** staging is live (https://dotzero-organogram.vercel.app, Vercel + Supabase, sections 1, 2 and 4a done for staging; it still uses the sign-in bypass instead of SSO). The repository moved to **Bitbucket** (`nextgeni/replit1`, see `docs/HANDOFF.md`), so the pipeline is `bitbucket-pipelines.yml`; the GitHub steps below still describe the old GitHub copy. Production has not been set up.
+
+**Production, in short:** a new Supabase project (§2) → Google OAuth client (§3) → production settings in Vercel from `.env.production.example` (§4a) → `prisma migrate deploy` (§2c) → **preflight** (§6) → deploy (§7) → preflight again with `--url`. Every command is written to be run by you, in your own terminal or browser.
 
 ---
 
 ## Before you start
 
-| Fact            | Value                                                                                                           |
-| --------------- | --------------------------------------------------------------------------------------------------------------- |
-| Hosting         | Vercel (`docs/DEPLOYMENT_DECISIONS.md` #1)                                                                      |
-| SSO provider    | Google Workspace (#12)                                                                                          |
-| Auth model      | **SSO only** — there is no password login anywhere, by design (`docs/adr/0010-authjs-provider-neutral-oidc.md`) |
-| Database        | PostgreSQL, 6 migrations, **Supabase** (#5) — Postgres only, not its Auth/Storage                               |
-| Deploy pipeline | `.github/workflows/deploy.yml` — functional, but fails until sections 1–4 are done                              |
+| Fact            | Value                                                                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Hosting         | Vercel (`docs/DEPLOYMENT_DECISIONS.md` #1)                                                                                                 |
+| SSO provider    | Google Workspace (#12)                                                                                                                     |
+| Auth model      | **SSO only** — there is no password login anywhere, by design (`docs/adr/0010-authjs-provider-neutral-oidc.md`)                            |
+| Database        | PostgreSQL, 16 migrations, **Supabase** (#5) — Postgres only, not its Auth/Storage                                                         |
+| Deploy pipeline | `bitbucket-pipelines.yml` (custom pipelines `deploy-staging` / `deploy-production`); the old GitHub copy is `.github/workflows/deploy.yml` |
 
 ⚠️ **The single most important consequence of SSO-only auth:** until section 3 is finished, a deployed site rejects _every_ sign-in, including yours. There is no fallback login. Do not deploy expecting to "sort auth out afterwards".
 
@@ -210,7 +212,13 @@ In **Vercel → Project → Settings → Environment Variables**, add these for 
 
 `NODE_ENV` is set to `production` by Vercel automatically. Do not override it — the dev sign-in backdoor is gated on exactly that value.
 
-### 4b. GitHub Environments
+**For production, start from `.env.production.example`**: it lists every variable with where its value comes from, and the two that must never be set (`AUTH_ALLOW_DEV_SIGN_IN`, `NODE_ENV`).
+
+### 4b. Pipeline deployment variables
+
+**Bitbucket (current):** Repository settings → Deployments → **Staging** / **Production** → add the five variables below as **Secured**. The production step waits for a manual click (`trigger: manual`); restrict who may click it under Deployments → Production → deployment permissions (Premium plans).
+
+**GitHub (old copy):** the same, as GitHub Environments:
 
 In **Settings → Environments**, create `staging` and `production`. Add to each:
 
@@ -307,12 +315,30 @@ Do not skip these. They are the difference between a deployment and an outage yo
 - [ ] Configure monitoring/alerting (`docs/MONITORING_AND_ALERTING_RUNBOOK.md`) — provider still undecided (#18)
 - [ ] Decide the production domain and point DNS at Vercel
 - [ ] Plan the real data migration — CSV import is the only path in (`docs/DECISIONS.md` P6)
+- [ ] Prove real SSO on staging (§5 "Then verify SSO by hand"), then switch staging's sign-in bypass off
+- [ ] Rotate the staging database password exposed on 2026-10-20 (`docs/HANDOFF.md` "Still to do")
+- [ ] **Run the production preflight** (D68) with the production settings, before the first deploy. It is read-only and prints variable names only, never values:
+
+  ```bash
+  cp .env.production.example .env.production.local   # git-ignored; fill in the real values
+  npx dotenv -e .env.production.local -- npm run preflight:production
+  ```
+
+  It checks every setting in this runbook (sign-in bypass absent, no placeholder secrets, the right Supabase pooler strings, `hd` for Google), that the database is reachable with all migrations applied, and that an admin exists. Fix every ✗ before deploying. Delete `.env.production.local` afterwards.
 
 ---
 
 ## 7. Production deployment
 
-**GitHub → Actions → Deploy → Run workflow → target: `production`, `backup_verified: yes`.**
+**Bitbucket → Pipelines → Run pipeline → branch `main` → `custom: deploy-production`, `BACKUP_VERIFIED` = `yes`**, then click **Deploy** on the paused production step. (Old GitHub copy: Actions → Deploy → Run workflow → `production`, `backup_verified: yes`.) Or, with Vercel connected to the repository, merging to `main` deploys; then run the migrations (§2c) yourself first.
+
+**Right after deploying**, check the live site (no settings needed for this part):
+
+```bash
+npm run preflight:production -- --skip-env --url https://<production-domain>
+```
+
+It must report READY: health and readiness 200, `/dev-sign-in` 404, security headers present.
 
 The run pauses for the required reviewer to approve. It refuses to proceed unless `backup_verified` is exactly `yes` — a deliberate human checkpoint, because no automated check can prove a backup is _restorable_.
 

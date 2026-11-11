@@ -28,9 +28,29 @@ import type { NextRequest } from "next/server";
  * `script-src` — where actual code execution risk lives — has no such
  * exception.
  */
+/**
+ * The sign-in provider's origin (e.g. https://accounts.google.com), allowed
+ * as a `form-action` target (D68): without JavaScript the sign-in form is a
+ * plain POST that redirects there, and Chrome applies `form-action` to that
+ * redirect. With JavaScript (the normal case) it's a navigation and the
+ * rule doesn't apply. Null when unset or not an https URL.
+ */
+export function oidcIssuerOrigin(issuer: string | undefined): string | null {
+  if (!issuer) return null;
+  try {
+    const url = new URL(issuer);
+    return url.protocol === "https:" ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isProduction = process.env.NODE_ENV === "production";
+  const formAction = ["'self'", oidcIssuerOrigin(process.env.AUTH_OIDC_ISSUER)]
+    .filter(Boolean)
+    .join(" ");
 
   const cspHeader = `
     default-src 'self';
@@ -41,7 +61,7 @@ export function proxy(request: NextRequest) {
     connect-src 'self';
     object-src 'none';
     base-uri 'self';
-    form-action 'self';
+    form-action ${formAction};
     frame-ancestors 'none';
     ${isProduction ? "upgrade-insecure-requests;" : ""}
   `
