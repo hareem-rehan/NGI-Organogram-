@@ -3,13 +3,17 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Employee, Position } from "@prisma/client";
 
-const { getEmployeeDetailActionMock, pushMock } = vi.hoisted(() => ({
-  getEmployeeDetailActionMock: vi.fn(),
-  pushMock: vi.fn(),
-}));
+const { getEmployeeDetailActionMock, changeAssignmentStartDateActionMock, pushMock } = vi.hoisted(
+  () => ({
+    getEmployeeDetailActionMock: vi.fn(),
+    changeAssignmentStartDateActionMock: vi.fn(),
+    pushMock: vi.fn(),
+  })
+);
 
 vi.mock("@/app/(app)/employees/actions", () => ({
   getEmployeeDetailAction: getEmployeeDetailActionMock,
+  changeAssignmentStartDateAction: changeAssignmentStartDateActionMock,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -244,6 +248,42 @@ describe("EmployeeDetailsView", () => {
     render(<EmployeeDetailsView employeeId={EMPLOYEE_ID} canManage={true} />);
     await screen.findByText("Historical");
     expect(screen.queryByRole("button", { name: /^remove /i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the page on screen while it reloads after a save (no full-page spinner)", async () => {
+    const position = makePosition();
+    getEmployeeDetailActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        employee: makeEmployee(),
+        currentAssignment: {
+          assignmentId: "44444444-4444-4444-8444-444444444444",
+          startDate: new Date("2026-02-01"),
+          position,
+          jobGrade: null,
+          jobFamilyName: null,
+          department: null,
+        },
+        managerPositionTitle: null,
+        history: [],
+      },
+    });
+    changeAssignmentStartDateActionMock.mockResolvedValue({ ok: true, data: {} });
+    // The reload after saving never finishes, to look at the page meanwhile.
+    getEmployeeDetailActionMock.mockReturnValueOnce(new Promise(() => {}));
+    const user = userEvent.setup();
+
+    render(<EmployeeDetailsView employeeId={EMPLOYEE_ID} canManage={true} />);
+    await user.click(await screen.findByRole("button", { name: /edit start date/i }));
+    const input = screen.getByLabelText(/^assignment start date/i);
+    await user.clear(input);
+    await user.type(input, "2026-01-15");
+    await user.click(screen.getByRole("button", { name: /save start date/i }));
+
+    await vi.waitFor(() => expect(getEmployeeDetailActionMock).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/loading employee/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Amara Chen")).toBeInTheDocument();
+    expect(screen.getByText("Data Analyst")).toBeInTheDocument();
   });
 
   it("navigates back to the list on Back to list", async () => {
