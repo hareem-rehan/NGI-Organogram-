@@ -170,6 +170,7 @@ Open an employee's record to see their current position (if any) and take action
 
 - **Assign to Position** (only shown when the employee currently has no position): search for and pick an eligible position, set a start date, confirm.
 - **Transfer** (only shown when currently assigned): pick the destination position and a transfer date. The system ends the old assignment and starts the new one at the same moment — the old position becomes vacant as of that instant, never leaving the employee unassigned in between.
+- **Edit Start Date** (only shown when currently assigned): corrects the date the current assignment started, for example when it was entered as the day it was keyed in rather than the day the person actually started. Only the date changes; the position and reporting line stay the same. A date earlier than the end of the person's previous position is refused (they can't hold two positions at once), and a future date shows them as unassigned until then.
 - **End Assignment**: ends the employee's current assignment as of the date you choose, without assigning them anywhere new — their position reverts to Vacant.
 - **Terminate Employee**: the guided way to record someone leaving the organization entirely. You must type the employee's own code to confirm (a deliberate extra step, since this is hard to casually undo). Terminating ends any active assignment automatically and sets the employee's status to Terminated — their former position stays exactly where it is in the chart, now Vacant.
 

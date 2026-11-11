@@ -20,6 +20,7 @@ const {
     createAssignment: vi.fn(),
     transferEmployee: vi.fn(),
     endAssignment: vi.fn(),
+    changeAssignmentStartDate: vi.fn(),
   },
   employeeRepoMocks: {
     findEmployeeById: vi.fn(),
@@ -52,6 +53,7 @@ import {
   checkEmployeeCodeAction,
   createEmployeeAction,
   endAssignmentAction,
+  changeAssignmentStartDateAction,
   getEmployeeDetailAction,
   listDepartmentOptionsAction,
   listEligiblePositionsAction,
@@ -131,6 +133,14 @@ describe("employee actions — server-side authorization", () => {
       () => endAssignmentAction({ assignmentId: VALID_UUID, endDate: "2024-01-01T00:00:00Z" }),
     ],
     [
+      "changeAssignmentStartDateAction",
+      () =>
+        changeAssignmentStartDateAction({
+          assignmentId: VALID_UUID,
+          startDate: "2024-01-01T00:00:00Z",
+        }),
+    ],
+    [
       "listEligiblePositionsAction",
       () => listEligiblePositionsAction({ effectiveDate: "2024-01-01T00:00:00Z" }),
     ],
@@ -143,6 +153,7 @@ describe("employee actions — server-side authorization", () => {
     assignmentServiceMocks.createAssignment.mockResolvedValue({});
     assignmentServiceMocks.transferEmployee.mockResolvedValue({});
     assignmentServiceMocks.endAssignment.mockResolvedValue({});
+    assignmentServiceMocks.changeAssignmentStartDate.mockResolvedValue({});
     positionRepoMocks.searchEligiblePositions.mockResolvedValue([]);
 
     await invoke();

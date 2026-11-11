@@ -131,6 +131,13 @@ export const endAssignmentSchema = z
   })
   .strict();
 
+export const changeAssignmentStartDateSchema = z
+  .object({
+    assignmentId: z.string().uuid(),
+    startDate: z.coerce.date(),
+  })
+  .strict();
+
 export const listEmployeesQuerySchema = z
   .object({
     search: searchQuerySchema,
