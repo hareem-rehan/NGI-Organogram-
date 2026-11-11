@@ -195,6 +195,57 @@ describe("EmployeeDetailsView", () => {
     expect(screen.getByText("Historical")).toBeInTheDocument();
   });
 
+  it("offers Remove on past and future history rows, never on the current one (D70)", async () => {
+    const position = makePosition();
+    const row = (id: string, startDate: string, endDate: string | null) => ({
+      id,
+      companyId: "company-1",
+      employeeId: EMPLOYEE_ID,
+      positionId: position.id,
+      isPrimary: true,
+      startDate: new Date(startDate),
+      endDate: endDate ? new Date(endDate) : null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      position,
+    });
+    const detail = (employmentStatus: Employee["employmentStatus"]) => ({
+      ok: true,
+      data: {
+        employee: makeEmployee({ employmentStatus }),
+        currentAssignment: null,
+        managerPositionTitle: null,
+        history: [
+          row("past", "2024-01-01", "2024-06-01"),
+          row("current", "2024-06-01", null),
+          row("future", "2999-01-01", null),
+        ],
+      },
+    });
+
+    getEmployeeDetailActionMock.mockResolvedValue(detail("ACTIVE"));
+    const { unmount } = render(<EmployeeDetailsView employeeId={EMPLOYEE_ID} canManage={true} />);
+    await screen.findByText("Historical");
+    const removeButtons = screen.getAllByRole("button", { name: /^remove /i });
+    expect(removeButtons.map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Remove Data Analyst, 2024-01-01 to 2024-06-01, from the history",
+      "Remove Data Analyst, 2999-01-01 to open, from the history",
+    ]);
+    unmount();
+
+    // Not for a viewer, nor on a terminated employee's record.
+    getEmployeeDetailActionMock.mockResolvedValue(detail("ACTIVE"));
+    const viewer = render(<EmployeeDetailsView employeeId={EMPLOYEE_ID} canManage={false} />);
+    await screen.findByText("Historical");
+    expect(screen.queryByRole("button", { name: /^remove /i })).not.toBeInTheDocument();
+    viewer.unmount();
+
+    getEmployeeDetailActionMock.mockResolvedValue(detail("TERMINATED"));
+    render(<EmployeeDetailsView employeeId={EMPLOYEE_ID} canManage={true} />);
+    await screen.findByText("Historical");
+    expect(screen.queryByRole("button", { name: /^remove /i })).not.toBeInTheDocument();
+  });
+
   it("navigates back to the list on Back to list", async () => {
     getEmployeeDetailActionMock.mockResolvedValue({
       ok: true,

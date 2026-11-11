@@ -14,6 +14,8 @@ import { AssignPositionDialog } from "@/app/(app)/employees/_components/assign-p
 import { TransferEmployeeDialog } from "@/app/(app)/employees/_components/transfer-employee-dialog";
 import { EndAssignmentDialog } from "@/app/(app)/employees/_components/end-assignment-dialog";
 import { EditAssignmentStartDialog } from "@/app/(app)/employees/_components/edit-assignment-start-dialog";
+import { RemoveAssignmentDialog } from "@/app/(app)/employees/_components/remove-assignment-dialog";
+import type { AssignmentHistoryRow } from "@/lib/repositories/assignment.repository";
 import { TerminateEmployeeDialog } from "@/app/(app)/employees/_components/terminate-employee-dialog";
 
 interface EmployeeDetailsViewProps {
@@ -42,6 +44,7 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
   const [transferOpen, setTransferOpen] = useState(false);
   const [endOpen, setEndOpen] = useState(false);
   const [editStartOpen, setEditStartOpen] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<AssignmentHistoryRow | null>(null);
   const [terminateOpen, setTerminateOpen] = useState(false);
 
   const refresh = useCallback(() => {
@@ -71,6 +74,8 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
   const hasFutureAssignment = history.some(
     (row) => row.startDate > new Date() && row.endDate === null && !currentAssignment
   );
+  // Mistaken history rows can be removed (D70), never the current one.
+  const canEditHistory = canManage && employee.employmentStatus !== "TERMINATED";
   const displayStatus = assignmentDisplayStatus(
     employee.employmentStatus,
     Boolean(currentAssignment),
@@ -240,6 +245,11 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
                   <th scope="col" className="px-4 py-2 text-left font-medium">
                     Status
                   </th>
+                  {canEditHistory ? (
+                    <th scope="col" className="px-4 py-2 text-left font-medium">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody className="divide-border divide-y">
@@ -264,6 +274,21 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
                           {rowStatus}
                         </Badge>
                       </td>
+                      {canEditHistory ? (
+                        <td className="px-4 py-2 text-right">
+                          {rowStatus !== "Current" ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              aria-label={`Remove ${row.position.title}, ${formatDate(row.startDate)} to ${row.endDate ? formatDate(row.endDate) : "open"}, from the history`}
+                              onClick={() => setRemoveTarget(row)}
+                            >
+                              Remove
+                            </Button>
+                          ) : null}
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -314,6 +339,17 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
               onAssigned={refresh}
             />
           )}
+          {removeTarget ? (
+            <RemoveAssignmentDialog
+              open
+              onOpenChange={(open) => {
+                if (!open) setRemoveTarget(null);
+              }}
+              employee={employee}
+              assignment={removeTarget}
+              onRemoved={refresh}
+            />
+          ) : null}
           <TerminateEmployeeDialog
             open={terminateOpen}
             onOpenChange={setTerminateOpen}

@@ -17,6 +17,7 @@ import {
   createAssignment,
   changeAssignmentStartDate,
   endAssignment,
+  removeAssignment,
   transferEmployee,
 } from "@/lib/services/assignment.service";
 import {
@@ -45,6 +46,7 @@ import {
   eligiblePositionSearchSchema,
   changeAssignmentStartDateSchema,
   endAssignmentSchema,
+  removeAssignmentSchema,
   listEmployeesQuerySchema,
   terminateEmployeeSchema,
   transferEmployeeSchema,
@@ -242,6 +244,16 @@ export async function changeAssignmentStartDateAction(
     const user = await requirePermission("employees:manage");
     const { assignmentId, startDate } = changeAssignmentStartDateSchema.parse(input);
     return changeAssignmentStartDate(assignmentId, user.companyId, startDate, toAuditActor(user));
+  });
+}
+
+export async function removeAssignmentAction(
+  input: unknown
+): Promise<ActionResult<PositionAssignment>> {
+  return runAction(async () => {
+    const user = await requirePermission("employees:manage");
+    const { assignmentId } = removeAssignmentSchema.parse(input);
+    return removeAssignment(assignmentId, user.companyId, toAuditActor(user));
   });
 }
 

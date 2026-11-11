@@ -4,7 +4,11 @@ import { Prisma as PrismaNamespace } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
 import { withTransaction } from "@/lib/db/transaction";
-import { dateRangesOverlap, validateAssignmentDateRange } from "@/lib/domain/assignment";
+import {
+  dateRangesOverlap,
+  rangeCoversDate,
+  validateAssignmentDateRange,
+} from "@/lib/domain/assignment";
 import {
   ConflictError,
   CrossCompanyError,
@@ -19,6 +23,29 @@ import type { DbClient } from "@/lib/repositories/types";
 import { recordAuditEvent, type AuditActor } from "@/lib/services/audit.service";
 
 const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
+
+const day = (date: Date) => date.toISOString().slice(0, 10);
+const nameOf = (employee: Pick<Employee, "firstName" | "lastName">) =>
+  `${employee.firstName} ${employee.lastName}`;
+
+/**
+ * The refusal shown when a new assignment would overlap an existing one
+ * for the same employee and position (client report, 2026-11-11, D70): who,
+ * which position and which dates, and what to do instead — never raw ids.
+ */
+function overlapMessage(
+  employee: Pick<Employee, "firstName" | "lastName">,
+  positionTitle: string,
+  existing: { startDate: Date; endDate: Date | null }
+): string {
+  const held = existing.endDate
+    ? `already held ${positionTitle} from ${day(existing.startDate)} to ${day(existing.endDate)}`
+    : `already holds ${positionTitle} since ${day(existing.startDate)}`;
+  const next = existing.endDate
+    ? ` A new assignment there can't start before ${day(existing.endDate)}.`
+    : "";
+  return `${nameOf(employee)} ${held}, which overlaps these dates.${next} To change when an assignment started, use Edit Start Date; to correct a history row entered by mistake, remove it from the assignment history.`;
+}
 
 export interface CreateAssignmentInput {
   companyId: string;
@@ -81,9 +108,7 @@ export async function createAssignment(
         dateRangesOverlap({ startDate: existing.startDate, endDate: existing.endDate }, dateRange)
     );
     if (overlapping) {
-      throw new ConflictError(
-        `Employee ${input.employeeId} is already assigned to position ${input.positionId} (${overlapping.id}) for an overlapping date range.`
-      );
+      throw new ConflictError(overlapMessage(employee, position.title, overlapping));
     }
 
     let created: PositionAssignment;
@@ -199,17 +224,16 @@ export async function changeAssignmentStartDate(
         isPrimary: true,
         id: { not: assignmentId },
       },
+      include: { position: { select: { title: true } } },
     });
     const overlapping = others.find((other) =>
       dateRangesOverlap({ startDate: other.startDate, endDate: other.endDate }, dateRange)
     );
     if (overlapping) {
       throw new ConflictError(
-        `That start date overlaps the employee's other assignment (${overlapping.startDate
-          .toISOString()
-          .slice(0, 10)} to ${
-          overlapping.endDate ? overlapping.endDate.toISOString().slice(0, 10) : "now"
-        }). Choose a date on or after that assignment ends.`
+        `That start date overlaps the employee's assignment to ${overlapping.position.title} (${day(
+          overlapping.startDate
+        )} to ${overlapping.endDate ? day(overlapping.endDate) : "now"}). Choose a date on or after that assignment ends, or remove that row from the assignment history if it was entered by mistake.`
       );
     }
 
@@ -232,6 +256,54 @@ export async function changeAssignmentStartDate(
       tx
     );
     return updated;
+  });
+}
+
+/**
+ * Removes an assignment that was entered by mistake (client request,
+ * 2026-11-11, D70), e.g. a duplicate left behind while correcting a start
+ * date. Deletes only that one employee-position link: the position, its
+ * place in the hierarchy and the employee record are untouched (CLAUDE.md
+ * hierarchy invariant 11). The assignment the employee holds TODAY can't be
+ * removed this way — End Assignment is the way to stop a real one. Audited
+ * as DELETED with the full row, in the same transaction.
+ */
+export async function removeAssignment(
+  assignmentId: string,
+  companyId: string,
+  actor: AuditActor = "SYSTEM",
+  db: DbClient = prisma
+): Promise<PositionAssignment> {
+  return withTransaction(db, async (tx) => {
+    const assignment = await tx.positionAssignment.findFirst({
+      where: { id: assignmentId, companyId },
+    });
+    if (!assignment) throw new NotFoundError("PositionAssignment", assignmentId);
+
+    // Serializes with any other assignment change for this employee.
+    await tx.$queryRaw`SELECT id FROM "employees" WHERE id = ${assignment.employeeId}::uuid FOR UPDATE`;
+
+    if (rangeCoversDate(assignment, new Date())) {
+      throw new UnsafeMutationError(
+        "This is the employee's current assignment and can't be removed. Use End Assignment to end it, or Edit Start Date to correct when it started."
+      );
+    }
+
+    await tx.positionAssignment.delete({ where: { id: assignmentId } });
+
+    await recordAuditEvent(
+      {
+        companyId,
+        actor,
+        action: "DELETED",
+        category: "ASSIGNMENT",
+        entityType: "PositionAssignment",
+        entityId: assignment.id,
+        before: assignment,
+      },
+      tx
+    );
+    return assignment;
   });
 }
 
@@ -354,7 +426,7 @@ export async function transferEmployee(
 function assertEmployeeEligibleForAssignment(employee: Employee): void {
   if (employee.employmentStatus !== "ACTIVE") {
     throw new UnsafeMutationError(
-      `Employee ${employee.id} has status ${employee.employmentStatus} and cannot receive a new assignment.`
+      `${nameOf(employee)} is ${employee.employmentStatus.toLowerCase()} and can't be given a new position.`
     );
   }
 }
@@ -362,9 +434,7 @@ function assertEmployeeEligibleForAssignment(employee: Employee): void {
 /** An INACTIVE (archived) position can never receive a new assignment. PLANNED positions can — a future-dated hire against a not-yet-live position is a legitimate HR planning use case (docs/DECISIONS.md P3/P7-style safe default). */
 function assertPositionAcceptsAssignment(position: Position): void {
   if (position.status === "INACTIVE") {
-    throw new UnsafeMutationError(
-      `Position ${position.id} is inactive and cannot receive a new assignment.`
-    );
+    throw new UnsafeMutationError(`${position.title} is inactive and can't take new assignments.`);
   }
 }
 

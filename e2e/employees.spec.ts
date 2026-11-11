@@ -228,7 +228,8 @@ test.describe("Employee management and position assignments (Phase 6)", () => {
 
     await expect(transferDialog).toBeHidden();
     await expect(page.getByText(positionBTitle).first()).toBeVisible();
-    await expect(page.getByRole("cell", { name: new RegExp(positionATitle) })).toBeVisible();
+    // `^`: the history row's Remove button (D70) also names the position.
+    await expect(page.getByRole("cell", { name: new RegExp(`^${positionATitle}`) })).toBeVisible();
     await expect(page.getByRole("cell", { name: "Historical" })).toBeVisible();
   });
 
