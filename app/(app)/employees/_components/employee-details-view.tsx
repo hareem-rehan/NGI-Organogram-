@@ -13,6 +13,7 @@ import { EmployeeFormDialog } from "@/app/(app)/employees/_components/employee-f
 import { AssignPositionDialog } from "@/app/(app)/employees/_components/assign-position-dialog";
 import { TransferEmployeeDialog } from "@/app/(app)/employees/_components/transfer-employee-dialog";
 import { EndAssignmentDialog } from "@/app/(app)/employees/_components/end-assignment-dialog";
+import { EditAssignmentStartDialog } from "@/app/(app)/employees/_components/edit-assignment-start-dialog";
 import { TerminateEmployeeDialog } from "@/app/(app)/employees/_components/terminate-employee-dialog";
 
 interface EmployeeDetailsViewProps {
@@ -40,6 +41,7 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
   const [assignOpen, setAssignOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [endOpen, setEndOpen] = useState(false);
+  const [editStartOpen, setEditStartOpen] = useState(false);
   const [terminateOpen, setTerminateOpen] = useState(false);
 
   const refresh = useCallback(() => {
@@ -155,6 +157,14 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
                     onClick={() => setTransferOpen(true)}
                   >
                     Transfer
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditStartOpen(true)}
+                  >
+                    Edit Start Date
                   </Button>
                   <Button
                     type="button"
@@ -287,6 +297,13 @@ export function EmployeeDetailsView({ employeeId, canManage }: EmployeeDetailsVi
                 employee={employee}
                 currentAssignment={currentAssignment}
                 onEnded={refresh}
+              />
+              <EditAssignmentStartDialog
+                open={editStartOpen}
+                onOpenChange={setEditStartOpen}
+                employee={employee}
+                currentAssignment={currentAssignment}
+                onSaved={refresh}
               />
             </>
           ) : (

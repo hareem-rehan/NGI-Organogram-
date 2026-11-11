@@ -156,6 +156,85 @@ export async function endAssignment(
   });
 }
 
+/**
+ * Corrects an assignment's start date (client request, 2026-11-11, D69) —
+ * e.g. it was entered as the day it was keyed in rather than the day the
+ * person actually started. The new date is checked like a new assignment:
+ * it may not fall after the assignment's end date, and the new range may
+ * not overlap any of the employee's other primary assignments (moving a
+ * start earlier than the end of the previous position would put them in
+ * two positions at once). Changes the date only; the position and the
+ * reporting structure are untouched.
+ */
+export async function changeAssignmentStartDate(
+  assignmentId: string,
+  companyId: string,
+  startDate: Date,
+  actor: AuditActor = "SYSTEM",
+  db: DbClient = prisma
+): Promise<PositionAssignment> {
+  return withTransaction(db, async (tx) => {
+    const assignment = await tx.positionAssignment.findFirst({
+      where: { id: assignmentId, companyId },
+    });
+    if (!assignment) throw new NotFoundError("PositionAssignment", assignmentId);
+
+    const dateRange = { startDate, endDate: assignment.endDate };
+    if (assignment.endDate && startDate > assignment.endDate) {
+      throw new DomainValidationError(
+        `The start date can't be after this assignment's end date (${assignment.endDate
+          .toISOString()
+          .slice(0, 10)}).`
+      );
+    }
+    validateAssignmentDateRange(dateRange);
+
+    // Serializes with any other assignment change for this employee.
+    await tx.$queryRaw`SELECT id FROM "employees" WHERE id = ${assignment.employeeId}::uuid FOR UPDATE`;
+
+    const others = await tx.positionAssignment.findMany({
+      where: {
+        companyId,
+        employeeId: assignment.employeeId,
+        isPrimary: true,
+        id: { not: assignmentId },
+      },
+    });
+    const overlapping = others.find((other) =>
+      dateRangesOverlap({ startDate: other.startDate, endDate: other.endDate }, dateRange)
+    );
+    if (overlapping) {
+      throw new ConflictError(
+        `That start date overlaps the employee's other assignment (${overlapping.startDate
+          .toISOString()
+          .slice(0, 10)} to ${
+          overlapping.endDate ? overlapping.endDate.toISOString().slice(0, 10) : "now"
+        }). Choose a date on or after that assignment ends.`
+      );
+    }
+
+    const updated = await tx.positionAssignment.update({
+      where: { id: assignmentId },
+      data: { startDate },
+    });
+
+    await recordAuditEvent(
+      {
+        companyId,
+        actor,
+        action: "UPDATED",
+        category: "ASSIGNMENT",
+        entityType: "PositionAssignment",
+        entityId: updated.id,
+        before: assignment,
+        after: updated,
+      },
+      tx
+    );
+    return updated;
+  });
+}
+
 export interface TransferEmployeeInput {
   companyId: string;
   actor?: AuditActor;

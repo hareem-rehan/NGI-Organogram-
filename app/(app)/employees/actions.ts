@@ -15,6 +15,7 @@ import {
 } from "@/lib/services/employee.service";
 import {
   createAssignment,
+  changeAssignmentStartDate,
   endAssignment,
   transferEmployee,
 } from "@/lib/services/assignment.service";
@@ -42,6 +43,7 @@ import {
   checkEmployeeCodeSchema,
   createEmployeeWithAssignmentSchema,
   eligiblePositionSearchSchema,
+  changeAssignmentStartDateSchema,
   endAssignmentSchema,
   listEmployeesQuerySchema,
   terminateEmployeeSchema,
@@ -230,6 +232,16 @@ export async function endAssignmentAction(
     const user = await requirePermission("employees:manage");
     const { assignmentId, endDate } = endAssignmentSchema.parse(input);
     return endAssignment(assignmentId, user.companyId, endDate, toAuditActor(user));
+  });
+}
+
+export async function changeAssignmentStartDateAction(
+  input: unknown
+): Promise<ActionResult<PositionAssignment>> {
+  return runAction(async () => {
+    const user = await requirePermission("employees:manage");
+    const { assignmentId, startDate } = changeAssignmentStartDateSchema.parse(input);
+    return changeAssignmentStartDate(assignmentId, user.companyId, startDate, toAuditActor(user));
   });
 }
 
