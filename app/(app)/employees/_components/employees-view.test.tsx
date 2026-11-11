@@ -162,30 +162,44 @@ describe("EmployeesView", () => {
     });
     const user = userEvent.setup();
     render(<EmployeesView canManage={false} />);
-    await screen.findByText("Unassigned");
+
+    // Every sort change refetches, and while the fetch is in flight the
+    // table is unmounted and replaced by the loading state. So after each
+    // step, wait for the table to come back with the expected aria-sort
+    // before querying or clicking inside it. (Waiting only on the action
+    // mock was flaky under full-suite CPU load: the mock is called as
+    // loading starts, before the table re-renders. Also, "Unassigned"
+    // matches the filter <option>, so it doesn't signal that the table is
+    // ready.) The generous timeout absorbs slow scheduling when ~130 test
+    // files run in parallel.
+    const waitForCodeSort = (ariaSort: "none" | "ascending" | "descending") =>
+      waitFor(
+        () =>
+          expect(screen.getByRole("columnheader", { name: /code/i })).toHaveAttribute(
+            "aria-sort",
+            ariaSort
+          ),
+        { timeout: 5000 }
+      );
+
+    await waitForCodeSort("none");
     // Name ascending by default.
     expect(listEmployeesActionMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort: "name", direction: "asc" })
     );
 
     await user.click(screen.getByRole("button", { name: /^code/i }));
-    await waitFor(() =>
-      expect(listEmployeesActionMock).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "code", direction: "asc", page: 1 })
-      )
-    );
-    expect(screen.getByRole("columnheader", { name: /code/i })).toHaveAttribute(
-      "aria-sort",
-      "ascending"
+    await waitForCodeSort("ascending");
+    expect(listEmployeesActionMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "code", direction: "asc", page: 1 })
     );
 
     await user.click(screen.getByRole("button", { name: /^code/i }));
-    await waitFor(() =>
-      expect(listEmployeesActionMock).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "code", direction: "desc" })
-      )
+    await waitForCodeSort("descending");
+    expect(listEmployeesActionMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "code", direction: "desc" })
     );
-  });
+  }, 15000);
 
   it("shows the empty state when there are no employees", async () => {
     mockDefaults();
