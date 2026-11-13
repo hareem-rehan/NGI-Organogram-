@@ -8,6 +8,7 @@
  * verified Company SSO identity is allowed to become once they sign in.
  *
  * Usage:
+ *   npm run auth:provision -- create-company --code <CODE> --name <name> [--legal-name <name>] [--timezone <IANA, default UTC>]
  *   npm run auth:provision -- create-admin --email <email> --company <code>
  *   npm run auth:provision -- add --email <email> --role <ADMIN|HR_EDITOR|VIEWER> --company <code>
  *   npm run auth:provision -- set-role --email <email> --role <ADMIN|HR_EDITOR|VIEWER>
@@ -22,6 +23,10 @@ import { parseArgs } from "node:util";
 import { PrismaClient, type UserRole } from "@prisma/client";
 
 import { normalizeWorkEmail } from "../lib/domain/normalize";
+import { ZodError } from "zod";
+
+import { ConflictError } from "../lib/domain/errors";
+import { createCompany } from "../lib/services/company-setup.service";
 
 const VALID_ROLES: readonly UserRole[] = ["ADMIN", "HR_EDITOR", "VIEWER"];
 
@@ -57,6 +62,10 @@ async function main(): Promise<void> {
       email: { type: "string" },
       role: { type: "string" },
       company: { type: "string" },
+      code: { type: "string" },
+      name: { type: "string" },
+      "legal-name": { type: "string" },
+      timezone: { type: "string" },
       "yes-i-am-sure-this-is-production": { type: "boolean", default: false },
     },
     allowPositionals: false,
@@ -65,6 +74,24 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient();
   try {
     switch (command) {
+      // A fresh database has no company, and create-admin needs one (D71).
+      case "create-company": {
+        assertProductionSafe(values["yes-i-am-sure-this-is-production"]);
+        const company = await createCompany(
+          {
+            code: values.code,
+            name: values.name,
+            legalName: values["legal-name"] ?? null,
+            ...(values.timezone ? { timezone: values.timezone } : {}),
+          },
+          prisma
+        );
+        console.log(
+          `Created company: ${company.code} "${company.name}" (timezone=${company.timezone}). Next: create-admin --company ${company.code}`
+        );
+        break;
+      }
+
       case "create-admin": {
         assertProductionSafe(values["yes-i-am-sure-this-is-production"]);
         const email = requireEmail(values.email);
@@ -155,7 +182,7 @@ async function main(): Promise<void> {
 
       default:
         throw new UsageError(
-          "Usage: create-admin | add | set-role | disable | enable | list (see file header for flags)."
+          "Usage: create-company | create-admin | add | set-role | disable | enable | list (see file header for flags)."
         );
     }
   } finally {
@@ -168,8 +195,10 @@ function printUser(label: string, user: { email: string; role: string; status: s
 }
 
 main().catch((error: unknown) => {
-  if (error instanceof UsageError) {
+  if (error instanceof UsageError || error instanceof ConflictError) {
     console.error(`Error: ${error.message}`);
+  } else if (error instanceof ZodError) {
+    console.error(`Error: ${error.issues.map((issue) => issue.message).join(" ")}`);
   } else {
     console.error("Unexpected error:", error instanceof Error ? error.message : error);
   }

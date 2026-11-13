@@ -153,7 +153,14 @@ How to tell the two apart: `P1001` means Prisma never reached the server; `P1000
 
 That is deliberate (`docs/DECISIONS.md` D12). The seed script refuses to run outside `development`/`test`, so there is no way to populate this by accident. Load real data through the app's own **Imports** page once you can sign in — departments first, then positions, then employees, then assignments.
 
-You will need one ADMIN user before you can reach Imports. See section 5.
+You will need one ADMIN user before you can reach Imports, and that user belongs to a company record, which an empty database does not have. Create both once, with the target database's `DATABASE_URL` set (D71):
+
+```bash
+npm run auth:provision -- create-company --code DOTZERO --name "The DotZero" --timezone Asia/Karachi --yes-i-am-sure-this-is-production
+npm run auth:provision -- create-admin --email you@thedotzero.com --company DOTZERO --yes-i-am-sure-this-is-production
+```
+
+The flag is required only when `NODE_ENV=production` in the shell running the command. Then sign in with that Google account: it becomes the admin.
 
 Then record Supabase in `docs/DEPLOYMENT_DECISIONS.md` (#5), which is currently blank.
 

@@ -28,7 +28,7 @@ Status as of **2026-11-11** (refreshed with D68; the Phase 14 version described 
 - [ ] **Production settings entered in Vercel** (from `.env.production.example`; nobody pastes secrets into chat).
 - [ ] **Migrations applied** to the production database (`prisma migrate deploy`, session pooler).
 - [ ] **Preflight READY** with the production settings, then again with `--url` after deploying.
-- [ ] **First admin provisioned** after real sign-in works (`npm run auth:provision`).
+- [ ] **Company record and first admin created** (`npm run auth:provision -- create-company …` then `create-admin …`, D71), then real sign-in with that account.
 - [ ] **Backup taken and restored once** (an unrestored backup is an assumption).
 - [ ] **Bitbucket Pipelines enabled** for `nextgeni/replit1` (needs a repo admin).
 - [ ] **Vercel connected to the Bitbucket repo** (Vercel → Settings → Git); until then deploys come from the old GitHub copy.
