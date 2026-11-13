@@ -1,0 +1,71 @@
+# Company-server deployment (D72). NOT the local dev database — that is
+# docker-compose.yml.
+#
+# Settings live in .env.production on the server (copy .env.production.example,
+# fill it in, `chmod 600`). It is git-ignored and never committed.
+#
+#   docker compose -f docker-compose.production.yml build
+#   docker compose -f docker-compose.production.yml run --rm tools npx prisma migrate deploy
+#   docker compose -f docker-compose.production.yml up -d app
+#
+# The app listens on 127.0.0.1:3000 only. The server's reverse proxy
+# (nginx, Caddy, IIS...) terminates HTTPS for the domain and forwards to it;
+# see docs/DEPLOYMENT_RUNBOOK.md "Company server".
+#
+# Database: point DATABASE_URL at the company's PostgreSQL. To run Postgres
+# on this same server instead, start the `db` profile as well
+# (`--profile db up -d`) and use host `db` in DATABASE_URL.
+
+name: organogram
+
+services:
+  app:
+    build:
+      context: .
+      target: app
+      args:
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-DotZero Organogram}
+    image: organogram-app:latest
+    env_file: .env.production
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # One-off commands: migrations, create-company / create-admin, preflight.
+  #   docker compose -f docker-compose.production.yml run --rm tools <command>
+  tools:
+    build:
+      context: .
+      target: tools
+      args:
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-DotZero Organogram}
+    image: organogram-tools:latest
+    env_file: .env.production
+    profiles: ["tools"]
+
+  # Optional: PostgreSQL on this server, if the company has no database
+  # server to use. Back it up (docs/DATABASE_RELEASE_RUNBOOK.md).
+  db:
+    image: postgres:16-alpine
+    profiles: ["db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: organogram
+      POSTGRES_USER: organogram
+      # Set in the shell or a .env file next to this file; Postgres refuses to start without it.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - organogram_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U organogram -d organogram"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  organogram_db:
