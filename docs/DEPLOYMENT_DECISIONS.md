@@ -8,7 +8,7 @@ Records every deployment decision this phase needs, per its own explicit list. N
 
 | #     | Decision                                   | Value                                                                                          | Source                                              |
 | ----- | ------------------------------------------ | ---------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| 1     | Cloud/hosting provider                     | **Vercel**                                                                                     | User, this phase                                    |
+| 1     | Cloud/hosting provider                     | **Production: company server** (Docker, D72, 2026-11-13). Staging: Vercel                      | User                                                |
 | 10    | Company SSO provider                       | **Google Workspace**                                                                           | User, this phase                                    |
 | 12/13 | Staging and production application domains | **Local only, for now** — no real staging or production domain is being provisioned this phase | User, this phase                                    |
 | 19    | Deployment approver                        | **Unassigned (explicitly "NAN")**                                                              | User, this phase                                    |

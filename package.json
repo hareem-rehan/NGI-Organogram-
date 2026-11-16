@@ -28,7 +28,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:uat": "tsx --conditions=react-server prisma/seed-uat.ts",
     "test:integration": "dotenv -e .env.test -- vitest run --config vitest.integration.config.mts",
-    "auth:provision": "tsx scripts/provision-user.ts",
+    "auth:provision": "tsx --conditions=react-server scripts/provision-user.ts",
     "check:integrity": "tsx scripts/check-domain-integrity.ts",
     "preflight:production": "tsx scripts/preflight-production.ts"
   },

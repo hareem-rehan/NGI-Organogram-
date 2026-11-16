@@ -32,3 +32,39 @@ export const updateSettingsSchema = z
     expectedUpdatedAt: z.coerce.date().optional(),
   })
   .strict();
+
+/** A real IANA timezone name (e.g. "Asia/Karachi"), as Intl understands it. */
+function isIanaTimezone(value: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The one-time company record a fresh database needs before its first admin
+ * can be provisioned (D71, `npm run auth:provision -- create-company`). Same
+ * name / legal-name / timezone rules as the company profile above; the code
+ * is stored upper-case and is what `create-admin --company` refers to.
+ */
+export const createCompanySchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(
+        /^[A-Z0-9][A-Z0-9_-]{1,29}$/,
+        "Company code must be 2 to 30 letters, digits, _ or -, starting with a letter or digit."
+      ),
+    name: z.string().trim().min(1, "Company name is required.").max(150),
+    legalName: z.string().trim().max(200).nullable().optional(),
+    timezone: z
+      .string()
+      .trim()
+      .default("UTC")
+      .refine(isIanaTimezone, "Timezone must be an IANA name such as Asia/Karachi or UTC."),
+  })
+  .strict();

@@ -57,11 +57,12 @@ export function checkProductionEnv(env: Env): PreflightFinding[] {
     error("NEXT_PUBLIC_APP_NAME", "Required (it is baked in at build time).");
   }
 
-  // Vercel sets NODE_ENV=production itself; the dev sign-in gate depends on it.
+  // The host sets NODE_ENV=production itself (Vercel, or the Docker image on
+  // the company server, D72); the dev sign-in gate depends on it.
   if (env.NODE_ENV !== undefined && env.NODE_ENV !== "production") {
     error(
       "NODE_ENV",
-      "Don't set it — the host sets it to production, and the sign-in gate relies on that."
+      "Don't set it — the host (Vercel, or the Docker image) sets it to production, and the sign-in gate relies on that."
     );
   }
 
@@ -77,7 +78,10 @@ export function checkProductionEnv(env: Env): PreflightFinding[] {
     error("AUTH_SECRET", "Looks like a placeholder. Generate one with `openssl rand -base64 32`.");
   }
   if (env.AUTH_TRUST_HOST !== "true") {
-    error("AUTH_TRUST_HOST", 'Must be "true" on Vercel, or sign-in fails with UntrustedHost.');
+    error(
+      "AUTH_TRUST_HOST",
+      'Must be "true" (on Vercel and behind the company server\'s reverse proxy), or sign-in fails with UntrustedHost.'
+    );
   }
 
   for (const key of ["AUTH_OIDC_CLIENT_ID", "AUTH_OIDC_CLIENT_SECRET"] as const) {

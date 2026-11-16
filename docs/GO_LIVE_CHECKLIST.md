@@ -9,6 +9,7 @@ Status as of **2026-11-11** (refreshed with D68; the Phase 14 version described 
 - [x] **Security headers on every page.** CSP with per-request nonce, HSTS, X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy (checked on staging and on the local production build). `form-action` also allows the sign-in provider's origin (D68).
 - [x] **Production preflight exists** (`npm run preflight:production`, D68): checks settings, database and live site; prints names, never values.
 - [x] **Production settings template** (`.env.production.example`).
+- [x] **Company-server packaging** (D72): `Dockerfile`, `docker-compose.production.yml`; full trial run passed 2026-11-13 (migrations, setup commands, health, PDF/PNG export).
 - [x] **Checks pipeline** on Bitbucket (`bitbucket-pipelines.yml`) — waiting on Pipelines being enabled (below).
 - [x] **Critical/High defects = 0** (`docs/DEFECT_REGISTER.md`; DEF-004 accepted, dev tooling only).
 - [x] **Zero-duration assignment rule consistent** — a same-day start/end is legal in both the app and the integrity check.
@@ -22,16 +23,17 @@ Status as of **2026-11-11** (refreshed with D68; the Phase 14 version described 
 
 ## Production — waiting on accounts and decisions (see the IT request)
 
-- [ ] **Production Supabase project** (separate from staging), region near Sydney to match `vercel.json` (`syd1`).
+- [ ] **Company server ready** (DevOps): Docker + Compose, HTTPS reverse proxy for `organogram.thedotzero.com` (runbook "Company server"), outbound access to Google.
+- [ ] **Production database**: the company's PostgreSQL, or the bundled `db` service, with daily backups (separate from staging).
 - [ ] **Google Workspace OAuth client** with the production redirect URI `https://<domain>/api/auth/callback/company-sso`.
-- [ ] **Production domain** decided and DNS pointed at Vercel.
-- [ ] **Production settings entered in Vercel** (from `.env.production.example`; nobody pastes secrets into chat).
-- [ ] **Migrations applied** to the production database (`prisma migrate deploy`, session pooler).
+- [ ] **DNS**: `organogram.thedotzero.com` pointed at the company server.
+- [ ] **Production settings** in `.env.production` on the server (from `.env.production.example`, `chmod 600`; nobody pastes secrets into chat).
+- [ ] **Migrations applied** (`docker compose … run --rm tools npx prisma migrate deploy`).
 - [ ] **Preflight READY** with the production settings, then again with `--url` after deploying.
-- [ ] **First admin provisioned** after real sign-in works (`npm run auth:provision`).
+- [ ] **Company record and first admin created** (`npm run auth:provision -- create-company …` then `create-admin …`, D71), then real sign-in with that account.
 - [ ] **Backup taken and restored once** (an unrestored backup is an assumption).
 - [ ] **Bitbucket Pipelines enabled** for `nextgeni/replit1` (needs a repo admin).
-- [ ] **Vercel connected to the Bitbucket repo** (Vercel → Settings → Git); until then deploys come from the old GitHub copy.
+- [ ] **Vercel connected to the Bitbucket repo** (staging only; Vercel → Settings → Git); until then staging deploys come from the old GitHub copy.
 - [ ] **Monitoring/alerting** — at least an uptime check on `/api/health/ready`. Provider undecided.
 - [ ] **Real data loaded** (CSV import or copy from staging) — only after SSO works.
 - [ ] **Owners named**: deployment approver, rollback/restore owner, UAT sign-off.

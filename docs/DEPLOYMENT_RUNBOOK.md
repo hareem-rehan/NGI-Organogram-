@@ -6,7 +6,9 @@ Step-by-step instructions to take DotZero Organogram from "runs on a laptop" to 
 
 **Status (2026-11-11):** staging is live (https://dotzero-organogram.vercel.app, Vercel + Supabase, sections 1, 2 and 4a done for staging; it still uses the sign-in bypass instead of SSO). The repository moved to **Bitbucket** (`nextgeni/replit1`, see `docs/HANDOFF.md`), so the pipeline is `bitbucket-pipelines.yml`; the GitHub steps below still describe the old GitHub copy. Production has not been set up.
 
-**Production, in short:** a new Supabase project (§2) → Google OAuth client (§3) → production settings in Vercel from `.env.production.example` (§4a) → `prisma migrate deploy` (§2c) → **preflight** (§6) → deploy (§7) → preflight again with `--url`. Every command is written to be run by you, in your own terminal or browser.
+**Production runs on the company server (2026-11-13, D72)**: follow the "Company server" section below. Sections 1, 4a and 7 describe Vercel and now apply to staging only.
+
+**On Vercel, in short:** a new Supabase project (§2) → Google OAuth client (§3) → production settings in Vercel from `.env.production.example` (§4a) → `prisma migrate deploy` (§2c) → **preflight** (§6) → deploy (§7) → preflight again with `--url`. Every command is written to be run by you, in your own terminal or browser.
 
 ---
 
@@ -14,7 +16,7 @@ Step-by-step instructions to take DotZero Organogram from "runs on a laptop" to 
 
 | Fact            | Value                                                                                                                                      |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Hosting         | Vercel (`docs/DEPLOYMENT_DECISIONS.md` #1)                                                                                                 |
+| Hosting         | **Production: the company server** (Docker, see "Company server" below, D72). Staging stays on Vercel (`docs/DEPLOYMENT_DECISIONS.md` #1)  |
 | SSO provider    | Google Workspace (#12)                                                                                                                     |
 | Auth model      | **SSO only** — there is no password login anywhere, by design (`docs/adr/0010-authjs-provider-neutral-oidc.md`)                            |
 | Database        | PostgreSQL, 16 migrations, **Supabase** (#5) — Postgres only, not its Auth/Storage                                                         |
@@ -153,7 +155,14 @@ How to tell the two apart: `P1001` means Prisma never reached the server; `P1000
 
 That is deliberate (`docs/DECISIONS.md` D12). The seed script refuses to run outside `development`/`test`, so there is no way to populate this by accident. Load real data through the app's own **Imports** page once you can sign in — departments first, then positions, then employees, then assignments.
 
-You will need one ADMIN user before you can reach Imports. See section 5.
+You will need one ADMIN user before you can reach Imports, and that user belongs to a company record, which an empty database does not have. Create both once, with the target database's `DATABASE_URL` set (D71):
+
+```bash
+npm run auth:provision -- create-company --code DOTZERO --name "The DotZero" --timezone Asia/Karachi --yes-i-am-sure-this-is-production
+npm run auth:provision -- create-admin --email you@thedotzero.com --company DOTZERO --yes-i-am-sure-this-is-production
+```
+
+The flag is required only when `NODE_ENV=production` in the shell running the command. Then sign in with that Google account: it becomes the admin.
 
 Then record Supabase in `docs/DEPLOYMENT_DECISIONS.md` (#5), which is currently blank.
 
@@ -351,6 +360,131 @@ vercel rollback <previous-deployment-url>
 or promote the previous deployment from the Vercel dashboard.
 
 ⚠️ **A rollback reverts code only.** It does not undo an applied database migration. If a migration is the problem, you need the database restore path and the named rollback owner — which is exactly why section 6 requires a _rehearsed_ restore.
+
+---
+
+## Company server (production, D72)
+
+Production runs on a company server with Docker, not on Vercel. The repo ships everything the server needs: `Dockerfile` (two images), `docker-compose.production.yml` and `.env.production.example`. Verified 2026-11-13 by a full trial on a laptop: build, migrations, create-company and create-admin, app start, health and readiness 200 with 16/16 migrations, security headers, and PDF and PNG export from inside the container.
+
+### What the server needs (DevOps)
+
+| Need              | Detail                                                                                                                                                                        |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Docker            | Docker Engine with the Compose plugin (`docker compose version`). Linux x86-64 or ARM64.                                                                                      |
+| Repo access       | Read access to Bitbucket `nextgeni/replit1`, to `git pull` and build on the server. (Alternative: build elsewhere and push both images to a company registry.)                |
+| Disk              | Images: app ~0.6 GB, tools ~3 GB (the tools image is only needed for migrations and setup commands, and can be removed between releases). Plus Postgres data if it runs here. |
+| PostgreSQL 14+    | The company's database server, **or** the bundled `db` service (`--profile db`). Either way: daily backups, and one restore rehearsed before go-live.                         |
+| HTTPS             | A reverse proxy (nginx, Caddy, IIS…) on the server holding the TLS certificate for the domain, forwarding to `127.0.0.1:3000`.                                                |
+| Outbound internet | The app calls `https://accounts.google.com` and `https://oauth2.googleapis.com` at every sign-in.                                                                             |
+| DNS               | `organogram.thedotzero.com` → the server's public IP (or the company's load balancer).                                                                                        |
+
+### Reverse proxy
+
+The app trusts the proxy's `X-Forwarded-*` headers (`AUTH_TRUST_HOST=true`), so the proxy must send them, and must allow 12 MB uploads (CSV import). nginx example:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name organogram.thedotzero.com;
+    # ssl_certificate / ssl_certificate_key: the company's certificate
+    client_max_body_size 12m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 60s;
+    }
+}
+server {
+    listen 80;
+    server_name organogram.thedotzero.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+Port 3000 is bound to `127.0.0.1` only; do not open it in the firewall.
+
+### First deployment
+
+On the server, in a clone of the repo (`main`):
+
+```bash
+cp .env.production.example .env.production
+```
+
+```bash
+chmod 600 .env.production
+```
+
+Fill in `.env.production` on the server (database, Google client ID and secret, a new `AUTH_SECRET`, domains). If Postgres runs on this server, also set `POSTGRES_PASSWORD` in the shell or in a `.env` file next to the compose file, and use host `db` in both database URLs. Then:
+
+```bash
+docker compose -f docker-compose.production.yml --profile tools build
+```
+
+```bash
+docker compose -f docker-compose.production.yml run --rm tools npm run preflight:production
+```
+
+```bash
+docker compose -f docker-compose.production.yml run --rm tools npx prisma migrate deploy
+```
+
+```bash
+docker compose -f docker-compose.production.yml run --rm tools npm run auth:provision -- create-company --code DOTZERO --name "The DotZero" --timezone Asia/Karachi --yes-i-am-sure-this-is-production
+```
+
+```bash
+docker compose -f docker-compose.production.yml run --rm tools npm run auth:provision -- create-admin --email <admin-email> --company DOTZERO --yes-i-am-sure-this-is-production
+```
+
+```bash
+docker compose -f docker-compose.production.yml up -d app
+```
+
+(With the bundled database, add `--profile db` to the `up` command and start it before the migrations: `docker compose -f docker-compose.production.yml --profile db up -d db`.)
+
+Then, from anywhere:
+
+```bash
+npm run preflight:production -- --skip-env --url https://organogram.thedotzero.com
+```
+
+It must say READY. Then sign in with the admin's Google account.
+
+### Releasing an update
+
+```bash
+git pull
+```
+
+```bash
+docker compose -f docker-compose.production.yml --profile tools build
+```
+
+```bash
+docker compose -f docker-compose.production.yml run --rm tools npx prisma migrate deploy
+```
+
+```bash
+docker compose -f docker-compose.production.yml up -d app
+```
+
+Take a database backup before the migration step. The app is down for the few seconds the container takes to restart.
+
+### Rollback
+
+Check out the previous release (`git checkout <previous-commit>`), rebuild and `up -d app`. As on Vercel, this reverts code only: a migration that went wrong needs the database restore.
+
+### Logs and health
+
+- Logs: `docker compose -f docker-compose.production.yml logs -f app` (kept to 5 × 20 MB).
+- Docker marks the container unhealthy if `/api/health` fails; point the company's uptime monitor at `https://organogram.thedotzero.com/api/health/ready` (checks the database too).
+- `restart: unless-stopped` brings the app back after a crash or a server reboot.
 
 ---
 

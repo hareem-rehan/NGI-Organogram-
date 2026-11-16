@@ -1,0 +1,17 @@
+# Keep secrets, local data and build output out of the image build context.
+.git
+.env
+.env.*
+!.env.production.example
+node_modules
+.next
+.vercel
+backups
+coverage
+coverage-integration
+playwright-report
+test-results
+tsconfig.tsbuildinfo
+*.log
+.DS_Store
+.claude

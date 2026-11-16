@@ -6,6 +6,9 @@ import type { NextConfig } from "next";
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // D72: the company-server Docker image (Dockerfile) builds a self-
+  // contained server.js. Opt-in so Vercel (staging) builds are unchanged.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   // Next's dev-mode cross-origin protection only trusts "localhost" by
   // default. Playwright's e2e config (playwright.config.ts) deliberately
   // navigates via 127.0.0.1 (a distinct origin from localhost as far as
